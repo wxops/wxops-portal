@@ -1,0 +1,30 @@
+issuer: http://localhost:5556
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+staticClients:
+  - id: wxops-portal
+    name: WxOps Portal v2
+    secret: wxops-portal-secret
+    redirectURIs:
+      # All-in-one image: nginx on :80, Next.js proxies /auth/callback → backend
+      - http://localhost/auth/callback
+      # Separate-service dev mode: Next.js on :3000
+      - http://localhost:3000/auth/callback
+      - http://frontend:3000/auth/callback
+
+enablePasswordDB: true
+
+staticPasswords:
+  - email: "admin@wxops.local"
+    # bcrypt hash of "password"
+    hash: "$2y$10$8Fy0quU2rpcrBefbSm/SReGztkmKCGRcf/Om6DdiMjPAhynHU37BW"
+    username: "admin"
+    userID: "a7599d16-5ab0-4977-8650-5cef4afefab8"
+    groups:
+      - "platform-team"
+      - "developer-team"

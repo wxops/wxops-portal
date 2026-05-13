@@ -1,0 +1,36 @@
+{
+  "_comment": "Static cluster registry for local dev/testing (set CLUSTERS_CONFIG_FILE pointing to this file). No hub K8s cluster needed. Values below reflect the actual Pinniped Concierge CRs — check your cluster with: kubectl get jwtauthenticator -A",
+  "clusters": [
+    {
+      "_comment_id": "REQUIRED — unique ID used in API paths: /api/v1/clusters/{id}/token, /credentials, etc.",
+      "id": "your_cluster_id",
+
+      "_comment_name": "OPTIONAL — UI display name. Defaults to id.",
+      "name": "your_cluster_name_for_display",
+
+      "_comment_api_server": "REQUIRED — spoke cluster API server URL. This spoke cluster is shared with Concierge as ImpersonationProxy, or KubeAPI at port 6443",
+      "api_server": "https://pinniped-concierge.pinniped-concierge.svc.cluster.local",
+
+      "_comment_ca_bundle_file": "REQUIRED when spoke uses a private CA. Path to PEM on disk. Export from kubeconfig: kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d > spoke-ca.crt",
+      "ca_bundle_file": "/path/to/private-ca.crt",
+
+      "_comment_audience": "REQUIRED for /token and /credentials. Must match spec.audience of the JWTAuthenticator CR on this spoke cluster. The Supervisor embeds this as the 'aud' claim in the cluster-scoped id_token issued via RFC 8693 token exchange. Each cluster MUST have a unique audience to prevent cross-cluster token reuse.",
+      "audience": "your_cluster_audience",
+
+      "_comment_jwt_authenticator_name": "REQUIRED for /credentials (mTLS cert from Concierge TokenCredentialRequest). Must match metadata.name of the JWTAuthenticator CR. Check with: kubectl get jwtauthenticator -A",
+      "jwt_authenticator_name": "your_jwt_authenticator_name",
+
+      "_comment_issuer_url": "OPTIONAL — Pinniped Supervisor OIDC issuer URL. Required for generating a pinniped CLI exec-credential kubeconfig via /kubeconfig.",
+      "issuer_url": "https://pinniped-supervisor.pinniped-supervisor.svc.cluster.local",
+
+      "_comment_concierge_endpoint": "OPTIONAL — Pinniped Concierge API endpoint. Defaults to api_server when omitted. Required for pinniped CLI exec-credential kubeconfig.",
+      "concierge_endpoint": "https://pinniped-concierge.pinniped-concierge.svc.cluster.local",
+
+      "_comment_upstream_idp_name": "OPTIONAL — Pinniped Supervisor upstream IDP name. Run: kubectl get oidcidentityproviders -n pinniped-supervisor to find the name.",
+      "upstream_idp_name": "Example OIDC for Authentication",
+
+      "_comment_upstream_idp_type": "OPTIONAL — Upstream IDP type: oidc | ldap | activedirectory | github.",
+      "upstream_idp_type": "oidc"
+    }
+  ]
+}

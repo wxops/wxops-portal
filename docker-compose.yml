@@ -1,0 +1,44 @@
+services:
+  # ── Dex OIDC Identity Provider ──────────────────────────────────────────────
+  # Dex is the upstream IdP that Pinniped Supervisor federates against.
+  # It is NOT directly visible to the portal — the portal only talks to the
+  # Pinniped Supervisor FederationDomain.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.44.0
+    container_name: wxops-dex
+    ports:
+      - "5556:5556"
+    volumes:
+      - ./dex-config.yaml:/etc/dex/config.yaml:ro
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+
+  # ── All-in-one portal image ──────────────────────────────────────────────────
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wxops-portal
+    ports:
+      - "80:80"
+    environment:
+      # Session signing key — generate with: openssl rand -hex 32
+      SESSION_SECRET: "${SESSION_SECRET:-change-me-generate-with-openssl-rand-hex-32}"
+
+      # OIDC — must point to the Pinniped Supervisor FederationDomain issuer.
+      # Example: https://supervisor.example.com/providers/pinniped
+      OIDC_ISSUER_URL: "${OIDC_ISSUER_URL:-https://supervisor.example.com/providers/pinniped}"
+      OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-wxops-portal}"
+      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-}"
+
+      # Callback URI registered in the Supervisor OIDCClient CR.
+      OIDC_REDIRECT_URI: "http://localhost/auth/callback"
+
+      # CORS allowed origin for the Go backend.
+      FRONTEND_URL: "http://localhost"
+
+      # Kubernetes — hub cluster where wxops.io/kind=cluster Secrets live.
+      # When running inside Kubernetes, omit KUBECONFIG to use in-cluster config.
+      KUBECONFIG: "${KUBECONFIG:-}"
+      CLUSTER_NAMESPACE: "${CLUSTER_NAMESPACE:-wxops-system}"
+    depends_on:
+      - dex

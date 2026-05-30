@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team
+  title: Platform Team
+  description: Platform engineering team — owns the IDP (W'xOps Portal), cluster infrastructure, GitOps controller, and Crossplane-based resource provisioning.
+  tags: [platform, infrastructure, gitops]
+spec:
+  type: team
+  profile:
+    displayName: Platform Team
+    email: platform-team@example.com
+  parent: engineering
+  children: []
+  members:
+    - user:default/alice
+    - user:default/bob

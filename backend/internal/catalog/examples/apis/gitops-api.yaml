@@ -1,0 +1,48 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: gitops-api
+  title: GitOps API
+  description: ArgoCD API for application sync status, health checks, and manual sync triggers. Consumed by the portal to display deployment state and by Crossplane for infra reconciliation ordering.
+  tags: [rest, argocd, gitops, kubernetes]
+  annotations:
+    jira/project-key: WXOPS
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:platform-team
+  system: platform
+  definition: |
+    openapi: "3.0.3"
+    info:
+      title: GitOps API
+      version: "1.0.0"
+    paths:
+      /api/v1/applications:
+        get:
+          summary: List ArgoCD applications
+          responses:
+            "200":
+              description: Application list
+      /api/v1/applications/{name}:
+        get:
+          summary: Get application sync status
+          parameters:
+            - name: name
+              in: path
+              required: true
+              schema: { type: string }
+          responses:
+            "200":
+              description: Application detail
+      /api/v1/applications/{name}/sync:
+        post:
+          summary: Trigger manual sync
+          parameters:
+            - name: name
+              in: path
+              required: true
+              schema: { type: string }
+          responses:
+            "200":
+              description: Sync initiated

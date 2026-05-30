@@ -1,0 +1,49 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: auth-api
+  title: Auth API
+  description: REST API for OIDC token validation, session management, and identity resolution. Wraps Pinniped Supervisor token exchange and proxies user lookups to user-service.
+  tags: [rest, oidc, identity, auth]
+  annotations:
+    jira/project-key: IDN
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: group:identity-team
+  system: identity
+  definition: |
+    openapi: "3.0.3"
+    info:
+      title: Auth API
+      version: "1.0.0"
+    paths:
+      /auth/token/validate:
+        post:
+          summary: Validate OIDC token
+          requestBody:
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    token: { type: string }
+          responses:
+            "200":
+              description: Token claims
+            "401":
+              description: Invalid token
+      /auth/session:
+        get:
+          summary: Get current session
+          responses:
+            "200":
+              description: Session info
+            "401":
+              description: Unauthenticated
+      /auth/logout:
+        post:
+          summary: Invalidate session
+          responses:
+            "204":
+              description: Logged out

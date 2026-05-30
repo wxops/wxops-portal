@@ -1,0 +1,57 @@
+# catalog-info.yaml — Component (service, library, website, pipeline)
+# Backstage docs: https://backstage.io/docs/features/software-catalog/descriptor-format#kind-component
+#
+# Drop this file at the root of any service repo, OR commit it to
+# gitops-infra/catalog/components/<name>.yaml for central management.
+# The portal reads from gitops-infra/catalog/ — this file is the source.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payments-service
+  namespace: default                    # omit to default to "default"
+  title: "Payments Service"
+  description: >
+    Handles payment processing, transaction records, and reconciliation.
+    Owned by the platform team, deployed to prod-east and prod-west clusters.
+  tags:
+    - go
+    - payments
+    - grpc
+  annotations:
+    # Gitea repo — used by portal to build source link
+    gitea/source-location: platform/payments-service
+    # Jira epic for active work (plain URL, no integration required)
+    jira/project-key: WXOPS
+  links:
+    - url: https://gitea.example.com/platform/payments-service/src/branch/main/docs/architecture.md
+      title: Architecture
+      icon: docs
+    - url: https://gitea.example.com/platform/payments-service/src/branch/main/docs/runbook.md
+      title: Runbook
+      icon: dashboard
+    - url: https://gitea.example.com/platform/payments-service/src/branch/main/openapi.yaml
+      title: API Spec
+      icon: api
+    - url: https://gitea.example.com/platform/architecture/src/branch/main/rfcs/0007-redis-cache.md
+      title: RFC-0007
+      icon: docs
+    - url: https://jira.example.com/browse/WXOPS-89
+      title: WXOPS-89
+      icon: dashboard
+
+spec:
+  type: service                         # service | website | library | pipeline | documentation
+  lifecycle: production                 # experimental | production | deprecated
+  owner: group:platform-team            # must match a Group entity name
+  system: payments                      # groups this component under the payments System
+
+  # Relations — used to build the service graph in the portal
+  dependsOn:
+    - component:default/user-service    # kind:namespace/name
+    - resource:default/payments-db
+    - resource:default/payments-cache
+  providesApis:
+    - api:default/payments-api
+  consumesApis:
+    - api:default/user-api

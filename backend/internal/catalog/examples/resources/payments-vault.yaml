@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: payments-vault
+  title: Payments Vault
+  description: Vault namespace scoped to the payments system — stores payment gateway credentials, encryption keys, and Stripe webhook secrets. Policy managed by Crossplane Vault provider.
+  tags: [vault, secrets, payments, crossplane]
+  annotations:
+    jira/project-key: PAY
+spec:
+  type: secret-store
+  lifecycle: production
+  owner: group:payments-team
+  system: payments

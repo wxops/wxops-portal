@@ -1,35 +1,179 @@
 {
-  "_comment": "Static cluster registry for local dev/testing (set CLUSTERS_CONFIG_FILE pointing to this file). No hub K8s cluster needed. Values below reflect the actual Pinniped Concierge CRs — check your cluster with: kubectl get jwtauthenticator -A",
+  "_doc": [
+    "Static cluster registry — used when CLUSTERS_CONFIG_FILE points to this file.",
+    "No hub Kubernetes cluster is required. The portal reads this file at startup.",
+    "Copy this file to clusters.json and fill in values for your environment.",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    "PINNIPED CONCIERGE — TWO AUTHENTICATION MODES",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    "Documentation: https://pinniped.dev/docs/reference/supported-clusters/",
+    "",
+    "Pinniped Concierge operates in one of two modes depending on what the",
+    "cluster supports. The api_server URL and CA bundle SOURCE differ per mode.",
+    "",
+    "── Mode A: Impersonation Proxy (default, works on ALL clusters) ───────────",
+    "  Concierge runs its own HTTPS server that intercepts all kubectl/client",
+    "  requests. It generates its own CA — completely separate from the cluster",
+    "  CA in your kubeconfig.",
+    "",
+    "  api_server      → Concierge impersonation proxy LoadBalancer endpoint",
+    "  ca_bundle_base64→ Pinniped-generated CA from CredentialIssuer status",
+    "                    (NOT the cluster CA from kubeconfig)",
+    "  concierge_endpoint → same as api_server",
+    "",
+    "  Get both values from CredentialIssuer (single source of truth):",
+    "    Endpoint:",
+    "      kubectl get credentialissuer \\",
+    "        -o jsonpath='{.items[0].status.strategies[?(@.type==\"ImpersonationProxy\")].frontend.impersonationProxyInfo.endpoint}'",
+    "    CA (already base64 — use directly as ca_bundle_base64):",
+    "      kubectl get credentialissuer \\",
+    "        -o jsonpath='{.items[0].status.strategies[?(@.type==\"ImpersonationProxy\")].frontend.impersonationProxyInfo.certificateAuthorityData}'",
+    "",
+    "  Alternatively read directly from the auto-generated Secret:",
+    "    kubectl get secret pinniped-concierge-impersonation-proxy-ca-certificate \\",
+    "      -n pinniped-concierge \\",
+    "      -o jsonpath='{.data.ca\\.crt}'",
+    "",
+    "── Mode B: Direct KubeAPI / Aggregation Layer ─────────────────────────────",
+    "  Concierge registers TokenCredentialRequest through the Kubernetes API",
+    "  aggregation layer. Requires kube-apiserver to expose the aggregation",
+    "  layer (kube-controller-manager must be running and accessible).",
+    "  Common on full distributions (kubeadm, EKS, GKE). Often unavailable",
+    "  on lightweight distros (K3s, K0s) without extra configuration.",
+    "",
+    "  api_server      → real kube-apiserver URL (same as in kubeconfig)",
+    "  ca_bundle_base64→ cluster CA from kubeconfig (standard certificate-authority-data)",
+    "  concierge_endpoint → same as api_server",
+    "",
+    "  Get both values from kubeconfig:",
+    "    Endpoint:",
+    "      kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'",
+    "    CA (already base64 — use directly as ca_bundle_base64):",
+    "      kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'",
+    "",
+    "── How to check which mode is active on your cluster ──────────────────────",
+    "  kubectl get credentialissuer -o json | grep -A5 '\"type\"'",
+    "  Look for strategy.status = \"Success\" — that is the active mode.",
+    "  ImpersonationProxy success → use Mode A values.",
+    "  KubeClusterSigningCertificate success → use Mode B values.",
+    "  Both can be active simultaneously; use Mode A values when in doubt.",
+    "",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  ],
   "clusters": [
     {
-      "_comment_id": "REQUIRED — unique ID used in API paths: /api/v1/clusters/{id}/token, /credentials, etc.",
-      "id": "your_cluster_id",
+      "_doc": "── Mode A: Impersonation Proxy (most common — K3s, K0s, kubeadm without aggregation) ──",
 
-      "_comment_name": "OPTIONAL — UI display name. Defaults to id.",
-      "name": "your_cluster_name_for_display",
+      "_f_id": "REQUIRED — unique identifier used in API paths (/api/v1/clusters/{id}/...).",
+      "id": "my-cluster",
 
-      "_comment_api_server": "REQUIRED — spoke cluster API server URL. This spoke cluster is shared with Concierge as ImpersonationProxy, or KubeAPI at port 6443",
-      "api_server": "https://pinniped-concierge.pinniped-concierge.svc.cluster.local",
+      "_f_name": "OPTIONAL — display name in the Portal UI. Defaults to id.",
+      "name": "My Cluster",
 
-      "_comment_ca_bundle_file": "REQUIRED when spoke uses a private CA. Path to PEM on disk. Export from kubeconfig: kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d > spoke-ca.crt",
-      "ca_bundle_file": "/path/to/private-ca.crt",
+      "_f_api_server": [
+        "REQUIRED — Concierge impersonation proxy endpoint (NOT the kube-apiserver port 6443).",
+        "Get from CredentialIssuer:",
+        "  kubectl get credentialissuer \\",
+        "    -o jsonpath='{.items[0].status.strategies[?(@.type==\"ImpersonationProxy\")].frontend.impersonationProxyInfo.endpoint}'"
+      ],
+      "api_server": "https://<impersonation-proxy-loadbalancer-ip-or-hostname>:443",
 
-      "_comment_audience": "REQUIRED for /token and /credentials. Must match spec.audience of the JWTAuthenticator CR on this spoke cluster. The Supervisor embeds this as the 'aud' claim in the cluster-scoped id_token issued via RFC 8693 token exchange. Each cluster MUST have a unique audience to prevent cross-cluster token reuse.",
-      "audience": "your_cluster_audience",
+      "_f_ca_bundle_base64": [
+        "REQUIRED — Pinniped's auto-generated CA for the impersonation proxy.",
+        "This is NOT the cluster CA from your kubeconfig.",
+        "The value is already base64-encoded — paste it directly here.",
+        "",
+        "Preferred: read from CredentialIssuer status (matches api_server exactly):",
+        "  kubectl get credentialissuer \\",
+        "    -o jsonpath='{.items[0].status.strategies[?(@.type==\"ImpersonationProxy\")].frontend.impersonationProxyInfo.certificateAuthorityData}'",
+        "",
+        "Alternative: read from the auto-generated Secret in the Concierge namespace:",
+        "  kubectl get secret pinniped-concierge-impersonation-proxy-ca-certificate \\",
+        "    -n pinniped-concierge \\",
+        "    -o jsonpath='{.data.ca\\.crt}'",
+        "",
+        "Note: Pinniped generates and rotates this CA automatically.",
+        "If using cert-manager instead, the Secret name may differ — check:",
+        "  kubectl get secrets -n pinniped-concierge | grep ca"
+      ],
+      "ca_bundle_base64": "<paste base64 CA from CredentialIssuer or Secret>",
 
-      "_comment_jwt_authenticator_name": "REQUIRED for /credentials (mTLS cert from Concierge TokenCredentialRequest). Must match metadata.name of the JWTAuthenticator CR. Check with: kubectl get jwtauthenticator -A",
-      "jwt_authenticator_name": "your_jwt_authenticator_name",
+      "_f_audience": [
+        "REQUIRED for /token and /credentials endpoints.",
+        "Must match spec.audience in the JWTAuthenticator CR on this spoke cluster.",
+        "Each cluster MUST have a unique audience — reusing audiences across clusters",
+        "allows cross-cluster token reuse (security risk).",
+        "  kubectl get jwtauthenticator -A -o jsonpath='{.items[*].spec.audience}'"
+      ],
+      "audience": "my-cluster",
 
-      "_comment_issuer_url": "OPTIONAL — Pinniped Supervisor OIDC issuer URL. Required for generating a pinniped CLI exec-credential kubeconfig via /kubeconfig.",
-      "issuer_url": "https://pinniped-supervisor.pinniped-supervisor.svc.cluster.local",
+      "_f_jwt_authenticator_name": [
+        "REQUIRED for /credentials (Concierge TokenCredentialRequest → short-lived mTLS cert).",
+        "Must match metadata.name of the JWTAuthenticator CR.",
+        "  kubectl get jwtauthenticator -A"
+      ],
+      "jwt_authenticator_name": "my-jwt-authenticator",
 
-      "_comment_concierge_endpoint": "OPTIONAL — Pinniped Concierge API endpoint. Defaults to api_server when omitted. Required for pinniped CLI exec-credential kubeconfig.",
-      "concierge_endpoint": "https://pinniped-concierge.pinniped-concierge.svc.cluster.local",
+      "_f_issuer_url": [
+        "OPTIONAL — Pinniped Supervisor FederationDomain issuer URL.",
+        "Required for /kubeconfig to emit a pinniped CLI exec-credential kubeconfig.",
+        "Same value as OIDC_ISSUER_URL in .env.",
+        "  kubectl get federationdomain -n pinniped-supervisor -o jsonpath='{.items[0].spec.issuer}'"
+      ],
+      "issuer_url": "https://pinniped-supervisor.example.com",
 
-      "_comment_upstream_idp_name": "OPTIONAL — Pinniped Supervisor upstream IDP name. Run: kubectl get oidcidentityproviders -n pinniped-supervisor to find the name.",
-      "upstream_idp_name": "Example OIDC for Authentication",
+      "_f_concierge_endpoint": [
+        "OPTIONAL — endpoint the pinniped CLI uses for TokenCredentialRequest.",
+        "In impersonation proxy mode this is the same as api_server.",
+        "Only set explicitly when the two addresses differ (e.g. internal vs external DNS)."
+      ],
+      "concierge_endpoint": "https://<impersonation-proxy-loadbalancer-ip-or-hostname>:443",
 
-      "_comment_upstream_idp_type": "OPTIONAL — Upstream IDP type: oidc | ldap | activedirectory | github.",
+      "_f_upstream_idp_name": [
+        "OPTIONAL — upstream IDP name registered in the Pinniped Supervisor.",
+        "Passed as --upstream-identity-provider-name to the pinniped CLI.",
+        "  kubectl get oidcidentityproviders   -n pinniped-supervisor",
+        "  kubectl get ldapidentityproviders   -n pinniped-supervisor",
+        "  kubectl get activedirectoryidentityproviders -n pinniped-supervisor"
+      ],
+      "upstream_idp_name": "my-oidc-idp",
+
+      "_f_upstream_idp_type": [
+        "OPTIONAL — must match the CR kind of upstream_idp_name.",
+        "Accepted values: oidc | ldap | activedirectory | github"
+      ],
+      "upstream_idp_type": "oidc"
+    },
+    {
+      "_doc": "── Mode B: Direct KubeAPI / Aggregation Layer (kubeadm, EKS, GKE, etc.) ──",
+
+      "_f_api_server": [
+        "In aggregation layer mode, api_server is the real kube-apiserver URL —",
+        "same value as in your kubeconfig.",
+        "  kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'"
+      ],
+      "id": "prod-cluster",
+      "name": "Production Cluster",
+      "api_server": "https://prod.k8s.example.com:6443",
+
+      "_f_ca_bundle_base64": [
+        "In aggregation layer mode the CA is the standard cluster CA from kubeconfig.",
+        "  kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'"
+      ],
+      "ca_bundle_base64": "<paste certificate-authority-data from kubeconfig>",
+
+      "audience": "prod-cluster",
+      "jwt_authenticator_name": "prod-jwt-authenticator",
+      "issuer_url": "https://pinniped-supervisor.example.com",
+
+      "_f_concierge_endpoint": [
+        "In aggregation layer mode, concierge_endpoint is the same kube-apiserver URL.",
+        "Omit or set equal to api_server."
+      ],
+      "concierge_endpoint": "https://prod.k8s.example.com:6443",
+
+      "upstream_idp_name": "corporate-oidc",
       "upstream_idp_type": "oidc"
     }
   ]

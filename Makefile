@@ -1,44 +1,97 @@
-.PHONY: dev dev-frontend dev-backend up down build lint
+.PHONY: help dev dev-frontend dev-backend up down build \
+        backend-build backend-lint backend-tidy \
+        frontend-install frontend-build frontend-lint \
+        hooks \
+        changelog release version
 
-# ── Local dev (no docker) ──────────────────────────────────────────────────────
-dev-frontend:
-	cd frontend && npm run dev
+# ── Help ───────────────────────────────────────────────────────────────────────
+help: ## Show available commands
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} \
+	     /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 } \
+	     /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
-dev-backend:
+##@ Local Development
+
+dev-backend: ## Run Go backend with hot config reload (reads backend/.env)
 	cd backend && go run ./cmd/main.go
 
-# Run both in parallel (requires two terminals; use 'make dev' as shorthand)
-dev:
-	@echo "Start frontend: make dev-frontend"
-	@echo "Start backend:  make dev-backend"
-	@echo "Start dex:      docker run -p 5556:5556 -v \$$PWD/dex-config.yaml:/etc/dex/config.yaml ghcr.io/dexidp/dex:v2.44.0 dex serve /etc/dex/config.yaml"
+dev-frontend: ## Run Next.js dev server with hot reload
+	cd frontend && npm run dev
 
-# ── Docker Compose ─────────────────────────────────────────────────────────────
-up:
+dev: ## Print commands to start all three services in separate terminals
+	@echo ""
+	@echo "  Terminal 1 — Dex (upstream IDP):"
+	@echo "    docker run -p 5556:5556 -v \$$PWD/dex-config.yaml:/etc/dex/config.yaml ghcr.io/dexidp/dex:v2.44.0 dex serve /etc/dex/config.yaml"
+	@echo ""
+	@echo "  Terminal 2 — Go backend:"
+	@echo "    make dev-backend"
+	@echo ""
+	@echo "  Terminal 3 — Next.js:"
+	@echo "    make dev-frontend"
+	@echo ""
+
+##@ Docker
+
+up: ## Build and start all services with Docker Compose
 	docker compose up --build
 
-down:
+down: ## Stop Docker Compose services
 	docker compose down
 
-build:
+build: ## Build the combined Docker image
 	docker compose build
 
-# ── Backend ────────────────────────────────────────────────────────────────────
-backend-build:
+##@ Backend
+
+backend-build: ## Compile Go backend binary to backend/bin/server
 	cd backend && go build -o bin/server ./cmd/main.go
 
-backend-lint:
+backend-lint: ## Run go vet on the backend
 	cd backend && go vet ./...
 
-backend-tidy:
+backend-tidy: ## Tidy Go module dependencies
 	cd backend && go mod tidy
 
-# ── Frontend ───────────────────────────────────────────────────────────────────
-frontend-install:
+##@ Frontend
+
+frontend-install: ## Install frontend npm dependencies
 	cd frontend && npm install
 
-frontend-build:
+frontend-build: ## Build Next.js for production (standalone output)
 	cd frontend && npm run build
 
-frontend-lint:
+frontend-lint: ## Run ESLint on the frontend
 	cd frontend && npm run lint
+
+##@ Git Hooks
+
+hooks: ## Install pre-commit hooks (requires: pip install pre-commit)
+	pre-commit install --hook-type pre-commit --hook-type commit-msg
+	@echo "pre-commit hooks installed."
+
+##@ Release
+
+version: ## Show current version from latest git tag
+	@git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0 (no tags yet)"
+
+changelog: ## Generate CHANGELOG.md from conventional commits using git-cliff
+	@which git-cliff > /dev/null || (echo "git-cliff not installed — see https://git-cliff.org/docs/installation" && exit 1)
+	git cliff -o CHANGELOG.md
+	@echo "CHANGELOG.md updated."
+
+release: ## Bump semver, update changelog, commit, and create git tag
+	@which git-cliff > /dev/null || (echo "git-cliff not installed — see https://git-cliff.org/docs/installation" && exit 1)
+	$(eval NEXT := $(shell git cliff --bumped-version))
+	@echo ""
+	@echo "  Current : $(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)"
+	@echo "  Next    : $(NEXT)"
+	@echo ""
+	@read -p "  Tag as $(NEXT) and push? [y/N] " c && [ "$$c" = "y" ]
+	git cliff -o CHANGELOG.md
+	git add CHANGELOG.md
+	git commit -m "chore(release): prepare for $(NEXT)" || true
+	git tag -a $(NEXT) -m "Release $(NEXT)"
+	@echo ""
+	@echo "  Created tag $(NEXT). Push with:"
+	@echo "    git push && git push --tags"
+	@echo ""

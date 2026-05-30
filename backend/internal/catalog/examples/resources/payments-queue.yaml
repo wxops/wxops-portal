@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: payments-queue
+  title: Payments Queue
+  description: Kafka topic group for the payments event stream — payments.created, payments.succeeded, payments.failed, refund.initiated. Consumed by payments-worker for async reconciliation.
+  tags: [kafka, queue, payments, events]
+  annotations:
+    jira/project-key: PAY
+spec:
+  type: message-queue
+  lifecycle: production
+  owner: group:payments-team
+  system: payments

@@ -1,0 +1,23 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: metrics-service
+  title: Metrics Service
+  description: Prometheus-based metrics collection and federation — scrapes all platform and application endpoints, exposes a federation endpoint consumed by spoke cluster Prometheuses.
+  tags: [go, prometheus, observability, metrics]
+  annotations:
+    gitea/source-location: platform/metrics-service
+    jira/project-key: OBS
+  links:
+    - url: https://gitea.example.com/platform/metrics-service/src/branch/main/docs/runbook.md
+      title: Runbook
+      icon: dashboard
+spec:
+  type: service
+  lifecycle: production
+  owner: group:observability-team
+  system: observability
+  providesApis:
+    - api:default/metrics-api
+  dependsOn:
+    - resource:default/prometheus-storage

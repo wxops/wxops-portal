@@ -5,11 +5,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wxops/wxops-portal-v2/internal/auth"
+	"github.com/wxops/wxops-portal-v2/internal/catalog"
 	"github.com/wxops/wxops-portal-v2/internal/cluster"
 	"github.com/wxops/wxops-portal-v2/internal/config"
+	"github.com/wxops/wxops-portal-v2/internal/gitea"
 	"github.com/wxops/wxops-portal-v2/internal/handlers"
 )
 
@@ -63,11 +66,48 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 	}
 
+	// Catalog store — backed by a RepoReader.
+	// Priority: CATALOG_LOCAL_DIR (local filesystem, dev/testing) >
+	//           GITEA_URL (Gitea repo, production) > nil (returns error on fetch).
+	//
+	// catalogPath is only meaningful for the Gitea reader — it is the directory
+	// prefix inside the repo (e.g. "catalog"). For LocalReader the kind dirs
+	// (components/, apis/, ...) sit directly at the root of CATALOG_LOCAL_DIR,
+	// so catalogPath must be empty regardless of what GITEA_CATALOG_PATH is set to.
+	var catalogReader catalog.RepoReader
+	var catalogPath string
+	switch {
+	case cfg.CatalogLocalDir != "":
+		catalogReader = catalog.NewLocalReader(cfg.CatalogLocalDir)
+		catalogPath = "" // kind dirs are at the root of the local dir
+	case cfg.GiteaURL != "":
+		catalogReader = gitea.New(cfg.GiteaURL, cfg.GiteaToken, cfg.GiteaCatalogOwner, cfg.GiteaCatalogRepo)
+		catalogPath = cfg.GiteaCatalogPath
+	}
+	catalogStore := catalog.NewStore(catalogReader, catalogPath)
+
 	// HTTP handlers.
 	authH := handlers.NewAuthHandler(oidcClient, sm, cfg)
 	clusterH := handlers.NewClusterHandler(registry, oidcClient, sm)
+	catalogH := handlers.NewCatalogHandler(catalogStore)
 
-	router := gin.Default()
+	// Use gin.New() instead of gin.Default() so we control the logger format.
+	// All request log lines are prefixed with [backend] to match the stdlib
+	// log prefix set in main.go — making backend vs frontend vs nginx lines
+	// distinguishable in the combined container log stream.
+	gin.DefaultWriter = os.Stdout
+	gin.DefaultErrorWriter = os.Stderr
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
+		return fmt.Sprintf("[backend] %s | %3d | %13v | %-7s %s\n",
+			p.TimeStamp.Format("2006/01/02 15:04:05"),
+			p.StatusCode,
+			p.Latency,
+			p.Method,
+			p.Path,
+		)
+	}))
 	router.Use(cors(cfg.FrontendURL))
 
 	// ── Auth routes (no session required) ───────────────────────────────────
@@ -99,6 +139,12 @@ func New(cfg *config.Config) (*Server, error) {
 			// Pinniped cluster-scoped token exchange + mTLS credentials
 			cl.GET("/:id/token", clusterH.GetClusterToken)
 			cl.GET("/:id/credentials", clusterH.GetClusterCredentials)
+		}
+
+		cat := api.Group("/catalog")
+		{
+			cat.GET("/entities", catalogH.ListEntities)
+			cat.GET("/entities/:kind/:name", catalogH.GetEntity)
 		}
 	}
 

@@ -26,6 +26,8 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,10 +70,16 @@ type ClusterInfo struct {
 	UpstreamIDPType   string `json:"upstream_idp_type,omitempty"`  // oidc | ldap | activedirectory | github
 }
 
+const cacheTTL = 60 * time.Second
+
 // Discovery lists spoke clusters from Kubernetes Secrets in the hub cluster.
 type Discovery struct {
 	client    kubernetes.Interface
 	namespace string
+
+	mu       sync.RWMutex
+	cached   []ClusterInfo
+	cachedAt time.Time
 }
 
 const clusterLabelSelector = "wxops.io/kind=cluster"
@@ -99,8 +107,18 @@ func NewDiscovery(kubeconfigPath, namespace string) (*Discovery, error) {
 	return &Discovery{client: client, namespace: namespace}, nil
 }
 
-// ListClusters returns all registered spoke clusters.
-func (d *Discovery) ListClusters(ctx context.Context) ([]ClusterInfo, error) {
+// list returns all clusters, serving from the in-memory cache when it is still
+// fresh. A single hub API call is shared across all concurrent requests that
+// arrive during a cache miss, thanks to the write-lock upgrade pattern.
+func (d *Discovery) list(ctx context.Context) ([]ClusterInfo, error) {
+	d.mu.RLock()
+	if d.cached != nil && time.Since(d.cachedAt) < cacheTTL {
+		c := d.cached
+		d.mu.RUnlock()
+		return c, nil
+	}
+	d.mu.RUnlock()
+
 	secrets, err := d.client.CoreV1().Secrets(d.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: clusterLabelSelector,
 	})
@@ -112,30 +130,32 @@ func (d *Discovery) ListClusters(ctx context.Context) ([]ClusterInfo, error) {
 	for i := range secrets.Items {
 		info, err := secretToCluster(&secrets.Items[i])
 		if err != nil {
-			// Log and skip malformed secrets rather than failing the whole list.
 			continue
 		}
 		clusters = append(clusters, info)
 	}
+
+	d.mu.Lock()
+	d.cached, d.cachedAt = clusters, time.Now()
+	d.mu.Unlock()
+
 	return clusters, nil
+}
+
+// ListClusters returns all registered spoke clusters.
+func (d *Discovery) ListClusters(ctx context.Context) ([]ClusterInfo, error) {
+	return d.list(ctx)
 }
 
 // GetCluster returns a single cluster by its ID.
 func (d *Discovery) GetCluster(ctx context.Context, id string) (*ClusterInfo, error) {
-	secrets, err := d.client.CoreV1().Secrets(d.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: clusterLabelSelector,
-	})
+	clusters, err := d.list(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list cluster secrets: %w", err)
+		return nil, err
 	}
-
-	for i := range secrets.Items {
-		info, err := secretToCluster(&secrets.Items[i])
-		if err != nil {
-			continue
-		}
-		if info.ID == id {
-			return &info, nil
+	for i := range clusters {
+		if clusters[i].ID == id {
+			return &clusters[i], nil
 		}
 	}
 	return nil, fmt.Errorf("cluster %q not found", id)
@@ -162,8 +182,12 @@ func secretToCluster(s *corev1.Secret) (ClusterInfo, error) {
 		ID:                   id,
 		Name:                 name,
 		APIServer:            apiServer,
-		CABundle:             s.Data["ca-bundle"], // raw PEM stored directly in the secret
+		CABundle:             s.Data["ca-bundle"],
 		Audience:             s.Annotations["wxops.io/jwt-authenticator-audience"],
 		JWTAuthenticatorName: s.Annotations["wxops.io/jwt-authenticator-name"],
+		IssuerURL:            s.Annotations["wxops.io/issuer-url"],
+		ConciergeEndpoint:    s.Annotations["wxops.io/concierge-endpoint"],
+		UpstreamIDPName:      s.Annotations["wxops.io/upstream-idp-name"],
+		UpstreamIDPType:      s.Annotations["wxops.io/upstream-idp-type"],
 	}, nil
 }

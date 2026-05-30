@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,11 +26,17 @@ import (
 //	  ]
 //	}
 type staticClusterDef struct {
-	ID                   string `json:"id"`
-	Name                 string `json:"name"`
-	APIServer            string `json:"api_server"`
-	CABundleFile         string `json:"ca_bundle_file"`         // path to PEM file
-	CABundle             string `json:"ca_bundle"`              // inline PEM (literal \n ok)
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	APIServer string `json:"api_server"`
+
+	// CA certificate — supply exactly ONE of the three options below.
+	// Priority: ca_bundle_file > ca_bundle_base64 > ca_bundle.
+	// Leave all empty to trust the system certificate pool (public CA).
+	CABundleFile   string `json:"ca_bundle_file"`   // path to PEM file on disk
+	CABundleBase64 string `json:"ca_bundle_base64"` // base64-encoded DER/PEM (certificate-authority-data from kubeconfig)
+	CABundle       string `json:"ca_bundle"`        // raw PEM string (literal \n accepted)
+
 	Audience             string `json:"audience"`               // JWTAuthenticator spec.audience
 	JWTAuthenticatorName string `json:"jwt_authenticator_name"` // JWTAuthenticator metadata.name
 
@@ -38,7 +45,7 @@ type staticClusterDef struct {
 	// CLI as an exec credential plugin (proper OIDC refresh + Concierge flow)
 	// instead of a static short-lived bearer token.
 	IssuerURL         string `json:"issuer_url"`         // Supervisor FederationDomain issuer
-	ConciergeEndpoint string `json:"concierge_endpoint"` // Concierge impersonation proxy URL (if different from api_server)
+	ConciergeEndpoint string `json:"concierge_endpoint"` // Concierge impersonation proxy URL (defaults to api_server)
 	UpstreamIDPName   string `json:"upstream_idp_name"`  // --upstream-identity-provider-name
 	UpstreamIDPType   string `json:"upstream_idp_type"`  // oidc | ldap | activedirectory | github
 }
@@ -83,7 +90,7 @@ func NewStaticRegistry(filePath, inline string) (*StaticRegistry, error) {
 			return nil, fmt.Errorf("cluster[%d] %q: api_server is required", i, def.ID)
 		}
 
-		ca, err := resolveStaticCA(def.CABundleFile, def.CABundle)
+		ca, err := resolveStaticCA(def.CABundleFile, def.CABundleBase64, def.CABundle)
 		if err != nil {
 			return nil, fmt.Errorf("cluster %q: %w", def.ID, err)
 		}
@@ -129,9 +136,10 @@ func (r *StaticRegistry) GetCluster(_ context.Context, id string) (*ClusterInfo,
 	return nil, fmt.Errorf("cluster %q not found", id)
 }
 
-// resolveStaticCA loads the CA PEM from a file path or inline string.
-// filePath takes priority; returns nil when both are empty (trust system pool).
-func resolveStaticCA(filePath, inline string) ([]byte, error) {
+// resolveStaticCA resolves the CA PEM bytes from one of three sources.
+// Priority: file path > base64 string > inline PEM.
+// Returns nil when all three are empty (trust the system certificate pool).
+func resolveStaticCA(filePath, b64, inline string) ([]byte, error) {
 	if filePath != "" {
 		data, err := os.ReadFile(filePath)
 		if err != nil {
@@ -139,8 +147,21 @@ func resolveStaticCA(filePath, inline string) ([]byte, error) {
 		}
 		return data, nil
 	}
+	if b64 != "" {
+		// Accept both standard and URL-safe base64, with or without padding.
+		// Strips whitespace so values copied from a kubeconfig or terminal work as-is.
+		cleaned := strings.TrimSpace(strings.ReplaceAll(b64, "\n", ""))
+		data, err := base64.StdEncoding.DecodeString(cleaned)
+		if err != nil {
+			// Fall back to raw-URL encoding (some tools emit it without padding).
+			data, err = base64.RawStdEncoding.DecodeString(cleaned)
+			if err != nil {
+				return nil, fmt.Errorf("ca_bundle_base64: invalid base64: %w", err)
+			}
+		}
+		return data, nil
+	}
 	if inline != "" {
-		// Support literal \n in env-var or JSON strings.
 		return []byte(strings.ReplaceAll(inline, `\n`, "\n")), nil
 	}
 	return nil, nil

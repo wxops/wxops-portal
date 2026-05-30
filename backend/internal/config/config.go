@@ -56,6 +56,27 @@ type Config struct {
 	// File takes priority when both are set.
 	ClustersConfigFile string
 	ClustersConfig     string
+
+	// Gitea — service catalog source.
+	//
+	// NOTE: CATALOG_LOCAL_DIR — absolute or relative path to a local catalog directory
+	//       (e.g. ./internal/catalog/examples). When set, Gitea config is ignored.
+	//       Expected layout: components/*.yaml, apis/*.yaml, systems/*.yaml, groups/*.yaml, resources/*.yaml
+	//       Leave empty in production.
+	CatalogLocalDir string
+
+	// NOTE: GITEA_URL — base URL of your Gitea instance, e.g. https://gitea.example.com
+	// NOTE: GITEA_TOKEN — personal access token with "repository" read scope.
+	//       Generate at: <your-gitea>/user/settings/applications
+	// NOTE: GITEA_CATALOG_OWNER — org or user that owns the gitops-infra repo.
+	// NOTE: GITEA_CATALOG_REPO — repo name that contains the catalog directory (default: gitops-infra).
+	// NOTE: GITEA_CATALOG_PATH — path within the repo where catalog-info.yaml files live (default: catalog).
+	//       Expected layout: catalog/components/*.yaml, catalog/apis/*.yaml, etc.
+	GiteaURL          string
+	GiteaToken        string
+	GiteaCatalogOwner string
+	GiteaCatalogRepo  string
+	GiteaCatalogPath  string
 }
 
 // Load reads configuration from environment variables.
@@ -95,6 +116,12 @@ func Load() *Config {
 		ClusterNamespace:   getEnv("CLUSTER_NAMESPACE", "wxops-system"),
 		ClustersConfigFile: getEnv("CLUSTERS_CONFIG_FILE", ""),
 		ClustersConfig:     getEnv("CLUSTERS_CONFIG", ""),
+		CatalogLocalDir:    getEnv("CATALOG_LOCAL_DIR", ""),
+		GiteaURL:           getEnv("GITEA_URL", ""),
+		GiteaToken:         getEnv("GITEA_TOKEN", ""),
+		GiteaCatalogOwner:  getEnv("GITEA_CATALOG_OWNER", ""),
+		GiteaCatalogRepo:   getEnv("GITEA_CATALOG_REPO", "gitops-infra"),
+		GiteaCatalogPath:   getEnv("GITEA_CATALOG_PATH", "catalog"),
 	}
 }
 

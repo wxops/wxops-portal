@@ -1,0 +1,80 @@
+# pre-commit hook configuration for wxops-portal.
+# Install:  pip install pre-commit && pre-commit install --hook-type commit-msg
+# Run all:  pre-commit run --all-files
+# Update:   pre-commit autoupdate
+
+repos:
+  # ── Conventional commit enforcement (commit-msg stage) ───────────────────────
+  # Validates commit messages against the Conventional Commits spec.
+  # Types mirror cliff.toml commit_parsers — adding a type here requires a
+  # matching parser entry there so it appears in the changelog.
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat    # new feature        → Features
+          - fix     # bug fix            → Bug Fixes
+          - perf    # performance        → Performance
+          - refactor # code restructure  → Refactor
+          - docs    # documentation      → Documentation
+          - test    # tests              → Testing
+          - chore   # maintenance        → Chores  (chore(ci) → CI/CD)
+          - revert  # revert a commit    → Reverts
+
+  # ── Generic file quality ────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+
+  # ── wxops-portal project hooks ──────────────────────────────────────────────
+  # Mirrors the hook definitions in .pre-commit-hooks.yaml so the same
+  # logic runs both locally and in CI without needing a remote clone.
+  - repo: local
+    hooks:
+      # Go backend ─────────────────────────────────────────────────────────────
+      - id: backend-vet
+        name: Go vet (backend)
+        language: system
+        entry: bash -c 'cd backend && go vet ./...'
+        pass_filenames: false
+        files: ^backend/.*\.go$
+
+      - id: backend-build
+        name: Go build (backend)
+        language: system
+        entry: bash -c 'cd backend && go build ./...'
+        pass_filenames: false
+        files: ^backend/.*\.go$
+
+      - id: backend-mod-tidy
+        name: Go mod tidy (backend)
+        language: script
+        entry: ./gitea/scripts/check-go-mod-tidy.sh
+        pass_filenames: false
+        files: ^backend/(go\.mod|go\.sum|.*\.go)$
+
+      # Next.js frontend ────────────────────────────────────────────────────────
+      - id: frontend-lint
+        name: Frontend ESLint
+        language: system
+        entry: bash -c 'cd frontend && npm run lint'
+        pass_filenames: false
+        files: ^frontend/src/.*\.(ts|tsx|js|jsx)$
+
+      - id: frontend-typecheck
+        name: Frontend TypeScript check
+        language: system
+        entry: bash -c 'cd frontend && npx tsc --noEmit'
+        pass_filenames: false
+        files: ^frontend/src/.*\.(ts|tsx)$
+

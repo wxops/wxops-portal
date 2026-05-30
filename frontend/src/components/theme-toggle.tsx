@@ -1,7 +1,7 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Sun, Moon, Monitor } from "lucide-react";
 import {
   DropdownMenu,
@@ -12,9 +12,8 @@ import {
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  // Avoid hydration mismatch — render only after mount
-  useEffect(() => setMounted(true), []);
+  // useSyncExternalStore: server returns false, client returns true — no hydration mismatch.
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
 
   if (!mounted) {
     return (

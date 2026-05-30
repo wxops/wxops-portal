@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { User, Download, Loader2 } from "lucide-react";
@@ -17,27 +17,41 @@ interface Props {
   clusterName: string;
 }
 
+type IdentityState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "success"; data: IdentityInfo };
+
+type IdentityAction =
+  | { type: "loading" }
+  | { type: "success"; data: IdentityInfo }
+  | { type: "error"; message: string };
+
+function identityReducer(_: IdentityState, action: IdentityAction): IdentityState {
+  switch (action.type) {
+    case "loading": return { status: "loading" };
+    case "success": return { status: "success", data: action.data };
+    case "error":   return { status: "error", message: action.message };
+  }
+}
+
 // With the "One Token" model, the Pinniped Supervisor id_token lives in the
 // encrypted session cookie managed by the Go backend.  No per-cluster popup or
 // sessionStorage token is needed — the backend reads the cookie and forwards it
 // to the spoke cluster automatically.
 export function ClusterDetail({ clusterId, clusterName }: Props) {
-  const [identity, setIdentity] = useState<IdentityInfo | null>(null);
-  const [identityError, setIdentityError] = useState("");
-  const [loadingIdentity, setLoadingIdentity] = useState(true);
+  const [identityState, dispatch] = useReducer(identityReducer, { status: "loading" });
 
-  // Load identity via Pinniped WhoAmIRequest on mount.
+  // Load identity via Pinniped WhoAmIRequest on mount / cluster change.
   useEffect(() => {
-    setLoadingIdentity(true);
-    setIdentityError("");
+    dispatch({ type: "loading" });
     fetch(`/api/v1/clusters/${clusterId}/identity`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.error) setIdentityError(data.error as string);
-        else setIdentity(data as IdentityInfo);
+        if (data.error) dispatch({ type: "error", message: data.error as string });
+        else dispatch({ type: "success", data: data as IdentityInfo });
       })
-      .catch((e: unknown) => setIdentityError(String(e)))
-      .finally(() => setLoadingIdentity(false));
+      .catch((e: unknown) => dispatch({ type: "error", message: String(e) }));
   }, [clusterId]);
 
   async function downloadKubeconfig() {
@@ -74,35 +88,35 @@ export function ClusterDetail({ clusterId, clusterName }: Props) {
           </div>
         </CardHeader>
         <CardContent>
-          {loadingIdentity && (
+          {identityState.status === "loading" && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading identity…
             </div>
           )}
-          {identityError && !loadingIdentity && (
-            <p className="text-sm text-destructive">{identityError}</p>
+          {identityState.status === "error" && (
+            <p className="text-sm text-destructive">{identityState.message}</p>
           )}
-          {identity && !loadingIdentity && (
+          {identityState.status === "success" && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <div>
                   <span className="text-xs text-muted-foreground">Username</span>
-                  <p className="font-mono text-sm">{identity.username}</p>
+                  <p className="font-mono text-sm">{identityState.data.username}</p>
                 </div>
-                {identity.uid && (
+                {identityState.data.uid && (
                   <div>
                     <span className="text-xs text-muted-foreground">UID</span>
-                    <p className="font-mono text-sm">{identity.uid}</p>
+                    <p className="font-mono text-sm">{identityState.data.uid}</p>
                   </div>
                 )}
               </div>
 
-              {identity.groups?.length > 0 && (
+              {identityState.data.groups?.length > 0 && (
                 <div>
                   <span className="text-xs text-muted-foreground">Groups</span>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {identity.groups.map((g) => (
+                    {identityState.data.groups.map((g) => (
                       <Badge key={g} variant="secondary" className="text-xs">
                         {g}
                       </Badge>

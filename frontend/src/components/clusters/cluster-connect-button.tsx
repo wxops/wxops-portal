@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+const emptySubscribe = () => () => {};
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, AlertCircle, LogIn } from "lucide-react";
 
@@ -33,9 +35,22 @@ function getStoredToken(clusterId: string): ClusterTokenData | null {
 }
 
 export function ClusterConnectButton({ clusterId, clusterName, hasSupervisor }: ClusterConnectButtonProps) {
-  const [status, setStatus] = useState<"idle" | "waiting" | "connected" | "error">("idle");
-  const [tokenData, setTokenData] = useState<ClusterTokenData | null>(null);
+  // Read sessionStorage without an effect — useSyncExternalStore gives null on the
+  // server (avoiding hydration mismatch) and the real value on the client.
+  const initialToken = useSyncExternalStore(
+    emptySubscribe,
+    () => getStoredToken(clusterId),
+    () => null,
+  );
+
+  const [interactiveStatus, setInteractiveStatus] = useState<"idle" | "waiting" | "connected" | "error">("idle");
+  const [activeToken, setActiveToken] = useState<ClusterTokenData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
+
+  // Derived: interactive auth state takes precedence; fall back to the stored token.
+  const tokenData = activeToken ?? initialToken;
+  const status: "idle" | "waiting" | "connected" | "error" =
+    interactiveStatus !== "idle" ? interactiveStatus : tokenData ? "connected" : "idle";
 
   // Use refs so the interval/message callbacks always see fresh values.
   const statusRef = useRef(status);
@@ -45,15 +60,6 @@ export function ClusterConnectButton({ clusterId, clusterName, hasSupervisor }: 
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
-
-  // Restore token from sessionStorage on mount.
-  useEffect(() => {
-    const stored = getStoredToken(clusterId);
-    if (stored) {
-      setTokenData(stored);
-      setStatus("connected");
-    }
-  }, [clusterId]);
 
   // Clean up listeners on unmount.
   useEffect(() => {
@@ -72,7 +78,7 @@ export function ClusterConnectButton({ clusterId, clusterName, hasSupervisor }: 
       window.removeEventListener("message", messageHandlerRef.current);
     }
 
-    setStatus("waiting");
+    setInteractiveStatus("waiting");
     setErrorMsg("");
 
     // Build message handler closed over current clusterId.
@@ -97,11 +103,11 @@ export function ClusterConnectButton({ clusterId, clusterName, hasSupervisor }: 
           expiresAt: Date.now() + 15 * 60 * 1000,
         };
         sessionStorage.setItem(`cluster_token_${clusterId}`, JSON.stringify(stored));
-        setTokenData(stored);
-        setStatus("connected");
+        setActiveToken(stored);
+        setInteractiveStatus("connected");
       } else if (data.type === "cluster-auth-error") {
         setErrorMsg((data.error as string) || "Authentication failed");
-        setStatus("error");
+        setInteractiveStatus("error");
       }
     };
 
@@ -118,7 +124,7 @@ export function ClusterConnectButton({ clusterId, clusterName, hasSupervisor }: 
       window.removeEventListener("message", messageHandler);
       messageHandlerRef.current = null;
       setErrorMsg("Popup blocked — please allow popups for this site.");
-      setStatus("error");
+      setInteractiveStatus("error");
       return;
     }
 
@@ -132,7 +138,7 @@ export function ClusterConnectButton({ clusterId, clusterName, hasSupervisor }: 
           messageHandlerRef.current = null;
         }
         if (statusRef.current === "waiting") {
-          setStatus("idle");
+          setInteractiveStatus("idle");
         }
       }
     }, 500);
@@ -182,4 +188,3 @@ export function ClusterConnectButton({ clusterId, clusterName, hasSupervisor }: 
     </div>
   );
 }
-

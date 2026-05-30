@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useReducer } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,6 +28,28 @@ interface DeploymentInfo {
 
 type Tab = "pods" | "deployments";
 
+type ResourceState = {
+  loading: boolean;
+  error: string;
+  pods: PodInfo[];
+  deployments: DeploymentInfo[];
+};
+
+type ResourceAction =
+  | { type: "loading" }
+  | { type: "pods"; items: PodInfo[] }
+  | { type: "deployments"; items: DeploymentInfo[] }
+  | { type: "error"; message: string };
+
+function resourceReducer(state: ResourceState, action: ResourceAction): ResourceState {
+  switch (action.type) {
+    case "loading":      return { ...state, loading: true, error: "" };
+    case "pods":         return { ...state, loading: false, pods: action.items };
+    case "deployments":  return { ...state, loading: false, deployments: action.items };
+    case "error":        return { ...state, loading: false, error: action.message };
+  }
+}
+
 // token prop removed — the backend reads the session cookie directly.
 // The "One Token" from Pinniped Supervisor is stored server-side.
 interface Props {
@@ -38,10 +60,13 @@ export function ClusterResourceTabs({ clusterId }: Props) {
   const [tab, setTab] = useState<Tab>("pods");
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [namespace, setNamespace] = useState<string>("default");
-  const [pods, setPods] = useState<PodInfo[]>([]);
-  const [deployments, setDeployments] = useState<DeploymentInfo[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [resources, dispatchResource] = useReducer(resourceReducer, {
+    loading: false,
+    error: "",
+    pods: [],
+    deployments: [],
+  });
+  const { loading, error, pods, deployments } = resources;
 
   // Fetch namespaces once on mount to populate the namespace selector.
   useEffect(() => {
@@ -57,22 +82,20 @@ export function ClusterResourceTabs({ clusterId }: Props) {
 
   // Fetch resources whenever tab or namespace changes.
   useEffect(() => {
-    setLoading(true);
-    setError("");
+    dispatchResource({ type: "loading" });
     const endpoint = tab === "pods" ? "pods" : "deployments";
     fetch(`/api/v1/clusters/${clusterId}/${endpoint}?namespace=${encodeURIComponent(namespace)}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {
-          setError(data.error as string);
+          dispatchResource({ type: "error", message: data.error as string });
         } else if (tab === "pods") {
-          setPods(data.pods ?? []);
+          dispatchResource({ type: "pods", items: data.pods ?? [] });
         } else {
-          setDeployments(data.deployments ?? []);
+          dispatchResource({ type: "deployments", items: data.deployments ?? [] });
         }
       })
-      .catch(() => setError("Failed to fetch resources"))
-      .finally(() => setLoading(false));
+      .catch(() => dispatchResource({ type: "error", message: "Failed to fetch resources" }));
   }, [tab, namespace, clusterId]);
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [

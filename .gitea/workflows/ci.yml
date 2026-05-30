@@ -108,8 +108,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/wxops-portal-v2:${{ github.ref_name }}
             ${{ env.REGISTRY }}/wxops-portal-v2:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/wxops-portal-v2:cache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/wxops-portal-v2:cache,mode=max
 
       # --- Update changelog ---------------------------------
       - name: Install git-cliff

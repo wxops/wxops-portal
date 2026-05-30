@@ -2,7 +2,6 @@ name: CI / Release
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   pull_request:
     branches: [main]
@@ -91,75 +90,6 @@ jobs:
         with:
           fetch-depth: 0   # git-cliff needs full history to build the changelog
 
-      # ── Generate per-release changelog via git-cliff ──────────────────────
-      - name: Generate cliff notes
-        uses: orhun/git-cliff-action@v3
-        id: cliff
-        with:
-          config: cliff.toml
-          args: --current --strip all
-        env:
-          OUTPUT: /tmp/cliff-notes.md
-          GITHUB_REPO: ${{ github.repository }}
-
-      # ── Resolve release body ─────────────────────────────────────────────
-      # Priority: release-notes/<tag>.md  →  release-notes/template.md  →  raw cliff output
-      - name: Prepare release body
-        id: notes
-        env:
-          TAG: ${{ github.ref_name }}
-          IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}
-        run: |
-          python3 - <<'PYEOF'
-          import pathlib, os
-
-          tag   = os.environ["TAG"]
-          image = os.environ["IMAGE"]
-          cliff = pathlib.Path("/tmp/cliff-notes.md").read_text()
-
-          specific = pathlib.Path(f"release-notes/{tag}.md")
-          template = pathlib.Path("release-notes/template.md")
-
-          if specific.exists():
-              body = specific.read_text()
-              used = "false"
-          elif template.exists():
-              body = (template.read_text()
-                      .replace("{{CLIFF_NOTES}}", cliff)
-                      .replace("{{VERSION}}",     tag)
-                      .replace("{{IMAGE}}",        image))
-              used = "true"
-          else:
-              body = cliff
-              used = "false"
-
-          pathlib.Path("/tmp/release-notes.md").write_text(body)
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-              fh.write(f"used_template={used}\n")
-          PYEOF
-
-      # ── Sync CHANGELOG.md when release was generated from template ─────────
-      # Skipped when a hand-written release-notes/<tag>.md was used.
-      - name: Regenerate full CHANGELOG.md
-        if: steps.notes.outputs.used_template == 'true'
-        uses: orhun/git-cliff-action@v3
-        with:
-          config: cliff.toml
-          args: -o CHANGELOG.md
-        env:
-          OUTPUT: CHANGELOG.md
-          GITHUB_REPO: ${{ github.repository }}
-
-      - name: Commit updated CHANGELOG.md
-        if: steps.notes.outputs.used_template == 'true'
-        run: |
-          git config user.name  "W'xOps Platform Bot"
-          git config user.email "wxopsbot@wxops.cloud"
-          git add CHANGELOG.md
-          git diff --staged --quiet || \
-            git commit -m "chore(release): update CHANGELOG.md for ${{ github.ref_name }}"
-          git push origin HEAD:main
-
       # ── Build and push Docker image to Gitea registry ─────────────────────────
       - uses: docker/setup-buildx-action@v3
 
@@ -176,14 +106,58 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}:${{ github.ref_name }}
-            ${{ env.REGISTRY }}/${{ github.repository }}:latest
+            ${{ env.REGISTRY }}/wxops-portal-v2:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/wxops-portal-v2:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # --- Update changelog ---------------------------------
+      - name: Install git-cliff
+        run: pip install git-cliff --break-system-packages
+
+      - name: Regenerate CHANGELOG.md
+        run: git-cliff -o CHANGELOG.md
+
+      - name: Commit and push updated files
+        run: |
+          git config user.name  "W'xOps Platform Bot"
+          git config user.email "wxopsbot@wxops.cloud"
+          git add CHANGELOG.md
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(release): update changelog for ${{ github.ref_name }}"
+            git push origin HEAD:main
+          fi
+
       # ── Publish release ──────────────────────────────────────────────────────
+
+      - name: Build release body
+        env:
+          VERSION: ${{ github.ref_name }}
+          IMAGE: ${{ env.REGISTRY }}/wxops-portal-v2
+        run: |
+          notes_file="release-notes/${VERSION}.md"
+          if [ -f "$notes_file" ]; then
+            cp "$notes_file" /tmp/release-body.md
+          elif [ -f "release-notes/template.md" ]; then
+            git-cliff --current --strip all > /tmp/cliff-notes.md
+            sed \
+              -e "s|{{IMAGE}}|${IMAGE}|g" \
+              -e "s|{{VERSION}}|${VERSION}|g" \
+              -e '/{{CLIFF_NOTES}}/{' \
+              -e 'r /tmp/cliff-notes.md' \
+              -e 'd' \
+              -e '}' \
+              release-notes/template.md > /tmp/release-body.md
+          else
+            git-cliff --current --strip all > /tmp/release-body.md
+          fi
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: /tmp/release-notes.md
-          generate_release_notes: false
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body_path: /tmp/release-body.md
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}

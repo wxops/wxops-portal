@@ -60,8 +60,8 @@ commit_parsers = [
   { message = "^doc|^docs",                     group = "Documentation" },
   { message = "^style",                         group = "Styling" },
   { message = "^test",                          group = "Testing" },
-  { message = "^ci",                            group = "CI" },
-  { message = "^chore\\(release\\): prepare",   skip = true },
+  { message = "^chore\\(ci\\)",                 group = "CI/CD" },
+  { message = "^chore\\(release\\): ",          skip = true },
   { message = "^chore",                         group = "Chores" },
   { body = ".*security",                        group = "Security" },
 ]

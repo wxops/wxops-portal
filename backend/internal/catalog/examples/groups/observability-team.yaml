@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: observability-team
+  title: Observability Team
+  description: Observability engineering team — owns metrics-service (Prometheus/Thanos), log-aggregator (Loki), and all observability storage infrastructure. Runs the platform-wide SLO review process.
+  tags: [observability, monitoring, logging, sre]
+spec:
+  type: team
+  profile:
+    displayName: Observability Team
+    email: observability-team@example.com
+  parent: engineering
+  children: []
+  members:
+    - user:default/hannah
+    - user:default/ivan

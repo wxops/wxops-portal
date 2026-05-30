@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: payments-api
+  description: Payment processing gRPC + REST API
+  links:
+    - url: https://gitea.example.com/platform/payments-service/src/branch/main/openapi.yaml
+      title: OpenAPI Spec
+      icon: api
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:platform-team
+  system: payments

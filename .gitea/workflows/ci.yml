@@ -1,0 +1,189 @@
+name: CI / Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+# ── Variable resolution ────────────────────────────────────────────────────────
+#
+# Org-level   → Gitea: Organization > Settings > Actions > Variables
+#   GO_VERSION    default: 1.23          bump once; all Go repos in the org inherit
+#   NODE_VERSION  default: 20            Node LTS managed centrally
+#   REGISTRY      default: ghcr.io       switch the registry once for every repo
+#   RUNNER_LABEL  default: ubuntu-latest use a self-hosted runner label here if needed
+#
+# Repo-level  → Gitea: Repository > Settings > Actions > Variables
+#   GO_CACHE_PATH   default: backend/go.sum             monorepo: Go module is in subdir
+#   NPM_CACHE_PATH  default: frontend/package-lock.json  monorepo: frontend is in subdir
+#
+# Auto-injected by Gitea — no setup required
+#   secrets.GITHUB_TOKEN  provided per run
+#   github.repository     org/repo  (e.g. wxops/wxops-portal-v2)
+#   github.ref_name       tag or branch name
+#   github.actor          user who triggered the run
+#
+# NOT pipeline variables — runtime app config injected via K8s Secrets at deploy time
+#   OIDC_CLIENT_SECRET, SESSION_SECRET, GITEA_TOKEN, OIDC_ISSUER_URL, …
+#
+env:
+  GO_VERSION:     ${{ vars.GO_VERSION     || '1.23' }}
+  NODE_VERSION:   ${{ vars.NODE_VERSION   || '20'   }}
+  REGISTRY:       ${{ vars.REGISTRY       || 'ghcr.io/wxops' }}
+  GO_CACHE_PATH:  ${{ vars.GO_CACHE_PATH  || 'backend/go.sum' }}
+  NPM_CACHE_PATH: ${{ vars.NPM_CACHE_PATH || 'frontend/package-lock.json' }}
+
+permissions:
+  contents: write   # changelog commit + release creation
+  packages: write   # Gitea registry push
+
+jobs:
+  # ── Go backend ──────────────────────────────────────────────────────────────
+  backend:
+    name: Backend (Go)
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ${{ env.GO_CACHE_PATH }}
+
+      - name: Build
+        run: cd backend && go build ./...
+
+      - name: Vet
+        run: cd backend && go vet ./...
+
+  # ── Next.js frontend ────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend (Node.js)
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.NPM_CACHE_PATH }}
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: Lint
+        run: cd frontend && npm run lint
+
+      - name: Type check
+        run: cd frontend && npx tsc --noEmit
+
+  # ── Docker build + release (tag pushes only) ─────────────────────────────────
+  release:
+    name: Release ${{ github.ref_name }}
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    needs: [backend, frontend]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # git-cliff needs full history to build the changelog
+
+      # ── Generate per-release changelog via git-cliff ──────────────────────
+      - name: Generate cliff notes
+        uses: orhun/git-cliff-action@v3
+        id: cliff
+        with:
+          config: cliff.toml
+          args: --current --strip all
+        env:
+          OUTPUT: /tmp/cliff-notes.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      # ── Resolve release body ─────────────────────────────────────────────
+      # Priority: release-notes/<tag>.md  →  release-notes/template.md  →  raw cliff output
+      - name: Prepare release body
+        id: notes
+        env:
+          TAG: ${{ github.ref_name }}
+          IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}
+        run: |
+          python3 - <<'PYEOF'
+          import pathlib, os
+
+          tag   = os.environ["TAG"]
+          image = os.environ["IMAGE"]
+          cliff = pathlib.Path("/tmp/cliff-notes.md").read_text()
+
+          specific = pathlib.Path(f"release-notes/{tag}.md")
+          template = pathlib.Path("release-notes/template.md")
+
+          if specific.exists():
+              body = specific.read_text()
+              used = "false"
+          elif template.exists():
+              body = (template.read_text()
+                      .replace("{{CLIFF_NOTES}}", cliff)
+                      .replace("{{VERSION}}",     tag)
+                      .replace("{{IMAGE}}",        image))
+              used = "true"
+          else:
+              body = cliff
+              used = "false"
+
+          pathlib.Path("/tmp/release-notes.md").write_text(body)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"used_template={used}\n")
+          PYEOF
+
+      # ── Sync CHANGELOG.md when release was generated from template ─────────
+      # Skipped when a hand-written release-notes/<tag>.md was used.
+      - name: Regenerate full CHANGELOG.md
+        if: steps.notes.outputs.used_template == 'true'
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: -o CHANGELOG.md
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Commit updated CHANGELOG.md
+        if: steps.notes.outputs.used_template == 'true'
+        run: |
+          git config user.name  "W'xOps Platform Bot"
+          git config user.email "wxopsbot@wxops.cloud"
+          git add CHANGELOG.md
+          git diff --staged --quiet || \
+            git commit -m "chore(release): update CHANGELOG.md for ${{ github.ref_name }}"
+          git push origin HEAD:main
+
+      # ── Build and push Docker image to Gitea registry ─────────────────────────
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Publish release ──────────────────────────────────────────────────────
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: /tmp/release-notes.md
+          generate_release_notes: false

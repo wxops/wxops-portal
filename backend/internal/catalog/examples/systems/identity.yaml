@@ -1,0 +1,8 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: identity
+  description: User identity, authentication, and session management. Integrates with Pinniped Supervisor for OIDC federation.
+spec:
+  owner: group:identity-team
+  domain: platform

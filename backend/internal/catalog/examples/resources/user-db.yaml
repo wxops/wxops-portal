@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: user-db
+  title: User Database
+  description: PostgreSQL database for user-service — stores user profiles, group memberships, and identity records. Provisioned via Crossplane XDatabase claim with automated backups.
+  tags: [postgres, database, identity, crossplane]
+  annotations:
+    jira/project-key: IDN
+spec:
+  type: database
+  lifecycle: production
+  owner: group:identity-team
+  system: identity

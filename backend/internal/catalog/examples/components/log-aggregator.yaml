@@ -1,0 +1,23 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: log-aggregator
+  title: Log Aggregator
+  description: Loki-based log aggregation — collects structured logs from all platform services via Promtail agents, indexes and stores in object storage, exposes LogQL query API.
+  tags: [go, loki, observability, logging]
+  annotations:
+    gitea/source-location: platform/log-aggregator
+    jira/project-key: OBS
+  links:
+    - url: https://gitea.example.com/platform/log-aggregator/src/branch/main/docs/runbook.md
+      title: Runbook
+      icon: dashboard
+spec:
+  type: service
+  lifecycle: production
+  owner: group:observability-team
+  system: observability
+  providesApis:
+    - api:default/logs-api
+  dependsOn:
+    - resource:default/loki-storage

@@ -1,0 +1,34 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payments-worker
+  title: Payments Worker
+  description: Async payment processor — consumes payment lifecycle events from Kafka (payments-queue), reconciles transaction records in PostgreSQL, dispatches notifications, and handles retry logic for failed settlements.
+  tags: [go, kafka, async, worker, payments]
+  annotations:
+    gitea/source-location: platform/payments-worker
+    jira/project-key: PAY
+  links:
+    - url: https://gitea.example.com/platform/payments-worker/src/branch/main/docs/runbook.md
+      title: Runbook
+      icon: dashboard
+      type: documentation
+    - url: https://gitea.example.com/platform/architecture/src/branch/main/rfcs/rfc-001-kafka-for-payments-events.md
+      title: "RFC-001: Kafka for Payments Events"
+      icon: docs
+      type: rfc
+    - url: https://gitea.example.com/platform/architecture/src/branch/main/docs/adr/adr-001-kafka-for-payments-events.md
+      title: "ADR-001: Kafka for Payments Events"
+      icon: docs
+      type: adr
+spec:
+  type: service
+  lifecycle: production
+  owner: group:payments-team
+  system: payments
+  consumesApis:
+    - api:default/payments-events
+  dependsOn:
+    - resource:default/payments-db
+    - resource:default/payments-queue
+    - resource:default/payments-vault

@@ -8,21 +8,21 @@ import {
   LayoutDashboard,
   Settings,
   ChevronRight,
-  ExternalLink,
   Server,
+  BookOpen,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/clusters", label: "Clusters", icon: Server },
+  { href: "/dashboard/catalog", label: "Catalog", icon: BookOpen },
 ];
 
 interface SidebarProps {
-  groups: string[] | null;
+  groups?: string[] | null;
 }
 
-export function Sidebar({ groups }: SidebarProps) {
+export function Sidebar(_props: SidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -84,4 +84,3 @@ export function Sidebar({ groups }: SidebarProps) {
     </aside>
   );
 }
-

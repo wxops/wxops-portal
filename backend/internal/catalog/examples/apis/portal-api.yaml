@@ -1,0 +1,53 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: portal-api
+  title: Portal API
+  description: REST API exposed by the W'xOps Portal backend — cluster discovery, service catalog, project scaffolding via ProjectClaim creation in gitops-infra.
+  tags: [rest, go, portal, idp]
+  annotations:
+    jira/project-key: WXOPS
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: group:platform-team
+  system: platform
+  definition: |
+    openapi: "3.0.3"
+    info:
+      title: Portal API
+      version: "1.0.0"
+    paths:
+      /api/v1/clusters:
+        get:
+          summary: List available clusters
+          responses:
+            "200":
+              description: Cluster list
+      /api/v1/catalog/entities:
+        get:
+          summary: List catalog entities
+          parameters:
+            - name: kind
+              in: query
+              schema: { type: string }
+          responses:
+            "200":
+              description: Entity list
+      /api/v1/catalog/entities/{kind}/{name}:
+        get:
+          summary: Get single entity
+          parameters:
+            - name: kind
+              in: path
+              required: true
+              schema: { type: string }
+            - name: name
+              in: path
+              required: true
+              schema: { type: string }
+          responses:
+            "200":
+              description: Entity detail
+            "404":
+              description: Not found

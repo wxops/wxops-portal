@@ -1,0 +1,18 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: payments-team
+  title: Payments Team
+  description: Payments engineering team — owns the payments-service, payments-worker, and all payments infrastructure including Kafka event streams and payment gateway integrations.
+  tags: [payments, fintech]
+spec:
+  type: team
+  profile:
+    displayName: Payments Team
+    email: payments-team@example.com
+  parent: engineering
+  children: []
+  members:
+    - user:default/charlie
+    - user:default/diana
+    - user:default/evan

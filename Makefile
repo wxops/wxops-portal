@@ -2,7 +2,7 @@
         backend-build backend-lint backend-tidy \
         frontend-install frontend-build frontend-lint \
         hooks \
-        changelog release version
+        changelog changelog-preview release version
 
 # ── Help ───────────────────────────────────────────────────────────────────────
 help: ## Show available commands
@@ -79,15 +79,27 @@ changelog: ## Generate CHANGELOG.md from conventional commits using git-cliff
 	git cliff -o CHANGELOG.md
 	@echo "CHANGELOG.md updated."
 
-release: ## Bump semver, update changelog, commit, and create git tag
+changelog-preview: ## Preview unreleased changelog without writing
 	@which git-cliff > /dev/null || (echo "git-cliff not installed — see https://git-cliff.org/docs/installation" && exit 1)
-	$(eval NEXT := $(shell git cliff --bumped-version))
+	git-cliff --unreleased --strip all
+
+release: ## Bump version, update changelog, commit and tag  [VERSION=vX.Y.Z overrides auto-bump]
+	@which git-cliff > /dev/null || (echo "git-cliff not installed — see https://git-cliff.org/docs/installation" && exit 1)
+	$(eval NEXT := $(if $(VERSION),$(VERSION),$(shell git cliff --bumped-version 2>/dev/null)))
+	@if [ -z "$(NEXT)" ]; then \
+	    echo "  ERROR: could not determine next version — run 'git cliff --bumped-version' to debug."; \
+	    exit 1; \
+	fi
+	@if ! echo "$(NEXT)" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then \
+	    echo "  ERROR: '$(NEXT)' must match vX.Y.Z (e.g. VERSION=v1.2.0)"; \
+	    exit 1; \
+	fi
 	@echo ""
 	@echo "  Current : $(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)"
-	@echo "  Next    : $(NEXT)"
+	@echo "  Next    : $(NEXT)$(if $(VERSION), [manual override],)"
 	@echo ""
 	@read -p "  Tag as $(NEXT) and push? [y/N] " c && [ "$$c" = "y" ]
-	git cliff -o CHANGELOG.md
+	git cliff --tag $(NEXT) -o CHANGELOG.md
 	git add CHANGELOG.md
 	git commit -m "chore(release): prepare for $(NEXT)" || true
 	git tag -a $(NEXT) -m "Release $(NEXT)"

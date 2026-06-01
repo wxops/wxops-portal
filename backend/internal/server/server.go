@@ -87,6 +87,7 @@ func New(cfg *config.Config) (*Server, error) {
 	catalogStore := catalog.NewStore(catalogReader, catalogPath)
 
 	// HTTP handlers.
+	healthH := handlers.NewHealthHandler()
 	authH := handlers.NewAuthHandler(oidcClient, sm, cfg)
 	clusterH := handlers.NewClusterHandler(registry, oidcClient, sm)
 	catalogH := handlers.NewCatalogHandler(catalogStore)
@@ -100,6 +101,10 @@ func New(cfg *config.Config) (*Server, error) {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
+		// Suppress probe endpoints — they fire every few seconds and add no signal.
+		if p.Path == "/healthz" || p.Path == "/readyz" {
+			return ""
+		}
 		return fmt.Sprintf("[backend] %s | %3d | %13v | %-7s %s\n",
 			p.TimeStamp.Format("2006/01/02 15:04:05"),
 			p.StatusCode,
@@ -109,6 +114,10 @@ func New(cfg *config.Config) (*Server, error) {
 		)
 	}))
 	router.Use(cors(cfg.FrontendURL))
+
+	// ── Kubernetes probe routes (no auth, no session) ───────────────────────
+	router.GET("/healthz", healthH.Liveness)
+	router.GET("/readyz", healthH.Readiness)
 
 	// ── Auth routes (no session required) ───────────────────────────────────
 	// /auth/me is intentionally unprotected so Next.js server components can

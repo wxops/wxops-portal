@@ -228,6 +228,26 @@ spec:
         image: ghcr.io/yourorg/wxops-portal:latest
         ports:
         - containerPort: 80
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 80
+          periodSeconds: 5
+          failureThreshold: 12    # 12 × 5s = 60s grace period for all three processes to start
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 80
+          initialDelaySeconds: 0
+          periodSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 80
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          failureThreshold: 3
         envFrom:
         - secretRef:
             name: wxops-portal-secrets     # SESSION_SECRET, OIDC_CLIENT_SECRET

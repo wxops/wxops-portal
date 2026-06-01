@@ -59,7 +59,7 @@ repos:
       - id: backend-mod-tidy
         name: Go mod tidy (backend)
         language: script
-        entry: ./gitea/scripts/check-go-mod-tidy.sh
+        entry: ./.gitea/scripts/check-go-mod-tidy.sh
         pass_filenames: false
         files: ^backend/(go\.mod|go\.sum|.*\.go)$
 
@@ -77,4 +77,3 @@ repos:
         entry: bash -c 'cd frontend && npx tsc --noEmit'
         pass_filenames: false
         files: ^frontend/src/.*\.(ts|tsx)$
-

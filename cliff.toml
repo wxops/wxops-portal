@@ -21,7 +21,7 @@ body = """
 ### {{ group | upper_first }}
 
 {% for commit in commits %}\
-- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}{% if commit.breaking %} ⚠️ **BREAKING**{% endif %} ([`{{ commit.id | truncate(length=7, end="") }}`]({{ commit.id }}))
+- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}{% if commit.breaking %} ⚠️ **BREAKING**{% endif %} ([`{{ commit.id | truncate(length=7, end="") }}`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/{{ commit.id }}))
 {% endfor %}\
 {% endfor %}
 """

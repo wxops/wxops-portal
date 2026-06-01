@@ -135,10 +135,23 @@ jobs:
           VERSION: ${{ github.ref_name }}
           IMAGE: ${{ env.REGISTRY }}/wxops-portal-v2
         run: |
+          # Priority: version-specific file → template → raw cliff output.
+          # Both version-specific files and template support the same placeholders:
+          #   {{CLIFF_NOTES}}  auto-generated commit list for this tag
+          #   {{VERSION}}      tag name (e.g. v1.2.0)
+          #   {{IMAGE}}        full registry image path
+          # Including {{CLIFF_NOTES}} in a version-specific file merges hand-written
+          # notes with the auto-generated commit list.
           notes_file="release-notes/${VERSION}.md"
           if [ -f "$notes_file" ]; then
-            cp "$notes_file" /tmp/release-body.md
+            source_file="$notes_file"
           elif [ -f "release-notes/template.md" ]; then
+            source_file="release-notes/template.md"
+          else
+            source_file=""
+          fi
+
+          if [ -n "$source_file" ]; then
             git-cliff --current --strip all > /tmp/cliff-notes.md
             sed \
               -e "s|{{IMAGE}}|${IMAGE}|g" \
@@ -147,7 +160,7 @@ jobs:
               -e 'r /tmp/cliff-notes.md' \
               -e 'd' \
               -e '}' \
-              release-notes/template.md > /tmp/release-body.md
+              "$source_file" > /tmp/release-body.md
           else
             git-cliff --current --strip all > /tmp/release-body.md
           fi

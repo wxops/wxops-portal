@@ -7,6 +7,11 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 > This file is regenerated from git history by running `make changelog`.
 > Do not edit it manually.
 ---
+## [0.1.3] — 2026-06-05
+
+### Refactoring
+
+- Update the feature for service-catalog ([`95152f9`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/95152f9336b9d910d9fc2f173f3fb6cf98c709a8))
 ## [0.1.2] — 2026-06-01
 
 ### Chores
@@ -29,7 +34,8 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 - Setup phase2 for service-catalog and refine cache phase 1 ([`0833042`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/0833042fc3c92e8319c42f26c1f7ed460aaf177e))
 - Init new portal for multi-cluster authentication workflows ([`979be72`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/979be7238565cc0b0f6e3f096d693575d9fd1155))
 ---
+[0.1.3]: https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.3
 [0.1.2]: https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.2
 [0.1.1]: https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.1
 [0.1.0]: https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.0
-[Unreleased]: https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.1.2...HEAD
+[Unreleased]: https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.1.3...HEAD

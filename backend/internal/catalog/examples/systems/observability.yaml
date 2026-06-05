@@ -1,8 +1,0 @@
-apiVersion: backstage.io/v1alpha1
-kind: System
-metadata:
-  name: observability
-  description: Metrics, logs, and traces — Prometheus, Loki, Tempo stack providing platform-wide observability.
-spec:
-  owner: group:platform-team
-  domain: platform

@@ -71,17 +71,23 @@ func New(cfg *config.Config) (*Server, error) {
 	//           GITEA_URL (Gitea repo, production) > nil (returns error on fetch).
 	//
 	// catalogPath is only meaningful for the Gitea reader — it is the directory
-	// prefix inside the repo (e.g. "catalog"). For LocalReader the kind dirs
-	// (components/, apis/, ...) sit directly at the root of CATALOG_LOCAL_DIR,
-	// so catalogPath must be empty regardless of what GITEA_CATALOG_PATH is set to.
+	// prefix inside the repo (e.g. "service-catalog"). For LocalReader the team
+	// dirs sit directly at the root of CATALOG_LOCAL_DIR, so catalogPath must
+	// be empty regardless of what GITEA_CATALOG_PATH is set to.
+	//
+	// The Gitea client also implements SpecFetcher for on-demand OpenAPI spec
+	// retrieval from link URLs. specFetcher is nil in local-dev mode.
 	var catalogReader catalog.RepoReader
 	var catalogPath string
+	var specFetcher handlers.SpecFetcher
 	switch {
 	case cfg.CatalogLocalDir != "":
 		catalogReader = catalog.NewLocalReader(cfg.CatalogLocalDir)
-		catalogPath = "" // kind dirs are at the root of the local dir
+		catalogPath = ""
 	case cfg.GiteaURL != "":
-		catalogReader = gitea.New(cfg.GiteaURL, cfg.GiteaToken, cfg.GiteaCatalogOwner, cfg.GiteaCatalogRepo)
+		gc := gitea.New(cfg.GiteaURL, cfg.GiteaToken, cfg.GiteaCatalogOwner, cfg.GiteaCatalogRepo)
+		catalogReader = gc
+		specFetcher = gc
 		catalogPath = cfg.GiteaCatalogPath
 	}
 	catalogStore := catalog.NewStore(catalogReader, catalogPath)
@@ -90,7 +96,7 @@ func New(cfg *config.Config) (*Server, error) {
 	healthH := handlers.NewHealthHandler()
 	authH := handlers.NewAuthHandler(oidcClient, sm, cfg)
 	clusterH := handlers.NewClusterHandler(registry, oidcClient, sm)
-	catalogH := handlers.NewCatalogHandler(catalogStore)
+	catalogH := handlers.NewCatalogHandler(catalogStore, specFetcher)
 
 	// Use gin.New() instead of gin.Default() so we control the logger format.
 	// All request log lines are prefixed with [backend] to match the stdlib
@@ -153,6 +159,8 @@ func New(cfg *config.Config) (*Server, error) {
 		cat := api.Group("/catalog")
 		{
 			cat.GET("/entities", catalogH.ListEntities)
+			cat.GET("/entities/:kind/:name/spec", catalogH.GetEntitySpec)
+			cat.GET("/entities/:kind/:name/content", catalogH.GetDocContent)
 			cat.GET("/entities/:kind/:name", catalogH.GetEntity)
 		}
 	}

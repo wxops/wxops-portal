@@ -1,0 +1,28 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payments-service
+  title: Payments Service
+  description: Handles payment transactions via REST API, persists to PostgreSQL, and delegates identity verification to auth-service via auth-api.
+  tags: [go, rest, payments]
+  annotations:
+    gitea/source-location: rocket-team/payments-service
+    wxops.cloud/cluster-id: prod-east
+  links:
+    - url: https://gitea.wxops.cloud/rocket-team/payments-service/src/branch/main/docs/runbook.md
+      title: Runbook
+      type: documentation
+    - url: https://gitea.wxops.cloud/rocket-team/payments-service/src/branch/main/openapi.yaml
+      title: OpenAPI Spec
+      type: documentation
+spec:
+  type: service
+  lifecycle: production
+  owner: group:rocket-team
+  system: payments
+  providesApis:
+    - api:default/payments-api
+  consumesApis:
+    - api:default/auth-api
+  dependsOn:
+    - resource:default/payments-db

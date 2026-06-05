@@ -1,0 +1,43 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: auth-api
+  title: Auth API
+  description: REST API for OIDC token validation and session management. Consumed by every service that needs to verify user identity — including payments-service and wxops-portal.
+  tags: [rest, oidc, auth]
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:developer-team
+  system: identity
+  definition: |
+    openapi: "3.0.3"
+    info:
+      title: Auth API
+      version: "1.0.0"
+    paths:
+      /auth/token/validate:
+        post:
+          summary: Validate OIDC token
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    token: { type: string }
+          responses:
+            "200": { description: Token is valid — returns claims }
+            "401": { description: Invalid or expired token }
+      /auth/session:
+        get:
+          summary: Get current session identity
+          responses:
+            "200": { description: Session info }
+            "401": { description: Unauthenticated }
+      /auth/logout:
+        post:
+          summary: Invalidate session
+          responses:
+            "204": { description: Session cleared }

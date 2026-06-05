@@ -11,7 +11,7 @@
 //   - The Go backend parses the YAML into typed structs; no Backstage runtime
 //     is involved.
 //
-// Supported kinds: Component, API, System, Group, Resource, User.
+// Supported kinds: Component, API, System, Group, Resource, User, Doc.
 package catalog
 
 import "fmt"
@@ -19,8 +19,8 @@ import "fmt"
 // Entity is the top-level structure of a catalog-info.yaml file.
 // It matches the Backstage envelope schema.
 type Entity struct {
-	APIVersion string         `yaml:"apiVersion" json:"apiVersion"` // "backstage.io/v1alpha1"
-	Kind       string         `yaml:"kind"       json:"kind"`       // Component | API | System | Group | Resource | User
+	APIVersion string         `yaml:"apiVersion" json:"apiVersion"` // backstage.io/v1alpha1 (standard kinds) | wxops.cloud/v1alpha1 (Doc)
+	Kind       string         `yaml:"kind"       json:"kind"`       // Component | API | System | Group | Resource | User | Doc
 	Metadata   EntityMetadata `yaml:"metadata"   json:"metadata"`
 	Spec       EntitySpec     `yaml:"spec"       json:"spec"`
 }
@@ -101,6 +101,24 @@ type EntitySpec struct {
 
 	// ── Resource ─────────────────────────────────────────────────────────
 	// (uses Type, Owner, System, DependsOn from above)
+
+	// ── Doc ──────────────────────────────────────────────────────────────────
+	// DocType classifies the document: rfc | adr | documentation
+	DocType string `yaml:"docType,omitempty" json:"docType,omitempty"`
+
+	// DocStatus is the review lifecycle: proposed | under-review | accepted | deprecated | superseded
+	DocStatus string `yaml:"docStatus,omitempty" json:"docStatus,omitempty"`
+
+	// SupersededBy is a Doc entity ref that replaces this document (e.g. RFC → ADR).
+	// Format: "doc:default/adr-001-kafka"
+	SupersededBy string `yaml:"supersededBy,omitempty" json:"supersededBy,omitempty"`
+
+	// RelatedTo lists component/resource/API refs that this document describes.
+	// Format: "component:default/payments-service"
+	RelatedTo []string `yaml:"relatedTo,omitempty" json:"relatedTo,omitempty"`
+
+	// ContentURL is the Gitea raw URL for the markdown source file.
+	ContentURL string `yaml:"contentUrl,omitempty" json:"contentUrl,omitempty"`
 }
 
 // Ref returns the canonical entity reference string used in relation fields:
@@ -139,6 +157,13 @@ func (e *Entity) Validate() error {
 	case "Group":
 		if e.Spec.Type == "" {
 			return errorf("Group %q missing spec.type", e.Metadata.Name)
+		}
+	case "Doc":
+		if e.Spec.Owner == "" {
+			return errorf("Doc %q missing spec.owner", e.Metadata.Name)
+		}
+		if e.Spec.DocType == "" {
+			return errorf("Doc %q missing spec.docType (rfc | adr | documentation)", e.Metadata.Name)
 		}
 	}
 	return nil

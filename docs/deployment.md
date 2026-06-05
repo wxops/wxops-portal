@@ -181,15 +181,15 @@ metadata:
   name: cluster-prod-east
   namespace: wxops-system
   labels:
-    wxops.io/kind: cluster
+    wxops.cloud/kind: cluster
   annotations:
-    wxops.io/cluster-id:   prod-east
-    wxops.io/cluster-name: "Production East"
-    wxops.io/jwt-authenticator-audience: prod-east
-    wxops.io/jwt-authenticator-name: wxops-jwt-authenticator
-    wxops.io/issuer-url: https://supervisor.example.com/providers/pinniped
-    wxops.io/upstream-idp-name: dex
-    wxops.io/upstream-idp-type: oidc
+    wxops.cloud/cluster-id:   prod-east
+    wxops.cloud/cluster-name: "Production East"
+    wxops.cloud/jwt-authenticator-audience: prod-east
+    wxops.cloud/jwt-authenticator-name: wxops-jwt-authenticator
+    wxops.cloud/issuer-url: https://supervisor.example.com/providers/pinniped
+    wxops.cloud/upstream-idp-name: dex
+    wxops.cloud/upstream-idp-type: oidc
 stringData:
   api-server: "https://api.prod-east.example.com:6443"
   ca-bundle: |

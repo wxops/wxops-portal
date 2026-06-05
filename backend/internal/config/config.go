@@ -38,6 +38,11 @@ type Config struct {
 	// Only for local development with self-signed certs — never use in production.
 	OIDCTLSSkipVerify bool
 
+	// DevBypassAuth skips the OIDC flow entirely and injects a pre-built session
+	// with username "dev" and groups ["platform-team"].
+	// DEV ONLY — never enable in production.
+	DevBypassAuth bool
+
 	// Session — 32-byte AES-256 key encoded as 64 lowercase hex chars.
 	// Generate with: openssl rand -hex 32
 	SessionSecret string
@@ -61,7 +66,7 @@ type Config struct {
 	//
 	// NOTE: CATALOG_LOCAL_DIR — absolute or relative path to a local catalog directory
 	//       (e.g. ./internal/catalog/examples). When set, Gitea config is ignored.
-	//       Expected layout: components/*.yaml, apis/*.yaml, systems/*.yaml, groups/*.yaml, resources/*.yaml
+	//       Expected layout: <team>/systems/*.yaml, <team>/components/*.yaml, <team>/apis/*.yaml, etc.
 	//       Leave empty in production.
 	CatalogLocalDir string
 
@@ -70,8 +75,8 @@ type Config struct {
 	//       Generate at: <your-gitea>/user/settings/applications
 	// NOTE: GITEA_CATALOG_OWNER — org or user that owns the gitops-infra repo.
 	// NOTE: GITEA_CATALOG_REPO — repo name that contains the catalog directory (default: gitops-infra).
-	// NOTE: GITEA_CATALOG_PATH — path within the repo where catalog-info.yaml files live (default: catalog).
-	//       Expected layout: catalog/components/*.yaml, catalog/apis/*.yaml, etc.
+	// NOTE: GITEA_CATALOG_PATH — path within the repo where the service catalog lives (default: service-catalog).
+	//       Expected layout: service-catalog/<team>/systems/*.yaml, service-catalog/<team>/components/*.yaml, etc.
 	GiteaURL          string
 	GiteaToken        string
 	GiteaCatalogOwner string
@@ -111,6 +116,7 @@ func Load() *Config {
 		OIDCScopes:         scopes,
 		OIDCCABundle:       ca,
 		OIDCTLSSkipVerify:  getBool("OIDC_TLS_SKIP_VERIFY"),
+		DevBypassAuth:      getBool("DEV_BYPASS_AUTH"),
 		SessionSecret:      getEnv("SESSION_SECRET", ""),
 		KubeconfigPath:     getEnv("KUBECONFIG", ""),
 		ClusterNamespace:   getEnv("CLUSTER_NAMESPACE", "wxops-system"),
@@ -121,7 +127,7 @@ func Load() *Config {
 		GiteaToken:         getEnv("GITEA_TOKEN", ""),
 		GiteaCatalogOwner:  getEnv("GITEA_CATALOG_OWNER", ""),
 		GiteaCatalogRepo:   getEnv("GITEA_CATALOG_REPO", "gitops-infra"),
-		GiteaCatalogPath:   getEnv("GITEA_CATALOG_PATH", "catalog"),
+		GiteaCatalogPath:   getEnv("GITEA_CATALOG_PATH", "service-catalog"),
 	}
 }
 

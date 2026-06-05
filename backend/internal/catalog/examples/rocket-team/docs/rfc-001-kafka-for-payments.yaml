@@ -1,0 +1,21 @@
+apiVersion: wxops.cloud/v1alpha1
+kind: Doc
+metadata:
+  name: rfc-001-kafka-for-payments
+  title: "RFC-001: Kafka for Payments Events"
+  description: Proposes replacing the direct REST calls between payments-service and payments-worker with a Kafka message queue for durability and decoupling.
+  tags: [kafka, payments, rfc, messaging]
+  links:
+    - url: https://gitea.wxops.cloud/rocket-team/architecture/src/branch/main/rfcs/rfc-001-kafka-for-payments.md
+      title: Review on Gitea
+      type: gitea
+spec:
+  docType: rfc
+  docStatus: superseded
+  owner: group:rocket-team
+  system: payments
+  supersededBy: doc:default/adr-001-kafka-for-payments
+  relatedTo:
+    - component:default/payments-service
+    - component:default/payments-worker
+  contentUrl: rocket-team/docs/rfcs/rfc-001-kafka-for-payments.md

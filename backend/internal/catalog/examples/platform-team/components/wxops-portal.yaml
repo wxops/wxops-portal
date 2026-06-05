@@ -1,0 +1,28 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: wxops-portal
+  title: W'xOps Portal
+  description: Multi-cluster Kubernetes portal with service catalog, SSO via Pinniped Supervisor, and GitOps integration. Entry point for all platform tenants.
+  tags: [go, nextjs, kubernetes, portal]
+  annotations:
+    gitea/source-location: platform/wxops-portal-v2
+    wxops.cloud/cluster-id: hub
+  links:
+    - url: https://gitea.wxops.cloud/platform/wxops-portal-v2/src/branch/main/README.md
+      title: README
+      type: documentation
+    - url: https://gitea.wxops.cloud/platform/wxops-portal-v2/src/branch/main/docs/architecture.md
+      title: Architecture
+      type: documentation
+spec:
+  type: website
+  lifecycle: production
+  owner: group:platform-team
+  system: platform
+  providesApis:
+    - api:default/portal-api
+  consumesApis:
+    - api:default/auth-api
+  dependsOn:
+    - resource:default/gitops-infra-repo

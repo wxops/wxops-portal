@@ -17,6 +17,7 @@ import (
 type RepoReader interface {
 	GetFile(ctx context.Context, path string) ([]byte, error)
 	ListFiles(ctx context.Context, dirPath string) ([]string, error)
+	ListDirs(ctx context.Context, dirPath string) ([]string, error)
 }
 
 const cacheTTL = 5 * time.Minute
@@ -28,7 +29,17 @@ var kindDir = map[string]string{
 	"System":    "systems",
 	"Group":     "groups",
 	"Resource":  "resources",
+	"Doc":       "docs",
 }
+
+// kindDirSet is the set of known kind-directory names for O(1) lookup.
+var kindDirSet = func() map[string]bool {
+	s := make(map[string]bool, len(kindDir))
+	for _, v := range kindDir {
+		s[v] = true
+	}
+	return s
+}()
 
 // Store fetches and caches catalog entities from a RepoReader.
 // Entities are read from <catalogPath>/<kind-dir>/*.yaml on first request and
@@ -48,6 +59,20 @@ type Store struct {
 //	catalogPath — directory prefix for kind subdirs; empty means kind dirs are at the root.
 func NewStore(reader RepoReader, catalogPath string) *Store {
 	return &Store{reader: reader, catalogPath: catalogPath}
+}
+
+// GetFileContent returns the raw bytes of a file inside the catalog repository.
+// path may be:
+//   - A path relative to the catalog root (e.g. "docs/rfcs/rfc-001.md")
+//   - An absolute path from the repo root (e.g. "/architecture/rfcs/rfc-001.md")
+//
+// Use this for Doc entities whose contentUrl is a relative path rather than a
+// full https:// URL. For full URLs use the SpecFetcher in the handler layer.
+func (s *Store) GetFileContent(ctx context.Context, path string) ([]byte, error) {
+	if s.reader == nil {
+		return nil, fmt.Errorf("catalog: no reader configured")
+	}
+	return s.reader.GetFile(ctx, s.joinPath(path))
 }
 
 // ListAll returns every entity across all kinds.
@@ -121,41 +146,71 @@ func (s *Store) all(ctx context.Context) ([]Entity, error) {
 }
 
 // fetch reads every catalog subdirectory and parses the YAML files.
-// Directories that don't exist yet are silently skipped.
+//
+// Two directory layouts are supported and may coexist:
+//
+//	Flat:  <catalogPath>/<kind>/         e.g. catalog/systems/abc.yaml
+//	Team:  <catalogPath>/<team>/<kind>/  e.g. catalog/payments-team/systems/abc.yaml
+//
+// Top-level directories whose names match a known kind dir (systems, components,
+// apis, groups, resources) are read as flat; any other directory is treated as a
+// team namespace and its kind subdirectories are read in turn.
 func (s *Store) fetch(ctx context.Context) ([]Entity, error) {
 	var entities []Entity
 
-	for _, dir := range kindDir {
-		dirPath := dir
-		if s.catalogPath != "" {
-			dirPath = s.catalogPath + "/" + dir
-		}
+	topDirs, err := s.reader.ListDirs(ctx, s.catalogPath)
+	if err != nil || len(topDirs) == 0 {
+		return entities, nil
+	}
 
-		files, err := s.reader.ListFiles(ctx, dirPath)
-		if err != nil {
-			continue
-		}
-
-		for _, filename := range files {
-			if !strings.HasSuffix(filename, ".yaml") && !strings.HasSuffix(filename, ".yml") {
-				continue
-			}
-
-			data, err := s.reader.GetFile(ctx, dirPath+"/"+filename)
-			if err != nil {
-				continue
-			}
-
-			parsed := parseEntities(data)
-			for _, e := range parsed {
-				if err := e.Validate(); err != nil {
-					continue
-				}
-				entities = append(entities, e)
+	for _, dir := range topDirs {
+		if kindDirSet[dir] {
+			// Flat layout: the top-level directory is itself a kind directory.
+			fetched, _ := s.readKindDir(ctx, s.joinPath(dir))
+			entities = append(entities, fetched...)
+		} else {
+			// Team layout: descend into each kind subdirectory inside the team dir.
+			for _, kindSubDir := range kindDir {
+				fetched, _ := s.readKindDir(ctx, s.joinPath(dir, kindSubDir))
+				entities = append(entities, fetched...)
 			}
 		}
 	}
 
+	return entities, nil
+}
+
+// joinPath prepends catalogPath (when non-empty) to the given path segments.
+func (s *Store) joinPath(parts ...string) string {
+	if s.catalogPath != "" {
+		return s.catalogPath + "/" + strings.Join(parts, "/")
+	}
+	return strings.Join(parts, "/")
+}
+
+// readKindDir lists and parses all YAML files in a single directory.
+// Missing or unreadable directories are silently skipped.
+func (s *Store) readKindDir(ctx context.Context, dirPath string) ([]Entity, error) {
+	files, err := s.reader.ListFiles(ctx, dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var entities []Entity
+	for _, filename := range files {
+		if !strings.HasSuffix(filename, ".yaml") && !strings.HasSuffix(filename, ".yml") {
+			continue
+		}
+		data, err := s.reader.GetFile(ctx, dirPath+"/"+filename)
+		if err != nil {
+			continue
+		}
+		for _, e := range parseEntities(data) {
+			if err := e.Validate(); err == nil {
+				entities = append(entities, e)
+			}
+		}
+	}
 	return entities, nil
 }
 

@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: identity
+  title: Identity System
+  description: User authentication and session management. Wraps Pinniped Supervisor for OIDC federation — every platform service validates tokens through this system.
+spec:
+  owner: group:developer-team
+  domain: platform

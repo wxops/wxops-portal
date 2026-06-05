@@ -45,3 +45,24 @@ func (r *LocalReader) ListFiles(_ context.Context, dirPath string) ([]string, er
 	}
 	return files, nil
 }
+
+// ListDirs returns the names of all subdirectories inside dirPath relative to
+// root.  Returns nil without error when the directory does not exist.
+func (r *LocalReader) ListDirs(_ context.Context, dirPath string) ([]string, error) {
+	abs := filepath.Join(r.root, filepath.FromSlash(dirPath))
+	entries, err := os.ReadDir(abs)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var dirs []string
+	for _, e := range entries {
+		if e.IsDir() {
+			dirs = append(dirs, e.Name())
+		}
+	}
+	return dirs, nil
+}

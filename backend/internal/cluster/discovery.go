@@ -1,7 +1,7 @@
 // Package cluster provides spoke-cluster discovery and proxying.
 //
 // Clusters are stored as Kubernetes Secrets in the hub (management) cluster,
-// labelled with "wxops.io/kind=cluster".  This replaces any relational database
+// labelled with "wxops.cloud/kind=cluster".  This replaces any relational database
 // and aligns with GitOps: a Secret is the single source of truth for a cluster
 // registration.
 //
@@ -14,10 +14,10 @@
 //	  name: cluster-a
 //	  namespace: wxops-system         # CLUSTER_NAMESPACE env var
 //	  labels:
-//	    wxops.io/kind: cluster
+//	    wxops.cloud/kind: cluster
 //	  annotations:
-//	    wxops.io/cluster-id:   cluster-a        # optional, defaults to .metadata.name
-//	    wxops.io/cluster-name: "Production A"   # optional, defaults to cluster-id
+//	    wxops.cloud/cluster-id:   cluster-a        # optional, defaults to .metadata.name
+//	    wxops.cloud/cluster-name: "Production A"   # optional, defaults to cluster-id
 //	data:
 //	  api-server: aHR0cHM6Ly8...      # base64(https://api.cluster-a.example.com:6443)
 //	  ca-bundle:  LS0tLS1CRUd...      # base64(PEM CA cert(s))
@@ -82,7 +82,7 @@ type Discovery struct {
 	cachedAt time.Time
 }
 
-const clusterLabelSelector = "wxops.io/kind=cluster"
+const clusterLabelSelector = "wxops.cloud/kind=cluster"
 
 // NewDiscovery creates a Discovery that connects to the hub cluster.
 // If kubeconfigPath is empty the in-cluster service-account config is used.
@@ -163,12 +163,12 @@ func (d *Discovery) GetCluster(ctx context.Context, id string) (*ClusterInfo, er
 
 // secretToCluster converts a Kubernetes Secret to ClusterInfo.
 func secretToCluster(s *corev1.Secret) (ClusterInfo, error) {
-	id := s.Annotations["wxops.io/cluster-id"]
+	id := s.Annotations["wxops.cloud/cluster-id"]
 	if id == "" {
 		id = s.Name
 	}
 
-	name := s.Annotations["wxops.io/cluster-name"]
+	name := s.Annotations["wxops.cloud/cluster-name"]
 	if name == "" {
 		name = id
 	}
@@ -183,11 +183,11 @@ func secretToCluster(s *corev1.Secret) (ClusterInfo, error) {
 		Name:                 name,
 		APIServer:            apiServer,
 		CABundle:             s.Data["ca-bundle"],
-		Audience:             s.Annotations["wxops.io/jwt-authenticator-audience"],
-		JWTAuthenticatorName: s.Annotations["wxops.io/jwt-authenticator-name"],
-		IssuerURL:            s.Annotations["wxops.io/issuer-url"],
-		ConciergeEndpoint:    s.Annotations["wxops.io/concierge-endpoint"],
-		UpstreamIDPName:      s.Annotations["wxops.io/upstream-idp-name"],
-		UpstreamIDPType:      s.Annotations["wxops.io/upstream-idp-type"],
+		Audience:             s.Annotations["wxops.cloud/jwt-authenticator-audience"],
+		JWTAuthenticatorName: s.Annotations["wxops.cloud/jwt-authenticator-name"],
+		IssuerURL:            s.Annotations["wxops.cloud/issuer-url"],
+		ConciergeEndpoint:    s.Annotations["wxops.cloud/concierge-endpoint"],
+		UpstreamIDPName:      s.Annotations["wxops.cloud/upstream-idp-name"],
+		UpstreamIDPType:      s.Annotations["wxops.cloud/upstream-idp-type"],
 	}, nil
 }

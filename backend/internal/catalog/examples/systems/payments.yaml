@@ -1,8 +1,0 @@
-apiVersion: backstage.io/v1alpha1
-kind: System
-metadata:
-  name: payments
-  description: End-to-end payment processing — REST/gRPC API, async worker, PostgreSQL, Redis cache, Vault secrets, and NATS job queue.
-spec:
-  owner: group:payments-team
-  domain: finance

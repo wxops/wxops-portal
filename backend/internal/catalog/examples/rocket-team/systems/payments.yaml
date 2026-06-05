@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: payments
+  title: Payments System
+  description: End-to-end payment processing — REST API, PostgreSQL persistence, and token-based auth delegated to the identity system.
+spec:
+  owner: group:rocket-team
+  domain: finance

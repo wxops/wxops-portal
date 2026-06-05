@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: identity-vault
+  description: HashiCorp Vault instance storing OIDC client secrets and session signing keys for the identity system.
+  annotations:
+    wxops.cloud/cluster-id: hub
+spec:
+  type: vault
+  lifecycle: production
+  owner: group:developer-team
+  system: identity

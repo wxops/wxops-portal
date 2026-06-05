@@ -1,0 +1,16 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: payments-api
+  title: Payments API
+  description: REST API for initiating, querying, and refunding payment transactions. Requires a valid token from auth-api.
+  tags: [rest, payments, finance]
+  links:
+    - url: https://gitea.wxops.cloud/rocket-team/payments-service/src/branch/main/openapi.yaml
+      title: OpenAPI Spec
+      type: documentation
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:rocket-team
+  system: payments

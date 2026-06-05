@@ -4,7 +4,7 @@ The portal discovers spoke clusters from one of two sources, selected at startup
 
 | Source | When used | How |
 |---|---|---|
-| K8s Secrets | Production | Secrets labelled `wxops.io/kind=cluster` in `CLUSTER_NAMESPACE` |
+| K8s Secrets | Production | Secrets labelled `wxops.cloud/kind=cluster` in `CLUSTER_NAMESPACE` |
 | `clusters.json` | Development | Set `CLUSTERS_CONFIG_FILE` or `CLUSTERS_CONFIG` env var |
 
 The portal caches the cluster list for 60 seconds. Adding a new Secret takes effect within one minute with no portal restart.
@@ -20,21 +20,21 @@ metadata:
   name: cluster-<id>
   namespace: wxops-system            # CLUSTER_NAMESPACE
   labels:
-    wxops.io/kind: cluster           # required — discovery selector
+    wxops.cloud/kind: cluster           # required — discovery selector
   annotations:
     # Identity
-    wxops.io/cluster-id: <id>                          # defaults to Secret name
-    wxops.io/cluster-name: "Human-readable name"       # defaults to cluster-id
+    wxops.cloud/cluster-id: <id>                          # defaults to Secret name
+    wxops.cloud/cluster-name: "Human-readable name"       # defaults to cluster-id
 
     # Pinniped — required for /token, /credentials, and mTLS spoke access
-    wxops.io/jwt-authenticator-audience: <audience>    # JWTAuthenticator spec.audience (unique per cluster)
-    wxops.io/jwt-authenticator-name: <name>            # JWTAuthenticator metadata.name
+    wxops.cloud/jwt-authenticator-audience: <audience>    # JWTAuthenticator spec.audience (unique per cluster)
+    wxops.cloud/jwt-authenticator-name: <name>            # JWTAuthenticator metadata.name
 
     # Pinniped — required for /kubeconfig (exec-credential kubeconfig)
-    wxops.io/issuer-url: https://supervisor.example.com/providers/pinniped
-    wxops.io/concierge-endpoint: ""                    # defaults to api-server when empty
-    wxops.io/upstream-idp-name: dex                    # kubectl get oidcidentityproviders -n pinniped-supervisor
-    wxops.io/upstream-idp-type: oidc                   # oidc | ldap | activedirectory | github
+    wxops.cloud/issuer-url: https://supervisor.example.com/providers/pinniped
+    wxops.cloud/concierge-endpoint: ""                    # defaults to api-server when empty
+    wxops.cloud/upstream-idp-name: dex                    # kubectl get oidcidentityproviders -n pinniped-supervisor
+    wxops.cloud/upstream-idp-type: oidc                   # oidc | ldap | activedirectory | github
 data:
   api-server: <base64(https://api.example.com:6443)>
   ca-bundle: <base64(PEM CA cert)>

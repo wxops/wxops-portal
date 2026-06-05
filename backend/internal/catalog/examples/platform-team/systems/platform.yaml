@@ -1,0 +1,9 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: platform
+  title: W'xOps Platform
+  description: Internal Developer Platform — portal, GitOps automation, and shared infrastructure managed by the platform team on behalf of all tenants.
+spec:
+  owner: group:platform-team
+  domain: platform

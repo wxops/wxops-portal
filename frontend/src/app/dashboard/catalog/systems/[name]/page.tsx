@@ -3,7 +3,8 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MermaidDiagram } from "@/components/catalog/mermaid-diagram";
+import { GraphPanel } from "@/components/catalog/graph-panel";
+import { type DocTooltipData } from "@/components/catalog/mermaid-diagram";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
@@ -27,6 +28,12 @@ interface Entity {
     dependsOn?: string[];
     providesApis?: string[];
     consumesApis?: string[];
+    // Doc-specific
+    docType?: string;
+    docStatus?: string;
+    supersededBy?: string;
+    relatedTo?: string[];
+    contentUrl?: string;
   };
 }
 
@@ -51,8 +58,22 @@ const lifecycleBadge: Record<string, string> = {
   deprecated:   "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
+const docTypeBadge: Record<string, string> = {
+  rfc:           "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
+  adr:           "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  documentation: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+};
+
+const docStatusColors: Record<string, string> = {
+  proposed:      "text-amber-600 dark:text-amber-400",
+  "under-review":"text-blue-600 dark:text-blue-400",
+  accepted:      "text-green-600 dark:text-green-400",
+  deprecated:    "text-gray-500",
+  superseded:    "text-orange-500",
+};
+
 function EntityCard({ entity }: { entity: Entity }) {
-  const lifecycle = entity.spec.lifecycle ?? "";
+  const lifecycle  = entity.spec.lifecycle ?? "";
   const badgeClass = lifecycleBadge[lifecycle] ?? "bg-muted text-muted-foreground";
 
   return (
@@ -100,13 +121,54 @@ function EntityCard({ entity }: { entity: Entity }) {
   );
 }
 
-function Section({
-  title,
-  entities,
-}: {
-  title: string;
-  entities: Entity[];
-}) {
+function DocCard({ doc }: { doc: Entity }) {
+  const docType   = doc.spec.docType ?? "documentation";
+  const docStatus = doc.spec.docStatus ?? "proposed";
+
+  return (
+    <Link
+      href={`/dashboard/catalog/Doc/${doc.metadata.name}`}
+      className="block group"
+    >
+      <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-2">
+            <CardTitle className="text-sm font-medium leading-snug">
+              {doc.metadata.title ?? doc.metadata.name}
+            </CardTitle>
+            <span
+              className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold uppercase ${docTypeBadge[docType] ?? "bg-muted text-muted-foreground"}`}
+            >
+              {docType}
+            </span>
+          </div>
+          <p className="text-xs font-mono text-muted-foreground">
+            {doc.metadata.name}
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col gap-2">
+          {doc.metadata.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2">
+              {doc.metadata.description}
+            </p>
+          )}
+          <div className="mt-auto flex items-center justify-between">
+            <span className={`text-xs font-medium ${docStatusColors[docStatus] ?? "text-muted-foreground"}`}>
+              {docStatus}
+            </span>
+            {doc.metadata.tags?.slice(0, 2).map((tag) => (
+              <Badge key={tag} variant="outline" className="text-xs">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
+
+function Section({ title, entities }: { title: string; entities: Entity[] }) {
   if (entities.length === 0) return null;
   return (
     <section className="space-y-3">
@@ -127,13 +189,11 @@ function Section({
 
 // ── Diagram builder ───────────────────────────────────────────────────────────
 
-// Parses "kind:namespace/name" or "kind:name" → the name segment.
 function refName(ref: string): string {
   const afterColon = ref.includes(":") ? ref.split(":")[1] : ref;
   return afterColon.includes("/") ? afterColon.split("/").pop()! : afterColon;
 }
 
-// Sanitises a name into a valid Mermaid node ID (no hyphens, dots, spaces).
 function nodeId(name: string): string {
   return name.replace(/[^a-zA-Z0-9]/g, "_");
 }
@@ -142,12 +202,29 @@ function buildDiagram(members: Entity[]): string {
   if (members.length === 0) return "";
 
   const memberNames = new Set(members.map((e) => e.metadata.name));
-  const lines: string[] = ["flowchart LR"];
+  const lines: string[] = [
+    '%%{init: {"flowchart": {"nodeSpacing": 25, "rankSpacing": 35}}}%%',
+    "flowchart LR",
+  ];
 
-  // Node declarations — shape encodes kind
-  for (const e of members) {
+  // Colour classes for Doc node types
+  lines.push("  classDef rfcNode fill:#f5f3ff,stroke:#7c3aed,color:#6d28d9,stroke-width:2px");
+  lines.push("  classDef adrNode fill:#eff6ff,stroke:#2563eb,color:#1d4ed8,stroke-width:2px");
+  lines.push("  classDef docNode fill:#f0fdf4,stroke:#16a34a,color:#15803d,stroke-width:2px");
+
+  // Node declarations ordered: Components → APIs → Resources → Docs
+  // This keeps service nodes at the head (left) of the LR layout.
+  const ordered = [
+    ...members.filter((e) => e.kind === "Component"),
+    ...members.filter((e) => e.kind === "API"),
+    ...members.filter((e) => e.kind === "Resource"),
+    ...members.filter((e) => e.kind === "Doc"),
+  ];
+
+  for (const e of ordered) {
     const id    = nodeId(e.metadata.name);
     const label = e.metadata.title ?? e.metadata.name;
+
     switch (e.kind) {
       case "Component":
         lines.push(`  ${id}["${label}"]`);
@@ -158,10 +235,26 @@ function buildDiagram(members: Entity[]): string {
       case "Resource":
         lines.push(`  ${id}[("${label}")]`);
         break;
+      case "Doc": {
+        const dt = e.spec.docType ?? "documentation";
+        if (dt === "rfc") {
+          lines.push(`  ${id}{{"RFC: ${label}"}}`);
+          lines.push(`  class ${id} rfcNode`);
+        } else if (dt === "adr") {
+          lines.push(`  ${id}[/"ADR: ${label}"\\]`);
+          lines.push(`  class ${id} adrNode`);
+        } else {
+          lines.push(`  ${id}>"${label}"]`);
+          lines.push(`  class ${id} docNode`);
+        }
+        // Click navigates to Doc detail page
+        lines.push(`  click ${id} "/dashboard/catalog/Doc/${e.metadata.name}"`);
+        break;
+      }
     }
   }
 
-  // Edges — only draw when both ends are inside this system
+  // Component → API / Resource / dependency edges
   for (const e of members) {
     if (e.kind !== "Component") continue;
     const src = nodeId(e.metadata.name);
@@ -170,19 +263,49 @@ function buildDiagram(members: Entity[]): string {
       const n = refName(ref);
       if (memberNames.has(n)) lines.push(`  ${src} -->|provides| ${nodeId(n)}`);
     }
-
     for (const ref of e.spec.consumesApis ?? []) {
       const n = refName(ref);
       if (memberNames.has(n)) lines.push(`  ${nodeId(n)} -->|consumed by| ${src}`);
     }
-
     for (const ref of e.spec.dependsOn ?? []) {
       const n = refName(ref);
       if (memberNames.has(n)) lines.push(`  ${src} --> ${nodeId(n)}`);
     }
   }
 
+  // Doc → supersededBy (RFC → ADR decision chain)
+  for (const e of members) {
+    if (e.kind !== "Doc") continue;
+    const src = nodeId(e.metadata.name);
+
+    if (e.spec.supersededBy) {
+      const n = refName(e.spec.supersededBy);
+      if (memberNames.has(n))
+        lines.push(`  ${src} -->|"→ ADR"| ${nodeId(n)}`);
+    }
+
+    // Doc → related components/resources (dotted)
+    for (const ref of e.spec.relatedTo ?? []) {
+      const n = refName(ref);
+      if (memberNames.has(n))
+        lines.push(`  ${src} -.->|"relates to"| ${nodeId(n)}`);
+    }
+  }
+
   return lines.join("\n");
+}
+
+function buildDocTooltips(docs: Entity[]): Record<string, DocTooltipData> {
+  const tooltips: Record<string, DocTooltipData> = {};
+  for (const d of docs) {
+    tooltips[nodeId(d.metadata.name)] = {
+      title:       d.metadata.title ?? d.metadata.name,
+      docType:     d.spec.docType ?? "documentation",
+      status:      d.spec.docStatus ?? "proposed",
+      description: d.metadata.description,
+    };
+  }
+  return tooltips;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,18 +315,16 @@ export default async function SystemDetailPage({
 }: {
   params: Promise<{ name: string }>;
 }) {
-  const { name } = await params;
-  const cookieStore = await cookies();
-  const session = cookieStore.get("wxops_session")?.value ?? "";
+  const { name }     = await params;
+  const cookieStore  = await cookies();
+  const session      = cookieStore.get("wxops_session")?.value ?? "";
 
   const { entities, error } = await fetchEntities(session);
 
-  // Find the System entity itself for metadata
   const system = entities.find(
     (e) => e.kind === "System" && e.metadata.name === name,
   );
 
-  // All entities that belong to this system
   const members = entities.filter(
     (e) => e.kind !== "System" && e.spec.system === name,
   );
@@ -211,12 +332,20 @@ export default async function SystemDetailPage({
   const components = members.filter((e) => e.kind === "Component");
   const apis       = members.filter((e) => e.kind === "API");
   const resources  = members.filter((e) => e.kind === "Resource");
+  const docs       = members.filter((e) => e.kind === "Doc");
 
-  const displayName = system?.metadata.title ?? system?.metadata.name ?? name;
-  const diagram = buildDiagram(members);
+  const rfcs           = docs.filter((d) => d.spec.docType === "rfc");
+  const adrs           = docs.filter((d) => d.spec.docType === "adr");
+  const documentation  = docs.filter((d) => !d.spec.docType || d.spec.docType === "documentation");
+
+  const displayName    = system?.metadata.title ?? system?.metadata.name ?? name;
+  const diagramBase    = buildDiagram(members.filter((e) => e.kind !== "Doc"));
+  const diagramFull    = buildDiagram(members);
+  const docTooltips    = buildDocTooltips(docs);
 
   return (
-    <div className="space-y-8 max-w-5xl">
+    <div className="space-y-8 max-w-7xl">
+
       {/* Breadcrumb */}
       <Link
         href="/dashboard/catalog"
@@ -282,22 +411,71 @@ export default async function SystemDetailPage({
         </div>
       )}
 
-      {/* Relationship diagram */}
-      {diagram && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Service Graph
-          </h2>
-          <div className="rounded-md border bg-muted/20 p-4">
-            <MermaidDiagram chart={diagram} />
-          </div>
-        </section>
+      {/* Decision & Service Graph */}
+      {(diagramBase || diagramFull) && (
+        <GraphPanel
+          chartBase={diagramBase}
+          chartWithDocs={docs.length > 0 ? diagramFull : undefined}
+          docTooltips={Object.keys(docTooltips).length > 0 ? docTooltips : undefined}
+          docsCount={docs.length}
+        />
       )}
 
-      {/* Member entities grouped by kind */}
-      <Section title="Services"  entities={components} />
-      <Section title="APIs"      entities={apis} />
-      <Section title="Resources" entities={resources} />
+      {/* Member entities */}
+      <Section title="Services"   entities={components} />
+      <Section title="APIs"       entities={apis} />
+      <Section title="Resources"  entities={resources} />
+
+      {/* Decision Documents */}
+      {docs.length > 0 && (
+        <div className="space-y-6">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Decision Documents
+          </h2>
+
+          {rfcs.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-violet-700 dark:text-violet-400 uppercase tracking-wider">
+                  RFCs
+                </span>
+                <span className="text-xs text-muted-foreground">({rfcs.length})</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {rfcs.map((d) => <DocCard key={d.metadata.name} doc={d} />)}
+              </div>
+            </section>
+          )}
+
+          {adrs.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
+                  ADRs
+                </span>
+                <span className="text-xs text-muted-foreground">({adrs.length})</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {adrs.map((d) => <DocCard key={d.metadata.name} doc={d} />)}
+              </div>
+            </section>
+          )}
+
+          {documentation.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                  Documentation
+                </span>
+                <span className="text-xs text-muted-foreground">({documentation.length})</span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {documentation.map((d) => <DocCard key={d.metadata.name} doc={d} />)}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
     </div>
   );
 }

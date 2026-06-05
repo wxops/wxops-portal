@@ -1,0 +1,13 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: payments-db
+  description: PostgreSQL database for payment transaction records.
+  annotations:
+    wxops.cloud/cluster-id: prod-east
+    crossplane/claim-name: payments-db
+spec:
+  type: database
+  lifecycle: production
+  owner: group:rocket-team
+  system: payments

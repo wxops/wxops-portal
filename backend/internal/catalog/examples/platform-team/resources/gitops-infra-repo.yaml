@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gitops-infra-repo
+  description: Gitea repository holding all cluster Helm values, ArgoCD applications, and service catalog YAML files for every tenant team.
+  annotations:
+    gitea/source-location: platform/gitops-infra
+spec:
+  type: repository
+  lifecycle: production
+  owner: group:platform-team
+  system: platform

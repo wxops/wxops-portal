@@ -363,7 +363,7 @@ func (h *ClusterHandler) GetClusterToken(c *gin.Context) {
 	}
 	if cl.Audience == "" {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{
-			"error": fmt.Sprintf("cluster %q: audience not configured — set wxops.io/jwt-authenticator-audience annotation or static config field", cl.ID),
+			"error": fmt.Sprintf("cluster %q: audience not configured — set wxops.cloud/jwt-authenticator-audience annotation or static config field", cl.ID),
 		})
 		return
 	}

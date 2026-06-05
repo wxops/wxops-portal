@@ -1,0 +1,21 @@
+apiVersion: wxops.cloud/v1alpha1
+kind: Doc
+metadata:
+  name: adr-001-kafka-for-payments
+  title: "ADR-001: Adopt Kafka for Payments Events"
+  description: Decision record capturing the adoption of Apache Kafka as the event bus for the payments pipeline, following review and acceptance of RFC-001.
+  tags: [kafka, payments, adr, messaging]
+  links:
+    - url: https://gitea.wxops.cloud/rocket-team/architecture/src/branch/main/adrs/adr-001-kafka-for-payments.md
+      title: Review on Gitea
+      type: gitea
+spec:
+  docType: adr
+  docStatus: accepted
+  owner: group:rocket-team
+  system: payments
+  relatedTo:
+    - component:default/payments-service
+    - component:default/payments-worker
+    - resource:default/payments-db
+  contentUrl: rocket-team/docs/adrs/adr-001-kafka-for-payments.md

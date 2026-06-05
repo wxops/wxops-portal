@@ -1,0 +1,24 @@
+apiVersion: wxops.cloud/v1alpha1
+kind: Doc
+metadata:
+  name: doc-001-payments-runbook
+  title: "Payments Service Runbook"
+  description: Operational guide covering deployment, health checks, incident response, and on-call procedures for the payments pipeline.
+  tags: [runbook, payments, ops, oncall, monitoring]
+  links:
+    - url: https://gitea.wxops.cloud/rocket-team/architecture/src/branch/main/docs/doc-001-payments-runbook.md
+      title: View on Gitea
+      type: gitea
+    - url: https://grafana.wxops.cloud/d/payments-overview
+      title: Payments Dashboard (Grafana)
+      icon: dashboard
+spec:
+  docType: documentation
+  docStatus: accepted
+  owner: group:rocket-team
+  system: payments
+  relatedTo:
+    - component:default/payments-service
+    - resource:default/payments-db
+    - doc:default/adr-001-kafka-for-payments
+  contentUrl: rocket-team/docs/documentation/doc-001-payments-runbook.md

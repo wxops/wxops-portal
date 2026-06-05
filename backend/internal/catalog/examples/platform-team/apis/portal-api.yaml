@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: portal-api
+  title: Portal API
+  description: Internal REST API served by the W'xOps Portal backend — cluster management, service catalog, and authentication endpoints.
+  tags: [rest, kubernetes, catalog]
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:platform-team
+  system: platform

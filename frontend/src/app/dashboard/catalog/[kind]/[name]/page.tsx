@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { OpenApiViewer } from "@/components/catalog/openapi-viewer";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
@@ -65,52 +65,26 @@ async function fetchEntity(
   }
 }
 
-function LinkGroup({
-  links,
-  label,
-  accent,
-}: {
-  links: EntityLink[];
-  label: string;
-  accent: string;
-}) {
-  if (links.length === 0) return null;
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          {label}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {links.map((link) => (
-          <a
-            key={link.url}
-            href={link.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`flex items-center gap-2 text-sm hover:underline ${accent}`}
-          >
-            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            {link.title ?? link.url}
-          </a>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
 const lifecycleBadge: Record<string, string> = {
   production:   "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   experimental: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
   deprecated:   "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
+function MetaRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline gap-1.5 text-sm">
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className={mono ? "font-mono text-foreground" : "text-foreground"}>{value}</span>
+    </div>
+  );
+}
+
 function RefList({ items, label }: { items?: string[]; label: string }) {
   if (!items || items.length === 0) return null;
   return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
         {label}
       </p>
       <div className="flex flex-wrap gap-1.5">
@@ -137,7 +111,7 @@ export default async function EntityDetailPage({
 
   if (error || !entity) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Link
           href="/dashboard/catalog"
           className="text-sm text-muted-foreground hover:text-foreground"
@@ -152,22 +126,48 @@ export default async function EntityDetailPage({
   }
 
   const lifecycle = entity.spec.lifecycle ?? "";
-  const badgeClass =
-    lifecycleBadge[lifecycle] ?? "bg-muted text-muted-foreground";
+  const badgeClass = lifecycleBadge[lifecycle] ?? "bg-muted text-muted-foreground";
+  const displayTitle = entity.metadata.title ?? entity.metadata.name;
+  const tags = entity.metadata.tags ?? [];
 
-  // Extract notable annotations (non-internal ones worth showing).
+  const allLinks = entity.metadata.links ?? [];
+  const rfcLinks   = allLinks.filter((l) => l.type === "rfc");
+  const adrLinks   = allLinks.filter((l) => l.type === "adr");
+  const docLinks   = allLinks.filter((l) => l.type !== "rfc" && l.type !== "adr" && l.type !== "openapi");
+  const hasLinks   = rfcLinks.length + adrLinks.length + docLinks.length > 0;
+
   const displayAnnotations = Object.entries(entity.metadata.annotations ?? {}).filter(
     ([k]) => !k.startsWith("kubectl.kubernetes.io"),
   );
 
-  const allLinks = entity.metadata.links ?? [];
-  const rfcLinks  = allLinks.filter((l) => l.type === "rfc");
-  const adrLinks  = allLinks.filter((l) => l.type === "adr");
-  const otherLinks = allLinks.filter((l) => l.type !== "rfc" && l.type !== "adr");
+  // Relationships
+  const relationships = [
+    ...(entity.spec.dependsOn    ?? []).map((r) => ({ label: "Depends on",    ref: r })),
+    ...(entity.spec.providesApis ?? []).map((r) => ({ label: "Provides API",  ref: r })),
+    ...(entity.spec.consumesApis ?? []).map((r) => ({ label: "Consumes API",  ref: r })),
+    ...(entity.spec.members      ?? []).map((r) => ({ label: "Member",        ref: r })),
+    ...(entity.spec.children     ?? []).map((r) => ({ label: "Child",         ref: r })),
+  ];
+
+  // OpenAPI spec
+  const hasOpenapiLink = allLinks.some((l) => l.type === "openapi");
+  const showApiRef = entity.kind === "API" && (!!entity.spec.definition || hasOpenapiLink);
+  const apiSpecUrl = showApiRef && !entity.spec.definition
+    ? `/api/v1/catalog/entities/${entity.kind}/${entity.metadata.name}/spec`
+    : undefined;
+
+  // Meta strip fields
+  const metaFields = [
+    entity.spec.owner  && { label: "Owner",  value: entity.spec.owner,  mono: true  },
+    entity.spec.system && { label: "System", value: entity.spec.system, mono: true  },
+    entity.spec.domain && { label: "Domain", value: entity.spec.domain, mono: false },
+    entity.spec.parent && { label: "Parent", value: entity.spec.parent, mono: true  },
+  ].filter(Boolean) as { label: string; value: string; mono: boolean }[];
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Breadcrumb — Catalog → System (if applicable) → Entity */}
+    <div className="space-y-5 max-w-7xl">
+
+      {/* ── Breadcrumb ──────────────────────────────────────────────────── */}
       <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Link href="/dashboard/catalog" className="hover:text-foreground">
           Catalog
@@ -184,120 +184,160 @@ export default async function EntityDetailPage({
           </>
         )}
         <span>/</span>
-        <span className="text-foreground font-medium">
-          {entity.metadata.name}
-        </span>
+        <span className="text-foreground font-medium">{entity.metadata.name}</span>
       </nav>
 
-      {/* Header */}
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
+      {/* ── Entity header card ───────────────────────────────────────────── */}
+      <div className="rounded-lg border bg-card">
+        {/* Identity block */}
+        <div className="p-5">
+          {/* Badges row */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
             <Badge variant="secondary">{entity.kind}</Badge>
             {lifecycle && (
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeClass}`}
-              >
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeClass}`}>
                 {lifecycle}
               </span>
             )}
+            {entity.spec.type && (
+              <Badge variant="outline" className="text-xs">{entity.spec.type}</Badge>
+            )}
           </div>
-          <h1 className="text-2xl font-bold mt-2">
-            {entity.metadata.title ?? entity.metadata.name}
-          </h1>
+
+          {/* Title + subtitle */}
+          <h1 className="text-xl font-bold leading-tight">{displayTitle}</h1>
           {entity.metadata.title && (
-            <p className="text-sm font-mono text-muted-foreground mt-0.5">
+            <p className="text-xs font-mono text-muted-foreground mt-0.5">
               {entity.metadata.name}
             </p>
           )}
+
+          {/* Description */}
           {entity.metadata.description && (
-            <p className="text-muted-foreground mt-2 max-w-2xl">
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
               {entity.metadata.description}
             </p>
           )}
+
+          {/* Tags */}
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {tags.map((tag) => (
+                <Badge key={tag} variant="outline" className="text-xs">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Meta strip — compact horizontal key-value row */}
+        {metaFields.length > 0 && (
+          <div className="border-t px-5 py-2.5 flex flex-wrap gap-x-6 gap-y-1">
+            {metaFields.map((f) => (
+              <MetaRow key={f.label} label={f.label} value={f.value} mono={f.mono} />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Tags */}
-      {(entity.metadata.tags ?? []).length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {entity.metadata.tags!.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-        </div>
+      {/* ── OpenAPI spec (full width, dominant for API entities) ────────── */}
+      {showApiRef && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-0.5">
+            API Reference
+          </h2>
+          <OpenApiViewer
+            spec={entity.spec.definition || undefined}
+            specUrl={apiSpecUrl}
+          />
+        </section>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Spec */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Specification
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            {entity.spec.owner && (
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">
-                  Owner
-                </p>
-                <p className="font-mono">{entity.spec.owner}</p>
-              </div>
-            )}
-            {entity.spec.type && (
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">
-                  Type
-                </p>
-                <p>{entity.spec.type}</p>
-              </div>
-            )}
-            {entity.spec.system && (
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">
-                  System
-                </p>
-                <p className="font-mono">{entity.spec.system}</p>
-              </div>
-            )}
-            {entity.spec.domain && (
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">
-                  Domain
-                </p>
-                <p>{entity.spec.domain}</p>
-              </div>
-            )}
-            {entity.spec.parent && (
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">
-                  Parent
-                </p>
-                <p className="font-mono">{entity.spec.parent}</p>
-              </div>
-            )}
+      {/* ── Details row — auto-fit, only renders sections with content ──── */}
+      {(relationships.length > 0 || hasLinks || displayAnnotations.length > 0) && (
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
 
-            <Separator />
+          {/* Relationships */}
+          {relationships.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Relationships
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Group by type for cleaner reading */}
+                <RefList items={entity.spec.dependsOn}    label="Depends On" />
+                <RefList items={entity.spec.providesApis} label="Provides APIs" />
+                <RefList items={entity.spec.consumesApis} label="Consumes APIs" />
+                <RefList items={entity.spec.members}      label="Members" />
+                <RefList items={entity.spec.children}     label="Children" />
+              </CardContent>
+            </Card>
+          )}
 
-            <RefList items={entity.spec.dependsOn} label="Depends On" />
-            <RefList items={entity.spec.providesApis} label="Provides APIs" />
-            <RefList items={entity.spec.consumesApis} label="Consumes APIs" />
-            <RefList items={entity.spec.members} label="Members" />
-            <RefList items={entity.spec.children} label="Children" />
-          </CardContent>
-        </Card>
-
-        {/* Links + Annotations */}
-        <div className="space-y-6">
-          {/* Links grouped by type */}
-          {allLinks.length > 0 && (
-            <div className="space-y-4">
-              <LinkGroup links={rfcLinks}   label="RFCs"          accent="text-violet-600 dark:text-violet-400" />
-              <LinkGroup links={adrLinks}   label="ADRs"          accent="text-blue-600 dark:text-blue-400" />
-              <LinkGroup links={otherLinks} label="Documentation" accent="text-primary" />
-            </div>
+          {/* Resources (docs + RFCs + ADRs in one card) */}
+          {hasLinks && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Resources
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {docLinks.length > 0 && (
+                  <div className="space-y-1.5">
+                    {docLinks.map((l) => (
+                      <a
+                        key={l.url}
+                        href={l.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-primary hover:underline"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        {l.title ?? l.url}
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {rfcLinks.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">RFCs</p>
+                    {rfcLinks.map((l) => (
+                      <a
+                        key={l.url}
+                        href={l.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-violet-600 dark:text-violet-400 hover:underline"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        {l.title ?? l.url}
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {adrLinks.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ADRs</p>
+                    {adrLinks.map((l) => (
+                      <a
+                        key={l.url}
+                        href={l.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        {l.title ?? l.url}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           {/* Annotations */}
@@ -308,18 +348,20 @@ export default async function EntityDetailPage({
                   Annotations
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-2.5">
                 {displayAnnotations.map(([key, value]) => (
-                  <div key={key} className="text-xs">
+                  <div key={key} className="text-xs space-y-0.5">
                     <p className="font-mono text-muted-foreground">{key}</p>
-                    <p className="font-mono mt-0.5 break-all">{value}</p>
+                    <p className="font-mono text-foreground break-all">{value}</p>
                   </div>
                 ))}
               </CardContent>
             </Card>
           )}
+
         </div>
-      </div>
+      )}
+
     </div>
   );
 }

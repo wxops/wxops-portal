@@ -26,7 +26,7 @@ Copy `backend/.env.example` to `backend/.env` for local development. In producti
 | `GITEA_TOKEN` | — | | Personal access token with `repository` read scope |
 | `GITEA_CATALOG_OWNER` | — | | Org or user that owns the gitops-infra repo |
 | `GITEA_CATALOG_REPO` | `gitops-infra` | | Repo containing the catalog directory |
-| `GITEA_CATALOG_PATH` | `catalog` | | Path within the repo where entity YAML files live |
+| `GITEA_CATALOG_PATH` | `service-catalog` | | Path within the repo where entity YAML files live |
 
 ### Secret management in production
 

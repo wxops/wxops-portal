@@ -24,6 +24,23 @@ func NewAuthHandler(oidc *auth.OIDCClient, sm *auth.SessionManager, cfg *config.
 //
 //	GET /auth/login
 func (h *AuthHandler) Login(c *gin.Context) {
+	if h.cfg.DevBypassAuth {
+		session := &auth.Session{
+			Sub:      "dev-bypass",
+			Username: "dev",
+			Groups:   []string{"platform-team"},
+		}
+		encoded, err := h.sm.Encode(session)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create dev session"})
+			return
+		}
+		c.SetSameSite(http.SameSiteLaxMode)
+		c.SetCookie(auth.SessionCookieName, encoded, 8*3600, "/", "", false, true)
+		c.Redirect(http.StatusFound, h.cfg.FrontendURL+"/dashboard")
+		return
+	}
+
 	authURL, err := h.oidc.StartLogin()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initiate login"})

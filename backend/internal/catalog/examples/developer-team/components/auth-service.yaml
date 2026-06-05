@@ -1,0 +1,23 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: auth-service
+  title: Auth Service
+  description: OIDC gateway wrapping Pinniped Supervisor. Validates tokens, manages sessions, and provides identity resolution consumed by payments-service and wxops-portal.
+  tags: [go, oidc, pinniped, auth]
+  annotations:
+    gitea/source-location: development-team/auth-service
+    wxops.cloud/cluster-id: hub
+  links:
+    - url: https://gitea.wxops.cloud/development-team/auth-service/src/branch/main/docs/runbook.md
+      title: Runbook
+      type: documentation
+spec:
+  type: service
+  lifecycle: production
+  owner: group:developer-team
+  system: identity
+  providesApis:
+    - api:default/auth-api
+  dependsOn:
+    - resource:default/identity-vault

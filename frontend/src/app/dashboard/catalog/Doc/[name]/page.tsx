@@ -25,6 +25,7 @@ interface DocEntity {
     docStatus?: string;
     supersededBy?: string;
     relatedTo?: string[];
+    author?: string;
     contentUrl?: string;
   };
 }
@@ -178,7 +179,23 @@ export default async function DocDetailPage({
           {entity.spec.owner && (
             <div className="flex items-baseline gap-1.5">
               <span className="text-muted-foreground">Owner</span>
-              <span className="font-mono text-foreground">{entity.spec.owner}</span>
+              <Link
+                href={`/dashboard/catalog/groups/${refName(entity.spec.owner)}`}
+                className="font-mono text-primary hover:underline"
+              >
+                {entity.spec.owner}
+              </Link>
+            </div>
+          )}
+          {entity.spec.author && (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-muted-foreground">Author</span>
+              <Link
+                href={`/dashboard/catalog/users/${refName(entity.spec.author)}`}
+                className="font-mono text-primary hover:underline"
+              >
+                {entity.spec.author}
+              </Link>
             </div>
           )}
           {entity.spec.system && (

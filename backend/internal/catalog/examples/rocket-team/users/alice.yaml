@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: alice
+  title: "Alice Chen"
+  description: Lead engineer on the payments pipeline. Proposed and authored RFC-001 and ADR-001 for the Kafka migration.
+spec:
+  memberOf:
+    - group:rocket-team
+  email: alice@wxops.cloud

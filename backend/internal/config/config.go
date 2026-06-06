@@ -43,6 +43,14 @@ type Config struct {
 	// DEV ONLY — never enable in production.
 	DevBypassAuth bool
 
+	// SwaggerEnabled serves the interactive Swagger UI at GET /swagger/index.html
+	// and the raw spec at GET /swagger/doc.json.
+	// Disabled by default — gin-swagger is used for code generation only.
+	// Enable with SWAGGER_ENABLED=true for local development or internal tooling.
+	// Never enable on a publicly reachable host; prefer committing the generated
+	// JSON to the catalog repository and using relative-path spec links instead.
+	SwaggerEnabled bool
+
 	// Session — 32-byte AES-256 key encoded as 64 lowercase hex chars.
 	// Generate with: openssl rand -hex 32
 	SessionSecret string
@@ -117,6 +125,7 @@ func Load() *Config {
 		OIDCCABundle:       ca,
 		OIDCTLSSkipVerify:  getBool("OIDC_TLS_SKIP_VERIFY"),
 		DevBypassAuth:      getBool("DEV_BYPASS_AUTH"),
+		SwaggerEnabled:     getBool("SWAGGER_ENABLED"),
 		SessionSecret:      getEnv("SESSION_SECRET", ""),
 		KubeconfigPath:     getEnv("KUBECONFIG", ""),
 		ClusterNamespace:   getEnv("CLUSTER_NAMESPACE", "wxops-system"),

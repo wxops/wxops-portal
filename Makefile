@@ -2,6 +2,7 @@
         backend-build backend-lint backend-tidy \
         frontend-install frontend-build frontend-lint \
         hooks \
+        openapi-sync \
         changelog changelog-preview release version
 
 # ── Help ───────────────────────────────────────────────────────────────────────
@@ -68,6 +69,11 @@ frontend-lint: ## Run ESLint on the frontend
 hooks: ## Install pre-commit hooks (requires: pip install pre-commit)
 	pre-commit install --hook-type pre-commit --hook-type commit-msg
 	@echo "pre-commit hooks installed."
+
+##@ OpenAPI
+
+openapi-sync: ## Regenerate backend/docs/ from current handler annotations (run after editing handlers without committing)
+	@.gitea/scripts/swag-sync.sh
 
 ##@ Release
 

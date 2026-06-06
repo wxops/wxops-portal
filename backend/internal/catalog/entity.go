@@ -117,8 +117,20 @@ type EntitySpec struct {
 	// Format: "component:default/payments-service"
 	RelatedTo []string `yaml:"relatedTo,omitempty" json:"relatedTo,omitempty"`
 
+	// Author is the user ref who authored this document.
+	// Format: "user:alice"
+	Author string `yaml:"author,omitempty" json:"author,omitempty"`
+
 	// ContentURL is the Gitea raw URL for the markdown source file.
 	ContentURL string `yaml:"contentUrl,omitempty" json:"contentUrl,omitempty"`
+
+	// ── User ─────────────────────────────────────────────────────────────────
+	// MemberOf lists group refs this user belongs to.
+	// Format: "group:rocket-team"
+	MemberOf []string `yaml:"memberOf,omitempty" json:"memberOf,omitempty"`
+
+	// Email is the user's contact address.
+	Email string `yaml:"email,omitempty" json:"email,omitempty"`
 }
 
 // Ref returns the canonical entity reference string used in relation fields:
@@ -158,6 +170,8 @@ func (e *Entity) Validate() error {
 		if e.Spec.Type == "" {
 			return errorf("Group %q missing spec.type", e.Metadata.Name)
 		}
+	case "User":
+		// name is the only required field (already checked above)
 	case "Doc":
 		if e.Spec.Owner == "" {
 			return errorf("Doc %q missing spec.owner", e.Metadata.Name)

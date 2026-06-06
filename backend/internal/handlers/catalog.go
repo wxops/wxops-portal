@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"strings"
 
@@ -15,29 +16,33 @@ func isAbsoluteURL(s string) bool {
 }
 
 // SpecFetcher retrieves a raw OpenAPI/AsyncAPI spec from a remote URL.
-// Implemented by *gitea.Client in production; nil disables URL-based fetching.
+// Implemented by *gitea.Client in production; nil disables Gitea-authenticated fetching.
 type SpecFetcher interface {
 	FetchURL(ctx context.Context, url string) ([]byte, error)
 }
 
 // CatalogHandler serves catalog entity endpoints.
-// Entities are backed by a Gitea repository via catalog.Store — see store.go.
 type CatalogHandler struct {
 	store       *catalog.Store
 	specFetcher SpecFetcher // nil in local-dev mode
 }
 
 // NewCatalogHandler constructs a CatalogHandler.
-// fetcher may be nil when no remote spec fetching is required (local dev).
 func NewCatalogHandler(store *catalog.Store, fetcher SpecFetcher) *CatalogHandler {
 	return &CatalogHandler{store: store, specFetcher: fetcher}
 }
 
-// ListEntities returns all catalog entities.
-// An optional ?kind= query parameter filters by entity kind (case-insensitive).
+// ListEntities returns all catalog entities, optionally filtered by kind.
 //
-//	GET /api/v1/catalog/entities
-//	GET /api/v1/catalog/entities?kind=Component
+// @Summary      List catalog entities
+// @Description  Returns all catalog entities. Use ?kind= to filter by entity kind (case-insensitive).
+// @Tags         catalog
+// @Produce      json
+// @Param        kind  query   string  false  "Filter by kind (Component, API, System, Group, Resource, User, Doc)"
+// @Success      200   {object}  map[string]interface{}  "entities array"
+// @Failure      502   {object}  map[string]string
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities [get]
 func (h *CatalogHandler) ListEntities(c *gin.Context) {
 	kind := c.Query("kind")
 
@@ -55,7 +60,6 @@ func (h *CatalogHandler) ListEntities(c *gin.Context) {
 		return
 	}
 
-	// Never return null — an empty catalog is still a valid response.
 	if entities == nil {
 		entities = []catalog.Entity{}
 	}
@@ -64,7 +68,16 @@ func (h *CatalogHandler) ListEntities(c *gin.Context) {
 
 // GetEntity returns a single entity by kind and name.
 //
-//	GET /api/v1/catalog/entities/:kind/:name
+// @Summary      Get catalog entity
+// @Description  Returns a single catalog entity by kind and name.
+// @Tags         catalog
+// @Produce      json
+// @Param        kind  path    string  true  "Entity kind (Component, API, System, Group, Resource, User, Doc)"
+// @Param        name  path    string  true  "Entity name"
+// @Success      200   {object}  catalog.Entity
+// @Failure      404   {object}  map[string]string
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities/{kind}/{name} [get]
 func (h *CatalogHandler) GetEntity(c *gin.Context) {
 	kind := c.Param("kind")
 	name := c.Param("name")
@@ -79,14 +92,21 @@ func (h *CatalogHandler) GetEntity(c *gin.Context) {
 
 // GetEntitySpec returns the raw OpenAPI/AsyncAPI spec for an API entity.
 //
-// Priority:
-//  1. spec.definition — inline YAML in the catalog file (returned as-is)
-//  2. metadata.links entry with type "openapi" — fetched from Gitea via the
-//     configured token and returned as raw YAML
+// Resolution order:
+//  1. spec.definition — inline YAML in the catalog file
+//  2. metadata.links entry with type "openapi" via the configured Gitea fetcher
+//  3. metadata.links entry with type "openapi" and an absolute URL — plain HTTP GET
 //
-// Returns 404 when neither source is available.
-//
-//	GET /api/v1/catalog/entities/:kind/:name/spec
+// @Summary      Get API spec
+// @Description  Returns the raw OpenAPI/AsyncAPI spec for an API entity. Resolves from inline definition or an openapi-typed link URL.
+// @Tags         catalog
+// @Produce      plain
+// @Param        kind  path    string  true  "Entity kind (usually API)"
+// @Param        name  path    string  true  "Entity name"
+// @Success      200   {string}  string  "Raw OpenAPI YAML or JSON"
+// @Failure      404   {object}  map[string]string
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities/{kind}/{name}/spec [get]
 func (h *CatalogHandler) GetEntitySpec(c *gin.Context) {
 	kind := c.Param("kind")
 	name := c.Param("name")
@@ -103,17 +123,43 @@ func (h *CatalogHandler) GetEntitySpec(c *gin.Context) {
 		return
 	}
 
-	// Priority 2: fetch from a link typed "openapi".
-	if h.specFetcher != nil {
-		for _, link := range entity.Metadata.Links {
-			if link.Type != "openapi" {
-				continue
+	// Priority 2–4: find a link typed "openapi" and try each resolution strategy.
+	for _, link := range entity.Metadata.Links {
+		if link.Type != "openapi" {
+			continue
+		}
+
+		if !isAbsoluteURL(link.URL) {
+			// Priority 2: relative path — read the committed spec file directly from
+			// the catalog repository (local dir in dev, Gitea in production).
+			// This is the recommended approach for private projects: run `swag init`,
+			// commit the generated JSON alongside your catalog YAML files, and
+			// reference it with a relative path. No HTTP endpoint needed.
+			data, fetchErr := h.store.GetFileContent(c.Request.Context(), link.URL)
+			if fetchErr == nil {
+				c.Data(http.StatusOK, specContentType(link.URL), data)
+				return
 			}
+			continue // file not found — try the next link
+		}
+
+		// Priority 3: absolute URL + Gitea-authenticated fetch (private Gitea repos).
+		if h.specFetcher != nil {
 			data, fetchErr := h.specFetcher.FetchURL(c.Request.Context(), link.URL)
-			if fetchErr != nil || data == nil {
-				continue
+			if fetchErr == nil && data != nil {
+				c.Data(http.StatusOK, "text/yaml; charset=utf-8", data)
+				return
 			}
-			c.Data(http.StatusOK, "text/yaml; charset=utf-8", data)
+		}
+
+		// Priority 4: absolute URL — plain HTTP GET for public/same-network endpoints
+		// (e.g., SWAGGER_ENABLED=true backend swagger, or external service swagger URLs).
+		data, ct, fetchErr := httpGet(c.Request.Context(), link.URL)
+		if fetchErr == nil {
+			if ct == "" {
+				ct = "application/json"
+			}
+			c.Data(http.StatusOK, ct, data)
 			return
 		}
 	}
@@ -121,11 +167,45 @@ func (h *CatalogHandler) GetEntitySpec(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "no spec available for " + kind + "/" + name})
 }
 
+// specContentType infers the MIME type from a spec file's extension.
+func specContentType(filename string) string {
+	if strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".yml") {
+		return "text/yaml; charset=utf-8"
+	}
+	return "application/json"
+}
+
+// httpGet performs a plain unauthenticated GET and returns the body + Content-Type.
+func httpGet(ctx context.Context, url string) ([]byte, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+	return body, resp.Header.Get("Content-Type"), nil
+}
+
 // GetDocContent returns the raw markdown content for a Doc entity.
-// The content URL is taken from spec.contentUrl and fetched through the
-// configured Gitea client so that private repositories are accessible.
 //
-//	GET /api/v1/catalog/entities/:kind/:name/content
+// @Summary      Get document content
+// @Description  Returns the raw Markdown content for a Doc entity. Fetches from spec.contentUrl via the Gitea client or the local reader.
+// @Tags         catalog
+// @Produce      plain
+// @Param        kind  path    string  true  "Must be Doc"
+// @Param        name  path    string  true  "Document name"
+// @Success      200   {string}  string  "Markdown content"
+// @Failure      400   {object}  map[string]string
+// @Failure      404   {object}  map[string]string
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities/{kind}/{name}/content [get]
 func (h *CatalogHandler) GetDocContent(c *gin.Context) {
 	kind := c.Param("kind")
 	name := c.Param("name")
@@ -151,7 +231,6 @@ func (h *CatalogHandler) GetDocContent(c *gin.Context) {
 	)
 
 	if isAbsoluteURL(entity.Spec.ContentURL) {
-		// Full https:// URL — fetch through the Gitea client (carries auth token).
 		if h.specFetcher == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
 				"error": "absolute contentUrl requires Gitea configuration (GITEA_URL); use a relative path for local dev",
@@ -160,8 +239,6 @@ func (h *CatalogHandler) GetDocContent(c *gin.Context) {
 		}
 		data, fetchErr = h.specFetcher.FetchURL(c.Request.Context(), entity.Spec.ContentURL)
 	} else {
-		// Relative path — read directly from the catalog repo via the store's reader.
-		// Works in local dev (LocalReader) and production (Gitea client) alike.
 		data, fetchErr = h.store.GetFileContent(c.Request.Context(), entity.Spec.ContentURL)
 	}
 

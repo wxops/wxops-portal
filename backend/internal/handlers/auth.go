@@ -19,10 +19,13 @@ func NewAuthHandler(oidc *auth.OIDCClient, sm *auth.SessionManager, cfg *config.
 	return &AuthHandler{oidc: oidc, sm: sm, cfg: cfg}
 }
 
-// Login starts the OIDC Authorization Code + PKCE flow against the Pinniped
-// Supervisor.
+// Login starts the OIDC Authorization Code + PKCE flow against the Pinniped Supervisor.
 //
-//	GET /auth/login
+// @Summary      Start OIDC login
+// @Description  Redirects the browser to the Pinniped Supervisor authorization endpoint to begin the PKCE flow.
+// @Tags         auth
+// @Success      302  {string}  string  "Redirect to OIDC provider"
+// @Router       /auth/login [get]
 func (h *AuthHandler) Login(c *gin.Context) {
 	if h.cfg.DevBypassAuth {
 		session := &auth.Session{
@@ -49,11 +52,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.Redirect(http.StatusFound, authURL)
 }
 
-// Callback handles the redirect from the Pinniped Supervisor after the user
-// authenticates via Dex/Gitea.  It exchanges the code for tokens, validates
-// the id_token, and writes an encrypted session cookie.
+// Callback handles the OIDC redirect and writes the encrypted session cookie.
 //
-//	GET /auth/callback
+// @Summary      OIDC callback
+// @Description  Exchanges the authorization code for tokens, validates the id_token, and writes an encrypted session cookie.
+// @Tags         auth
+// @Param        code   query  string  true  "Authorization code"
+// @Param        state  query  string  true  "CSRF state token"
+// @Success      302    {string}  string  "Redirect to dashboard"
+// @Failure      400    {object}  map[string]string
+// @Router       /auth/callback [get]
 func (h *AuthHandler) Callback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
@@ -108,10 +116,16 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 	c.Redirect(http.StatusFound, h.cfg.FrontendURL+"/dashboard")
 }
 
-// Me returns the authenticated user's identity from the session.
+// Me returns the authenticated user's identity from the session cookie.
 //
-//	GET /auth/me   (no auth middleware — reads cookie directly for Next.js SSR)
-//	GET /api/v1/me (protected by RequireSession middleware)
+// @Summary      Current user identity
+// @Description  Returns sub, username, and group memberships from the session. Available on both /auth/me (unauthenticated, for Next.js SSR) and /api/v1/me (protected).
+// @Tags         auth
+// @Produce      json
+// @Success      200  {object}  handlers.userResponsePayload
+// @Failure      401  {object}  map[string]string
+// @Security     CookieAuth
+// @Router       /auth/me [get]
 func (h *AuthHandler) Me(c *gin.Context) {
 	// Fast path: session already extracted by middleware.
 	if s := auth.GetSession(c); s != nil {
@@ -136,7 +150,12 @@ func (h *AuthHandler) Me(c *gin.Context) {
 
 // Logout clears the session cookie.
 //
-//	POST /auth/logout
+// @Summary      Sign out
+// @Description  Clears the session cookie, effectively logging the user out.
+// @Tags         auth
+// @Produce      json
+// @Success      200  {object}  map[string]string  "message: logged out"
+// @Router       /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(auth.SessionCookieName, "", -1, "/", "", false, true)

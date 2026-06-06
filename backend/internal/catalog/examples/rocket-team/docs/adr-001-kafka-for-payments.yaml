@@ -10,6 +10,7 @@ metadata:
       title: Review on Gitea
       type: gitea
 spec:
+  author: user:alice
   docType: adr
   docStatus: accepted
   owner: group:rocket-team

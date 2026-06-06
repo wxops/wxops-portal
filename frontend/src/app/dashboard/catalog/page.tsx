@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { BookOpen, FileText, Layers } from "lucide-react";
+import { BookOpen, FileText, Layers, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSession } from "@/lib/session";
@@ -24,6 +24,7 @@ interface Entity {
     lifecycle?: string;
     type?: string;
     system?: string;
+    members?: string[];
     // Doc
     docType?: string;
     docStatus?: string;
@@ -61,6 +62,7 @@ function SystemCard({
   sys: Entity;
   count: number;
 }) {
+
   return (
     <Link
       href={`/dashboard/catalog/systems/${sys.metadata.name}`}
@@ -97,6 +99,37 @@ function SystemCard({
               {count} service{count !== 1 ? "s" : ""}
             </span>
           </div>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}
+
+function GroupCard({ group }: { group: Entity }) {
+  const memberCount = group.spec.members?.length ?? 0;
+  return (
+    <Link href={`/dashboard/catalog/groups/${group.metadata.name}`} className="block group">
+      <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <CardTitle className="text-base truncate">
+              {group.metadata.title ?? group.metadata.name}
+            </CardTitle>
+          </div>
+          <p className="text-xs font-mono text-muted-foreground mt-0.5">
+            {group.metadata.name}
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col gap-3">
+          {group.metadata.description && (
+            <p className="text-sm text-muted-foreground line-clamp-2">
+              {group.metadata.description}
+            </p>
+          )}
+          <p className="mt-auto text-xs text-muted-foreground">
+            {memberCount} member{memberCount !== 1 ? "s" : ""}
+          </p>
         </CardContent>
       </Card>
     </Link>
@@ -209,6 +242,7 @@ export default async function CatalogPage() {
   const allSystems    = entities.filter((e) => e.kind === "System");
   const allComponents = entities.filter((e) => e.kind === "Component");
   const allDocs       = entities.filter((e) => e.kind === "Doc");
+  const allGroups     = entities.filter((e) => e.kind === "Group");
 
   // platform-team sees everything; tenant teams see only their own entities.
   const visibleSystems = isPlatformTeam
@@ -225,13 +259,21 @@ export default async function CatalogPage() {
         (c) => !c.spec.system && isOwnedByUser(c.spec.owner, userGroups),
       );
 
+  const visibleGroups = isPlatformTeam
+    ? allGroups
+    : allGroups.filter((g) => userGroups.includes(g.metadata.name));
+
   const componentCount: Record<string, number> = {};
   for (const c of allComponents) {
     const sys = c.spec.system ?? "__ungrouped__";
     componentCount[sys] = (componentCount[sys] ?? 0) + 1;
   }
 
-  const isEmpty = visibleSystems.length === 0 && visibleUngrouped.length === 0 && visibleDocs.length === 0;
+  const isEmpty =
+    visibleSystems.length === 0 &&
+    visibleUngrouped.length === 0 &&
+    visibleDocs.length === 0 &&
+    visibleGroups.length === 0;
 
   return (
     <div className="space-y-8">
@@ -308,6 +350,23 @@ export default async function CatalogPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visibleUngrouped.map((c) => (
               <ComponentCard key={c.metadata.name} c={c} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {visibleGroups.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Teams
+            </h2>
+            <span className="text-xs text-muted-foreground">({visibleGroups.length})</span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleGroups.map((g) => (
+              <GroupCard key={g.metadata.name} group={g} />
             ))}
           </div>
         </section>

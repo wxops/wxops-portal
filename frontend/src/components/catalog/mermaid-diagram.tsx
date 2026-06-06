@@ -15,7 +15,7 @@ interface MermaidDiagramProps {
   /**
    * "fit"  — SVG scales to fill container width (default, good for inline previews).
    * "pan"  — SVG renders at its natural content size so dragging reveals off-screen
-   *          parts of the graph. Use this when the wrapper is h-full.
+   *          parts of the graph. Scroll-to-zoom enabled in this mode.
    */
   mode?: "fit" | "pan";
   className?: string;
@@ -24,11 +24,11 @@ interface MermaidDiagramProps {
 let initialised = false;
 
 const statusColors: Record<string, string> = {
-  proposed:      "text-amber-600 dark:text-amber-400",
-  "under-review":"text-blue-600 dark:text-blue-400",
-  accepted:      "text-green-600 dark:text-green-400",
-  deprecated:    "text-gray-500 dark:text-gray-400",
-  superseded:    "text-orange-500 dark:text-orange-400",
+  proposed:       "text-amber-600 dark:text-amber-400",
+  "under-review": "text-blue-600 dark:text-blue-400",
+  accepted:       "text-green-600 dark:text-green-400",
+  deprecated:     "text-gray-500 dark:text-gray-400",
+  superseded:     "text-orange-500 dark:text-orange-400",
 };
 
 const docTypeLabel: Record<string, string> = {
@@ -38,30 +38,68 @@ const docTypeLabel: Record<string, string> = {
 };
 
 export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: MermaidDiagramProps) {
-  const containerRef  = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef   = useRef<HTMLDivElement>(null);
   const [error, setError]     = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{
     x: number; y: number; data: DocTooltipData;
   } | null>(null);
 
-  // Pan state — ref for the hot path, state drives cursor / transform re-render
+  // Pan state — ref for hot path, state drives cursor / transform
   const [isPanning, setIsPanning] = useState(false);
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const panOffsetRef = useRef({ x: 0, y: 0 });
 
-  // Reset pan when chart changes — derived-state pattern avoids setState-in-effect lint.
-  // Ref mutation goes in a separate effect (refs must not be written during render).
+  // Zoom state
+  const [scale, setScale] = useState(1);
+  const scaleRef = useRef(1);
+
+  // Reset transform when chart changes — derived-state pattern
   const [prevChart, setPrevChart] = useState(chart);
   if (chart !== prevChart) {
     setPrevChart(chart);
     setPanX(0);
     setPanY(0);
+    setScale(1);
   }
   useEffect(() => {
     panOffsetRef.current = { x: 0, y: 0 };
+    scaleRef.current = 1;
   }, [chart]);
+
+  // Non-passive wheel listener for scroll-to-zoom (pan mode only)
+  useEffect(() => {
+    if (mode !== "pan") return;
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const newScale = Math.max(0.15, Math.min(8, scaleRef.current * factor));
+
+      // Zoom towards cursor: keep the content point under cursor stationary
+      const contentX = (cx - panOffsetRef.current.x) / scaleRef.current;
+      const contentY = (cy - panOffsetRef.current.y) / scaleRef.current;
+      const newPanX  = cx - contentX * newScale;
+      const newPanY  = cy - contentY * newScale;
+
+      scaleRef.current = newScale;
+      panOffsetRef.current = { x: newPanX, y: newPanY };
+      setScale(newScale);
+      setPanX(newPanX);
+      setPanY(newPanY);
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [mode]);
 
   const tooltipsKey = docTooltips ? JSON.stringify(docTooltips) : "";
 
@@ -75,7 +113,7 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
       if (!initialised) {
         mermaid.initialize({
           startOnLoad:   false,
-          theme:         "neutral",
+          theme:         "base",
           flowchart:     { curve: "basis", useMaxWidth: true, nodeSpacing: 25, rankSpacing: 35, padding: 8 },
           securityLevel: "loose",
           fontSize:      13,
@@ -96,10 +134,11 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
               svgEl.style.display = "block";
               svgEl.setAttribute("preserveAspectRatio", "xMinYMin meet");
 
+              // Remove Mermaid's background rect so the container color shows through
+              const bgRect = svgEl.querySelector(".background") as SVGElement | null;
+              if (bgRect) bgRect.style.fill = "transparent";
+
               if (mode === "pan") {
-                // Natural content size — Mermaid stores it in style.maxWidth (e.g. "842px").
-                // Use that as an explicit width so the SVG isn't forced to fill the container,
-                // letting content extend beyond the viewport and be revealed by dragging.
                 const naturalWidth = svgEl.style.maxWidth;
                 svgEl.removeAttribute("width");
                 svgEl.style.width    = naturalWidth || "auto";
@@ -141,8 +180,8 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
   }, [chart, tooltipsKey]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Ignore clicks on SVG links so navigation still works
     if ((e.target as HTMLElement).closest("a")) return;
+    if ((e.target as HTMLElement).closest("[data-zoom-ctrl]")) return;
     e.preventDefault();
 
     dragStartRef.current = {
@@ -151,7 +190,6 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
     };
     setIsPanning(true);
 
-    // Track on document so fast movement outside the container doesn't drop the drag
     const onMove = (ev: MouseEvent) => {
       const newX = ev.clientX - dragStartRef.current.x;
       const newY = ev.clientY - dragStartRef.current.y;
@@ -168,6 +206,20 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
     document.addEventListener("mouseup", onUp);
   };
 
+  function zoomBy(factor: number) {
+    const newScale = Math.max(0.15, Math.min(8, scaleRef.current * factor));
+    scaleRef.current = newScale;
+    setScale(newScale);
+  }
+
+  function resetView() {
+    scaleRef.current = 1;
+    panOffsetRef.current = { x: 0, y: 0 };
+    setScale(1);
+    setPanX(0);
+    setPanY(0);
+  }
+
   if (error) {
     return (
       <p className="text-sm text-muted-foreground px-4 py-3 rounded-md border border-dashed">
@@ -176,17 +228,43 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
     );
   }
 
+  const btnBase =
+    "flex h-7 w-7 items-center justify-center rounded border border-white/10 bg-black/60 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:bg-black/80 transition-colors";
+
   return (
     <>
       <div
-        className={`w-full overflow-hidden select-none ${className ?? ""}`}
+        ref={wrapperRef}
+        className={`relative w-full overflow-hidden select-none ${className ?? ""}`}
         style={{ cursor: isPanning ? "grabbing" : "grab" }}
         onMouseDown={handleMouseDown}
         onDragStart={(e) => e.preventDefault()}
       >
-        <div style={{ transform: `translate(${panX}px, ${panY}px)`, willChange: "transform" }}>
+        <div
+          style={{
+            transform:       `translate(${panX}px, ${panY}px) scale(${scale})`,
+            transformOrigin: "0 0",
+            willChange:      "transform",
+          }}
+        >
           <div ref={containerRef} />
         </div>
+
+        {/* Zoom controls — only in pan/modal mode */}
+        {mode === "pan" && (
+          <div
+            data-zoom-ctrl
+            className="absolute bottom-3 right-3 z-10 flex items-center gap-1"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button onClick={() => zoomBy(1.25)} className={btnBase} title="Zoom in">+</button>
+            <span className="min-w-[42px] text-center text-xs font-mono text-muted-foreground bg-black/60 backdrop-blur-sm rounded border border-white/10 px-1.5 py-1 select-none">
+              {Math.round(scale * 100)}%
+            </span>
+            <button onClick={() => zoomBy(1 / 1.25)} className={btnBase} title="Zoom out">−</button>
+            <button onClick={resetView} className={btnBase} title="Reset view">↺</button>
+          </div>
+        )}
       </div>
 
       {tooltip && (

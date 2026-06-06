@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: rocket-team
+  title: "Rocket Team"
+  description: Owns the payments system — payments-service, Kafka event pipeline, and the payments database.
+  tags: [payments, backend, kafka]
+spec:
+  type: team
+  members:
+    - user:alice
+    - user:bob

@@ -28,6 +28,7 @@ var kindDir = map[string]string{
 	"API":       "apis",
 	"System":    "systems",
 	"Group":     "groups",
+	"User":      "users",
 	"Resource":  "resources",
 	"Doc":       "docs",
 }

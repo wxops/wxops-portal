@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: developer-team
+  title: "Developer Team"
+  description: Owns the identity system — auth service, identity vault, and the auth API.
+  tags: [identity, auth, security]
+spec:
+  type: team
+  members:
+    - user:charlie

@@ -14,6 +14,7 @@ spec:
   docStatus: superseded
   owner: group:rocket-team
   system: payments
+  author: user:alice
   supersededBy: doc:default/adr-001-kafka-for-payments
   relatedTo:
     - component:default/payments-service

@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team
+  title: "Platform Team"
+  description: Owns the core developer portal, CI/CD tooling, and infrastructure services used by all product teams.
+  tags: [platform, infra, tooling]
+spec:
+  type: team
+  members:
+    - user:xeus

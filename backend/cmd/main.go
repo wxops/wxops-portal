@@ -1,3 +1,20 @@
+// Package main is the entry point for the WxOps Portal backend.
+//
+// @title           WxOps Portal API
+// @version         1.0
+// @description     Internal developer platform API — service catalog, Kubernetes cluster management, and OIDC authentication via Pinniped.
+//
+// @contact.name    Platform Team
+// @contact.url     https://wxops.cloud
+//
+// @host            localhost:8080
+// @BasePath        /
+// @schemes         http https
+//
+// @securityDefinitions.apikey CookieAuth
+// @in              cookie
+// @name            wxops_session
+// @description     Encrypted session cookie issued after OIDC login.
 package main
 
 import (

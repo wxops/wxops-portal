@@ -45,7 +45,8 @@ See [docs/local-development.md](docs/local-development.md) for the full setup in
 |---|---|
 | Architecture, auth sequence, hub-spoke topology | [docs/architecture.md](docs/architecture.md) |
 | Production deployment (Steps 1–6, RBAC, OIDCClient) | [docs/deployment.md](docs/deployment.md) |
-| Service catalog — entity schema, Backstage YAML, Go implementation | [docs/service-catalog.md](docs/service-catalog.md) |
+| **Service catalog — YAML user guide (all kinds, annotations, link types)** | [docs/catalog-user-guide.md](docs/catalog-user-guide.md) |
+| Service catalog — design rationale and Go implementation | [docs/service-catalog.md](docs/service-catalog.md) |
 | Environment variables reference | [docs/environment-variables.md](docs/environment-variables.md) |
 | Local development | [docs/local-development.md](docs/local-development.md) |
 | Cluster registry (K8s Secrets + clusters.json) | [docs/cluster-registry.md](docs/cluster-registry.md) |
@@ -55,12 +56,15 @@ See [docs/local-development.md](docs/local-development.md) for the full setup in
 
 ## Roadmap
 
+See [PLANS.md](PLANS.md) for the full phased plan with per-feature scope and file-level implementation notes.
+
 | Phase | Goal | Status |
 |---|---|---|
 | 1 — Identity & Multi-Cluster Access | One login, all spokes. PKCE/OIDC, RFC 8693 token exchange, Concierge mTLS certs. | `done` |
-| 2 — Service Catalog | Browse services, APIs, resources. Mermaid relationship graphs. RFC/ADR links. | `done` |
-| 3 — Service Graph + Project Scaffold | Cross-system graph. Form → `ProjectClaim` → ArgoCD → Crossplane → real resources. | `planned` |
-| 4 — CLI | `wxops` binary — same API, terminal interface, CI/CD usable. | `planned` |
+| 2.1 — Service Catalog | Entity browser, relationship graphs, OpenAPI rendering, RFC/ADR linking, dark mode. | `done` |
+| 3 — Project Scaffold | Self-service `ProjectClaim` → ArgoCD → Crossplane. Project import/migration across clusters. DevSpace tunnel integration. | `next` |
+| 4 — CLI | `wxops` binary — scaffold, tunnel, catalog query. CI/CD usable. | `next` |
+| 2.2–2.4 — Catalog Depth | Search/filter, team ownership view, K8s workload linkage, catalog write path. | `planned` |
 | 5 — Platform Intelligence | Cost attribution, compliance status, aggregate health roll-up. | `future` |
 
 ## Portal Scope

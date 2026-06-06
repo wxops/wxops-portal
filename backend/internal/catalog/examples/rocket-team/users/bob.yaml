@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: bob
+  title: "Bob Kim"
+  description: Backend engineer on the payments team. Maintains the payments service runbook and on-call procedures.
+spec:
+  memberOf:
+    - group:rocket-team
+  email: bob@wxops.cloud

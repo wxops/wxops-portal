@@ -198,22 +198,47 @@ function nodeId(name: string): string {
   return name.replace(/[^a-zA-Z0-9]/g, "_");
 }
 
+function roleLabel(kind: string, type?: string): string {
+  if (kind === "Component") {
+    const m: Record<string, string> = {
+      service: "SERVICE", website: "WEBSITE", library: "LIBRARY", pipeline: "PIPELINE",
+    };
+    return m[(type ?? "service").toLowerCase()] ?? (type ?? "service").toUpperCase();
+  }
+  if (kind === "API") {
+    const m: Record<string, string> = {
+      openapi: "REST", grpc: "gRPC", asyncapi: "EVENT", graphql: "GRAPHQL",
+    };
+    return m[(type ?? "").toLowerCase()] ?? "API";
+  }
+  if (kind === "Resource") {
+    const m: Record<string, string> = {
+      database: "DATABASE", vault: "VAULT", repository: "REPO",
+      queue: "QUEUE", cache: "CACHE", s3: "STORAGE",
+    };
+    return m[(type ?? "").toLowerCase()] ?? "RESOURCE";
+  }
+  return kind.toUpperCase();
+}
+
 function buildDiagram(members: Entity[]): string {
   if (members.length === 0) return "";
 
   const memberNames = new Set(members.map((e) => e.metadata.name));
   const lines: string[] = [
-    '%%{init: {"flowchart": {"nodeSpacing": 25, "rankSpacing": 35}}}%%',
+    '%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#4b5563", "edgeLabelBackground": "#13111f"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60, "padding": 18, "curve": "basis"}}}%%',
     "flowchart LR",
   ];
 
-  // Colour classes for Doc node types
-  lines.push("  classDef rfcNode fill:#f5f3ff,stroke:#7c3aed,color:#6d28d9,stroke-width:2px");
-  lines.push("  classDef adrNode fill:#eff6ff,stroke:#2563eb,color:#1d4ed8,stroke-width:2px");
-  lines.push("  classDef docNode fill:#f0fdf4,stroke:#16a34a,color:#15803d,stroke-width:2px");
+  // Brand-aligned node classes — dark canvas, role-color per kind
+  lines.push("  classDef serviceNode fill:#1e1347,stroke:#8b5cf6,color:#c4b5fd,stroke-width:1.5px");
+  lines.push("  classDef apiNode fill:#0c3547,stroke:#22d3ee,color:#a5f3fc,stroke-width:1.5px");
+  lines.push("  classDef resourceNode fill:#161550,stroke:#818cf8,color:#c7d2fe,stroke-width:1.5px");
+  lines.push("  classDef rfcNode fill:#1e1347,stroke:#a78bfa,color:#ddd6fe,stroke-width:1.5px,stroke-dasharray:6 3");
+  lines.push("  classDef adrNode fill:#0c1f4a,stroke:#60a5fa,color:#bfdbfe,stroke-width:1.5px");
+  lines.push("  classDef docNode fill:#082a18,stroke:#34d399,color:#6ee7b7,stroke-width:1.5px");
 
   // Node declarations ordered: Components → APIs → Resources → Docs
-  // This keeps service nodes at the head (left) of the LR layout.
   const ordered = [
     ...members.filter((e) => e.kind === "Component"),
     ...members.filter((e) => e.kind === "API"),
@@ -224,16 +249,20 @@ function buildDiagram(members: Entity[]): string {
   for (const e of ordered) {
     const id    = nodeId(e.metadata.name);
     const label = e.metadata.title ?? e.metadata.name;
+    const role  = roleLabel(e.kind, e.spec.type);
 
     switch (e.kind) {
       case "Component":
-        lines.push(`  ${id}["${label}"]`);
+        lines.push(`  ${id}["${role}: ${label}"]`);
+        lines.push(`  class ${id} serviceNode`);
         break;
       case "API":
-        lines.push(`  ${id}(["${label}"])`);
+        lines.push(`  ${id}(["${role}: ${label}"])`);
+        lines.push(`  class ${id} apiNode`);
         break;
       case "Resource":
-        lines.push(`  ${id}[("${label}")]`);
+        lines.push(`  ${id}[("${role}: ${label}")]`);
+        lines.push(`  class ${id} resourceNode`);
         break;
       case "Doc": {
         const dt = e.spec.docType ?? "documentation";
@@ -244,7 +273,7 @@ function buildDiagram(members: Entity[]): string {
           lines.push(`  ${id}[/"ADR: ${label}"\\]`);
           lines.push(`  class ${id} adrNode`);
         } else {
-          lines.push(`  ${id}>"${label}"]`);
+          lines.push(`  ${id}>"DOC: ${label}"]`);
           lines.push(`  class ${id} docNode`);
         }
         // Click navigates to Doc detail page
@@ -376,7 +405,13 @@ export default async function SystemDetailPage({
         )}
         {system?.spec.owner && (
           <p className="text-sm text-muted-foreground">
-            <span className="font-medium">Owner:</span> {system.spec.owner}
+            <span className="font-medium">Owner:</span>{" "}
+            <Link
+              href={`/dashboard/catalog/groups/${refName(system.spec.owner)}`}
+              className="font-mono text-primary hover:underline"
+            >
+              {system.spec.owner}
+            </Link>
           </p>
         )}
       </div>

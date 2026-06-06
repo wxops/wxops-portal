@@ -6,17 +6,21 @@ Catalog data lives in `gitops-infra/catalog/` in Gitea. The portal reads it on a
 
 ---
 
+> **Writing catalog YAML?** See [catalog-user-guide.md](catalog-user-guide.md) for the full field reference, all annotation keys, link types, and complete examples for every entity kind.
+
 ## Entity Kinds
 
-The catalog uses five entity kinds. Each kind maps to something concrete in the platform:
+The catalog supports seven entity kinds. Five follow the standard `backstage.io/v1alpha1` apiVersion; `Doc` uses `wxops.cloud/v1alpha1` to carry WxOps-specific spec fields.
 
-| Kind | Represents | Example |
-|---|---|---|
-| `System` | A bounded application made of multiple services | `payments`, `identity`, `platform` |
-| `Component` | A single runnable service or application | `payments-service`, `auth-service` |
-| `API` | An interface exposed or consumed by a component | `payments-api` (OpenAPI), `payments-events` (AsyncAPI) |
-| `Resource` | Infrastructure a component depends on | `payments-db`, `session-cache`, `platform-vault` |
-| `Group` | A team that owns services | `payments-team`, `identity-team` |
+| Kind | apiVersion | Represents | Example |
+|---|---|---|---|
+| `System` | `backstage.io/v1alpha1` | A bounded domain made of multiple services | `payments`, `identity`, `platform` |
+| `Component` | `backstage.io/v1alpha1` | A single runnable service, website, or library | `payments-service`, `wxops-portal` |
+| `API` | `backstage.io/v1alpha1` | An interface exposed or consumed by a component | `payments-api` (OpenAPI), `payments-events` (AsyncAPI) |
+| `Resource` | `backstage.io/v1alpha1` | Infrastructure a component depends on | `payments-db`, `platform-vault` |
+| `Group` | `backstage.io/v1alpha1` | A team that owns services | `payments-team`, `platform-team` |
+| `User` | `backstage.io/v1alpha1` | A person on the platform | `alice`, `xeus` |
+| `Doc` | `wxops.cloud/v1alpha1` | An RFC, ADR, or operational document | `rfc-001-kafka`, `adr-001-kafka`, `payments-runbook` |
 
 ### How they relate
 
@@ -24,9 +28,13 @@ The catalog uses five entity kinds. Each kind maps to something concrete in the 
 System ──── owns ────► Component ──── providesApis ────► API
                             │
                             └──── dependsOn ────► Resource
+
+Doc ──── relatedTo ────► Component / API / Resource
+Doc ──── supersededBy ──► Doc   (RFC → ADR lifecycle)
+Group ──── members ────► User
 ```
 
-The portal renders these relationships as a per-system Mermaid graph on the system detail page. Edges are only drawn between entities within the same system — cross-system dependencies are linked via `consumesApis` on the component spec and shown as external references.
+The portal renders Component/API/Resource relationships as a per-system Mermaid graph. Edges are only drawn between entities within the same system — cross-system dependencies are shown as external references via `consumesApis`.
 
 ---
 
@@ -135,35 +143,48 @@ The RFC → ADR lifecycle:
 
 ## Directory Layout in gitops-infra
 
+The catalog is organised by **team**, with each team owning a subdirectory. This mirrors GitHub/Gitea code ownership and means CODEOWNERS rules can gate who can edit which team's entities.
+
 ```
 catalog/
-├── systems/
-│   ├── payments.yaml
-│   ├── identity.yaml
-│   ├── platform.yaml
-│   └── observability.yaml
-├── components/
-│   ├── payments-service.yaml
-│   ├── payments-worker.yaml
-│   ├── auth-service.yaml
-│   └── ...
-├── apis/
-│   ├── payments-api.yaml
-│   ├── payments-events.yaml   # AsyncAPI kind
-│   └── ...
-├── resources/
-│   ├── payments-db.yaml
-│   ├── payments-cache.yaml
-│   └── ...
-└── groups/
-    ├── payments-team.yaml
-    ├── identity-team.yaml
-    └── ...
+└── <team-name>/
+    ├── systems/        ← System entities
+    ├── components/     ← Component entities (services, websites, libraries)
+    ├── apis/           ← API entities + committed OpenAPI/AsyncAPI spec files
+    ├── resources/      ← Resource entities (databases, caches, vaults, queues)
+    ├── groups/         ← Group entity for the team itself
+    ├── users/          ← User entities for team members
+    └── docs/           ← Doc entities (RFCs, ADRs, runbooks, guides)
 ```
 
-The portal scans each subdirectory for `*.yaml` files. Multi-document YAML (multiple entities in one file separated by `---`) is supported.
+**Example (two teams):**
+```
+catalog/
+├── platform-team/
+│   ├── systems/platform.yaml
+│   ├── components/wxops-portal.yaml
+│   ├── apis/portal-api.yaml
+│   ├── apis/portal-openapi.json     ← committed static OpenAPI spec
+│   ├── resources/gitops-infra-repo.yaml
+│   ├── groups/platform-team.yaml
+│   ├── users/xeus.yaml
+│   └── docs/portal-architecture.yaml
+└── rocket-team/
+    ├── systems/payments.yaml
+    ├── components/payments-service.yaml
+    ├── apis/payments-api.yaml
+    ├── resources/payments-db.yaml
+    ├── groups/rocket-team.yaml
+    ├── users/alice.yaml
+    └── docs/
+        ├── rfc-001-kafka-for-payments.yaml
+        ├── adr-001-kafka-for-payments.yaml
+        └── doc-001-payments-runbook.yaml
+```
 
-Set `GITEA_CATALOG_PATH=catalog` in the backend environment. For local development without Gitea, set `CATALOG_LOCAL_DIR=./internal/catalog/examples` — the examples directory mirrors this layout and serves as the reference for what a complete catalog looks like.
+The portal scans each team's subdirectories for `*.yaml` files. Multi-document YAML (multiple entities in one file separated by `---`) is supported.
+
+Set `GITEA_CATALOG_PATH=catalog` in the backend environment. For local development without Gitea, set `CATALOG_LOCAL_DIR=./internal/catalog/examples` — the examples directory mirrors this layout exactly.
 
 ---
 

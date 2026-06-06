@@ -29,6 +29,7 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+        exclude: ^backend/docs/  # ignore generated OpenAPI spec
       - id: check-yaml
       - id: check-json
       - id: check-merge-conflict
@@ -62,6 +63,18 @@ repos:
         entry: ./.gitea/scripts/check-go-mod-tidy.sh
         pass_filenames: false
         files: ^backend/(go\.mod|go\.sum|.*\.go)$
+
+      # OpenAPI spec sync ──────────────────────────────────────────────────────
+      # Runs swag init and stages backend/docs/ whenever a handler or the
+      # main.go swag annotations change. Keeps the spec in sync with the code
+      # automatically — no manual 'swag init' step needed.
+      # Requires: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+      - id: openapi-sync
+        name: Regenerate OpenAPI spec (swag)
+        language: script
+        entry: ./.gitea/scripts/swag-sync.sh
+        pass_filenames: false
+        files: ^backend/(cmd/main\.go|internal/handlers/.*\.go)$
 
       # Next.js frontend ────────────────────────────────────────────────────────
       - id: frontend-lint

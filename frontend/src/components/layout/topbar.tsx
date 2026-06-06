@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { UserSession } from "@/lib/session";
 import { logout } from "@/lib/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -11,10 +12,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from "lucide-react";
+import { LogOut, Settings, User } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { DropdownMenuGroup } from "@/components/ui/dropdown-menu";
+import { Breadcrumb } from "@/components/layout/breadcrumb";
 
 interface TopBarProps {
   user: UserSession;
@@ -22,13 +24,13 @@ interface TopBarProps {
 
 function initials(username?: string | null) {
   if (!username) return "?";
-  // Use first letter of local part (before @) or full string if no @
   const local = username.includes("@") ? username.split("@")[0] : username;
   return local.slice(0, 2).toUpperCase();
 }
 
 export function TopBar({ user }: TopBarProps) {
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   function handleLogout() {
     startTransition(() => logout());
@@ -36,11 +38,14 @@ export function TopBar({ user }: TopBarProps) {
 
   return (
     <header className="h-14 shrink-0 border-b border-border bg-card/80 backdrop-blur-sm flex items-center justify-between px-6 gap-4">
-      {/* Left — empty slot for breadcrumbs or page title if needed */}
-      <div className="flex-1" />
+
+      {/* Left — breadcrumb */}
+      <div className="flex-1 min-w-0">
+        <Breadcrumb />
+      </div>
 
       {/* Right controls */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <ThemeToggle />
 
         <DropdownMenu>
@@ -54,6 +59,7 @@ export function TopBar({ user }: TopBarProps) {
               {user?.username}
             </span>
           </DropdownMenuTrigger>
+
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuGroup>
               <DropdownMenuLabel>
@@ -63,14 +69,22 @@ export function TopBar({ user }: TopBarProps) {
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
+
             <DropdownMenuSeparator />
+
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
                 <User className="mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
             </DropdownMenuGroup>
+
             <DropdownMenuSeparator />
+
             <DropdownMenuGroup>
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
@@ -87,5 +101,3 @@ export function TopBar({ user }: TopBarProps) {
     </header>
   );
 }
-
-

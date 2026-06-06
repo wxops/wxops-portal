@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import jsYaml from "js-yaml";
 
 interface OpenApiViewerProps {
@@ -73,38 +73,51 @@ export function OpenApiViewer({ spec, specUrl }: OpenApiViewerProps) {
   return <SwaggerRenderer spec={parsed} />;
 }
 
-// ── Lazy SwaggerUI mount ──────────────────────────────────────────────────────
-// swagger-ui-react is heavy — only loaded after the spec is ready.
+// ── Vanilla SwaggerUIBundle mount ─────────────────────────────────────────────
+// Uses swagger-ui-dist directly instead of swagger-ui-react to avoid the
+// UNSAFE_componentWillMount / UNSAFE_componentWillReceiveProps warnings that
+// swagger-ui-react's internal Schemes and ModelCollapse class components emit
+// in React strict mode. The vanilla bundle is mounted imperatively via useEffect
+// and has no React class components involved.
 
 function SwaggerRenderer({ spec }: { spec: object }) {
-  const [SwaggerUI, setSwaggerUI] =
-    useState<React.ComponentType<{ spec: object }> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
     let cancelled = false;
+
     Promise.all([
-      import("swagger-ui-react"),
-      import("swagger-ui-react/swagger-ui.css" as string),
-    ]).then(([mod]) => {
-      if (!cancelled) setSwaggerUI(() => mod.default);
+      import("swagger-ui-dist/swagger-ui-bundle.js"),
+      import("swagger-ui-dist/swagger-ui.css" as string),
+    ]).then(([bundle]) => {
+      if (cancelled || !containerRef.current) return;
+      // swagger-ui-bundle.js is a UMD module; webpack wraps it so the constructor
+      // lands on .default when dynamically imported as an ES module.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SwaggerUIBundle = (bundle as any).default ?? bundle;
+      SwaggerUIBundle({
+        spec,
+        domNode: containerRef.current,
+        docExpansion: "list",
+        defaultModelsExpandDepth: -1,
+        displayRequestDuration: true,
+        tryItOutEnabled: true,
+        layout: "BaseLayout",
+      });
     });
+
     return () => {
       cancelled = true;
+      el.innerHTML = "";
     };
-  }, []);
-
-  if (!SwaggerUI) {
-    return (
-      <div className="space-y-2 p-4">
-        <div className="h-4 w-1/3 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-2/5 animate-pulse rounded bg-muted" />
-      </div>
-    );
-  }
+  }, [spec]);
 
   return (
-    <div className="swagger-ui-wrapper rounded-md border overflow-hidden bg-white dark:bg-zinc-950">
-      <SwaggerUI spec={spec} />
-    </div>
+    <div
+      ref={containerRef}
+      className="swagger-ui-wrapper rounded-md border overflow-auto bg-white dark:bg-[oklch(0.10_0.014_290)]"
+    />
   );
 }

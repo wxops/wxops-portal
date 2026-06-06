@@ -13,6 +13,7 @@ metadata:
       title: Payments Dashboard (Grafana)
       icon: dashboard
 spec:
+  author: user:bob
   docType: documentation
   docStatus: accepted
   owner: group:rocket-team

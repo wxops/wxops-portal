@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: xeus
+  title: "Xeus Nguyen"
+  description: Platform engineer. Builds and maintains the WxOps developer portal and internal tooling.
+spec:
+  memberOf:
+    - group:platform-team
+  email: xeus@wxops.cloud

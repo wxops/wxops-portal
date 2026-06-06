@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: charlie
+  title: "Charlie Park"
+  description: Full-stack engineer on the identity team. Maintains the auth service and identity vault.
+spec:
+  memberOf:
+    - group:developer-team
+  email: charlie@wxops.cloud

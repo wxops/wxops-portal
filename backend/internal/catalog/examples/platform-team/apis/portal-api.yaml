@@ -3,8 +3,22 @@ kind: API
 metadata:
   name: portal-api
   title: Portal API
-  description: Internal REST API served by the W'xOps Portal backend — cluster management, service catalog, and authentication endpoints.
+  description: Internal REST API served by the W'xOps Portal backend — cluster management, service catalog, and OIDC authentication endpoints.
   tags: [rest, kubernetes, catalog]
+  links:
+    # Primary: committed static spec — works in all environments without exposing
+    # a live swagger endpoint. Regenerate with: cd backend && swag init -g cmd/main.go -o docs/
+    # then copy docs/swagger.json here and commit it.
+    - url: platform-team/apis/portal-openapi.json
+      title: OpenAPI Spec
+      type: openapi
+      icon: api
+    # Fallback: live gin-swagger endpoint — only available when SWAGGER_ENABLED=true.
+    # Useful during active development. Never enable on a public host.
+    - url: http://localhost:8080/swagger/doc.json
+      title: OpenAPI Spec (live, SWAGGER_ENABLED=true)
+      type: openapi
+      icon: api
 spec:
   type: openapi
   lifecycle: production

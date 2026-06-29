@@ -650,12 +650,3 @@ func (h *ClusterHandler) buildSpokeClient(c *gin.Context) (*cluster.SpokeClient,
 	}
 	return spokeClient, true
 }
-
-// truncate returns the first n characters of s, or s itself if shorter.
-// Used for safe debug-printing of tokens.
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
-}

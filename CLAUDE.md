@@ -215,6 +215,8 @@ browser
       /*           → Next.js :3000  (pages, static assets)
 ```
 
+`deploy/nginx.conf` MUST have two separate location blocks — `location /api/v1/` → Go and `location /api/` → Next.js. nginx longest-prefix matching ensures `/api/v1/` wins over `/api/`. A single `location /api/` → Go block silently sends all BFF requests to Go, which returns 404 because Go only serves `/api/v1/…`.
+
 #### Rendering strategy
 
 | Surface | Strategy | Reason |
@@ -239,6 +241,10 @@ is absent.
   `ensurePortalLabel()` when creating gitops-infra PRs
 - Edit-config UI: must match scaffold wizard layout (`rounded-xl border` cards,
   `lg:grid-cols-2`, pill step badges) — see `edit-config-form.tsx`
+- Vault appName resolution: always derive `appName` from the
+  `wxops.cloud/vault-path` annotation (`team/appName/env` → segment `[1]`),
+  never from `entity.metadata.name`. Vault Resource entities are named
+  `{appName}-vault` in the catalog, so the entity name is wrong for repo/Vault lookups.
 
 ## What NOT to Do
 

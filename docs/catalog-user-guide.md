@@ -130,6 +130,7 @@ Annotations are key/value string pairs in `metadata.annotations`. They carry too
 | Key | Value format | Purpose |
 |---|---|---|
 | `wxops.cloud/cluster-id` | `prod-east` | Links this Component to a registered cluster ID. Used to show live workload status on the entity page (Phase 2.3). |
+| `wxops.cloud/vault-path` | `team/appName/env` | Vault KV path where the app's runtime secrets live. The portal **Update Secrets** action reads this annotation to derive the correct repo name and Vault path — never uses the entity name directly. Vault Resource entities are named `{appName}-vault` in the catalog, so the annotation is the authoritative source of the underlying `appName`. Generated automatically by the scaffold wizard. |
 
 ### Kubernetes workload annotations (`kubernetes.io/`)
 

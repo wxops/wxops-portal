@@ -22,6 +22,15 @@ flowchart LR
 
 nginx is the only process that accepts external connections. The Go backend and Next.js are bound to loopback and never reached directly from outside the container.
 
+| Path prefix | Upstream | Why |
+|---|---|---|
+| `/auth/*` | Go `:8080` | OIDC login / callback / logout / session |
+| `/api/v1/*` | Go `:8080` | Versioned backend API (clusters, catalog, scaffold, webhooks) |
+| `/api/*` | Next.js `:3000` | BFF Route Handlers (`src/app/api/`) — read session cookie server-side and proxy to Go |
+| `/*` | Next.js `:3000` | Pages, SSR, static assets |
+
+nginx prefix location matching uses **longest-prefix wins**: `/api/v1/` (8 chars) beats `/api/` (5 chars), so versioned backend routes are handled by Go while unversioned BFF routes (`/api/catalog/…`, `/api/scaffold/…`) reach Next.js. Both location blocks must be present in `deploy/nginx.conf` — a single `/api/` → Go block silently swallows all BFF requests and returns 404.
+
 ---
 
 ## Why nginx Inside the Container

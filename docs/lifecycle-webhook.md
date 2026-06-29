@@ -44,25 +44,25 @@ as part of the [cross-environment promotion](cross-environment-promotion.md) flo
 
 ## Validation Chain
 
-```
-Webhook arrives (GitOps CI or ArgoCD)
-        │
-        ▼
-  1. Token matches WEBHOOK_TOKEN?  ─── no ──► 401 Unauthorized
-        │ yes
-        ▼
-  2. Entity exists in catalog?     ─── no ──► 404 Not Found
-        │ yes
-        ▼
-  3. Current lifecycle is           ─── no ──► 200 {"changed": false}
-     "experimental"?                           (already promoted — no-op)
-        │ yes
-        ▼
-  4. Commit lifecycle: development
-     directly to main (metadata only, no PR)
-        │
-        ▼
-     200 OK { "lifecycle": "development", "changed": true }
+```mermaid
+flowchart TD
+    A["Webhook arrives\n(GitOps CI or ArgoCD)"]
+    B{"Token matches\nWEBHOOK_TOKEN?"}
+    C["401 Unauthorized"]
+    D{"Entity exists\nin catalog?"}
+    E["404 Not Found"]
+    F{"Current lifecycle\nis experimental?"}
+    G["200 OK\n{changed: false}\nalready promoted — no-op"]
+    H["Commit lifecycle: development\ndirectly to main\n(metadata only, no PR)"]
+    I["200 OK\n{lifecycle: development, changed: true}"]
+
+    A --> B
+    B -->|no| C
+    B -->|yes| D
+    D -->|no| E
+    D -->|yes| F
+    F -->|no| G
+    F -->|yes| H --> I
 ```
 
 ---
@@ -140,15 +140,26 @@ app is actually running, not just that the overlay was merged.
 
 ### Trust Chain
 
-```
-Platform team manages:
-  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-  │  Portal          │     │  ArgoCD          │     │  Gitea           │
-  │                  │     │                  │     │  (gitops-infra)  │
-  │  WEBHOOK_TOKEN   │◄───►│  Same token in   │     │                  │
-  │  in env vars     │     │  notification    │     │  Branch          │
-  │                  │     │  config          │     │  protection      │
-  └─────────────────┘     └─────────────────┘     └─────────────────┘
+```mermaid
+flowchart LR
+    PT["Platform Team"]
+
+    subgraph portal["Portal"]
+        PW["WEBHOOK_TOKEN\n(env var)"]
+    end
+
+    subgraph argocd["ArgoCD"]
+        AW["Same token in\nargocd-notifications-secret"]
+    end
+
+    subgraph gitea["Gitea · gitops-infra"]
+        BP["Branch protection\non main"]
+    end
+
+    PT -->|"configures"| portal
+    PT -->|"configures"| argocd
+    PT -->|"configures"| gitea
+    portal <-->|"same WEBHOOK_TOKEN"| argocd
 ```
 
 | Component | Who configures | What they set |

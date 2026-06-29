@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
       ./cmd
 
 # ── Stage 2: Build Next.js frontend ────────────────────────────────────────
-FROM node:20-alpine AS node-builder
+FROM node:22-alpine AS node-builder
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -23,7 +23,7 @@ ENV BACKEND_URL=$BACKEND_URL
 RUN npm run build
 
 # ── Stage 3: Combined runtime image ────────────────────────────────────────
-FROM node:20-alpine
+FROM node:22-alpine
 RUN apk add --no-cache nginx supervisor
 
 # Go binary

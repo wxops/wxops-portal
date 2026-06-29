@@ -587,20 +587,28 @@ Generated Application name:        finops-payment-api-dev
 
 ### The 1:1 Mapping
 
-```
-Portal                     Git (Gitea)                   Cluster (K8s)
-──────                     ──────────                    ─────────────
-Catalog Entity             gitops-infra repo             ArgoCD Application CRs
-  Component:               tenants-apps/                 finops-payment-api-dev
-  payment-api              finops/payment-api/           finops-payment-api-staging
-                                                         finops-payment-api-prod
-      │                         │                              │
-      │  gitea/source-location  │  ApplicationSet generates    │
-      ├─────────────────────────┤──────────────────────────────┤
-      │                         │                              │
-      ▼                         ▼                              ▼
-  Entity detail page       Git state                     Live cluster state
-  (portal renders)         (intended config)             (observed status)
+```mermaid
+flowchart LR
+    subgraph portal["Portal"]
+        E["Catalog Entity\nComponent: payment-api"]
+        EP["Entity detail page\n(portal renders)"]
+        E --> EP
+    end
+
+    subgraph git["Git · Gitea"]
+        G["gitops-infra\ntenants-apps/finops/payment-api/"]
+        GS["Git state\n(intended config)"]
+        G --> GS
+    end
+
+    subgraph cluster["Cluster · K8s"]
+        A["ArgoCD Applications\nfinops-payment-api-dev\nfinops-payment-api-staging\nfinops-payment-api-prod"]
+        CS["Live cluster state\n(observed status)"]
+        A --> CS
+    end
+
+    E -->|"gitea/source-location\nannotation"| G
+    G -->|"ApplicationSet\ngenerates"| A
 ```
 
 The portal constructs the Application CR name from the catalog entity's
@@ -748,45 +756,22 @@ the creation of environment overlays, which ArgoCD picks up and deploys.
 
 ### Lifecycle Flow
 
-```
-                         Scaffold PR created
-                               │
-                               ▼
-                        ┌──────────────┐
-                        │ experimental │  Entity exists in catalog.
-                        │              │  PR pending review.
-                        │              │  Nothing deployed yet.
-                        └──────┬───────┘
-                               │
-                    gitops-infra PR merged
-                    (automatic transition)
-                               │
-                               ▼
-                        ┌──────────────┐
-                        │ development  │  ArgoCD syncs overlays/dev.
-                        │              │  First dev-* image builds.
-                        │              │  Service is live in dev.
-                        └──────┬───────┘
-                               │
-                 platform-team or PM approves
-                 (manual, restricted role)
-                               │
-                               ▼
-                        ┌──────────────┐
-                        │  staging     │  Portal creates overlays/staging/.
-                        │              │  ArgoCD deploys to staging.
-                        │              │  RC images promoted.
-                        └──────┬───────┘
-                               │
-                 platform-team or PM approves
-                 (manual, restricted role)
-                               │
-                               ▼
-                        ┌──────────────┐
-                        │ production   │  Portal creates overlays/prod/.
-                        │              │  ArgoCD deploys to production.
-                        │              │  Stable release tags.
-                        └──────────────┘
+```mermaid
+flowchart TD
+    SC["Scaffold PR created"]
+
+    EXP["experimental\nEntity exists in catalog\nPR pending review\nNothing deployed yet"]
+
+    DEV["development\nArgoCD syncs overlays/dev\nFirst dev-* image builds\nService is live in dev"]
+
+    STG["staging\nPortal creates overlays/staging/\nArgoCD deploys to staging\nRC images promoted"]
+
+    PROD["production\nPortal creates overlays/prod/\nArgoCD deploys to production\nStable release tags"]
+
+    SC --> EXP
+    EXP -->|"gitops-infra PR merged\nautomatic transition"| DEV
+    DEV -->|"platform-team or PM approves\nmanual · restricted role"| STG
+    STG -->|"platform-team or PM approves\nmanual · restricted role"| PROD
 ```
 
 ### Transition Rules

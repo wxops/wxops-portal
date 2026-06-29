@@ -6,11 +6,18 @@ The portal ships as a **single Docker image** built from the `Dockerfile` at the
 
 ## Process Layout
 
-```
-supervisord (root)
-├── nginx          :80   — public entry point, reverse proxy
-├── wxops-backend  :8080 — Go binary, loopback only
-└── next.js        :3000 — Node.js SSR server, loopback only
+```mermaid
+flowchart LR
+    IN(["Internet"]) -->|"port 80"| NX
+
+    subgraph img["Docker Container · supervisord"]
+        NX["nginx\n:80\npublic entry point"]
+        GO["wxops-backend\n:8080 · loopback only\nGo binary"]
+        NJ["next.js\n:3000 · loopback only\nNode.js SSR"]
+    end
+
+    NX -->|"/auth/* · /api/v1/*"| GO
+    NX -->|"/api/* · /*"| NJ
 ```
 
 nginx is the only process that accepts external connections. The Go backend and Next.js are bound to loopback and never reached directly from outside the container.
@@ -45,20 +52,22 @@ nginx maintains persistent keep-alive pools to both the Go backend and Next.js, 
 
 ## Multi-Stage Dockerfile
 
-```
-Stage 1 (go-builder)    golang:1.23-alpine
-  └── CGO_ENABLED=0 go build -ldflags="-s -w"
-      → /usr/local/bin/wxops-backend (~7MB static binary)
+```mermaid
+flowchart LR
+    subgraph s1["Stage 1: go-builder · golang:1.23-alpine"]
+        G["CGO_ENABLED=0\ngo build -ldflags='-s -w'\n→ wxops-backend\n(~7MB static binary)"]
+    end
 
-Stage 2 (node-builder)  node:20-alpine
-  └── npm ci && npm run build
-      → .next/standalone/ (self-contained Node.js server)
+    subgraph s2["Stage 2: node-builder · node:22-alpine"]
+        N["npm ci && npm run build\n→ .next/standalone/\n(self-contained Node.js server)"]
+    end
 
-Stage 3 (final)         node:20-alpine + nginx + supervisor
-  ├── Go binary from stage 1
-  ├── Next.js standalone + static assets from stage 2
-  ├── deploy/nginx.conf
-  └── deploy/supervisord.conf
+    subgraph s3["Stage 3: final · node:22-alpine + nginx + supervisord"]
+        F["wxops-backend\n.next/standalone/ + .next/static/\ndeploy/nginx.conf\ndeploy/supervisord.conf"]
+    end
+
+    s1 -->|"COPY --from=go-builder"| s3
+    s2 -->|"COPY --from=node-builder"| s3
 ```
 
 Static assets (`.next/static/`, `public/`) are copied separately — they are not included in the standalone output.

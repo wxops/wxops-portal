@@ -18,9 +18,14 @@ export function UpdateSecretsModal({ entity, onClose }: UpdateSecretsModalProps)
   const team = entity.spec.owner?.includes(":")
     ? entity.spec.owner.split(":")[1]
     : entity.spec.owner ?? "";
-  const appName = entity.metadata.name;
-  const vaultPath = entity.metadata.annotations?.["wxops.cloud/vault-path"]
-    ?? `${team}/${appName}/env`;
+  // Derive appName from the vault path annotation (format: team/appName/env) rather than
+  // entity.metadata.name — vault Resource entities are named "{appName}-vault" in the
+  // catalog, not "{appName}", so using the entity name would cause a repo-not-found error.
+  const rawVaultPath = entity.metadata.annotations?.["wxops.cloud/vault-path"];
+  const appName = rawVaultPath
+    ? rawVaultPath.split("/")[1] ?? entity.metadata.name
+    : entity.metadata.name;
+  const vaultPath = rawVaultPath ?? `${team}/${appName}/env`;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

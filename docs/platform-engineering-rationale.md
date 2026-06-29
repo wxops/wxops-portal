@@ -49,40 +49,21 @@ sprint, every service).
 
 ### Traditional GitOps (Kustomize + Raw Manifests)
 
-```
-Developer writes:                    ArgoCD syncs:
-  Deployment.yaml                      All manifests directly
-  Service.yaml                         to the cluster
-  Ingress.yaml
-  ExternalSecret.yaml
-  NetworkPolicy.yaml
-  ServiceMonitor.yaml
-  HPA.yaml
-  ...
-
-Kustomize patches per environment:
-  overlays/dev/kustomization.yaml
-  overlays/staging/kustomization.yaml
-  overlays/prod/kustomization.yaml
+```mermaid
+flowchart LR
+    DEV["Developer\nwrites 8–12 files"] -->|"commits"| M["Deployment.yaml\nService.yaml\nIngress.yaml\nExternalSecret.yaml\nNetworkPolicy.yaml\nServiceMonitor.yaml\nHPA.yaml ..."]
+    K["Kustomize overlays\noverlays/dev/\noverlays/staging/\noverlays/prod/"] -->|"patches"| M
+    M -->|"ArgoCD syncs\nall manifests"| C[("Cluster")]
 ```
 
 ### Crossplane + Portal (XR Abstraction)
 
-```
-Portal generates:                    Crossplane expands:
-  XTenantApp.yaml                      Deployment
-  (one CR, ~30 fields)                 Service
-                                       Ingress
-                                       ExternalSecret
-                                       NetworkPolicy
-                                       ServiceMonitor
-                                       HPA
-                                       ...
-
-Kustomize patches the XR per environment:
-  overlays/dev/kustomization.yaml      (patches XTenantApp fields)
-  overlays/staging/kustomization.yaml
-  overlays/prod/kustomization.yaml
+```mermaid
+flowchart LR
+    DEV["Developer\nfills wizard form"] -->|"submits"| P["Portal"]
+    P -->|"generates"| X["XTenantApp.yaml\n(1 CR · ~30 fields)"]
+    K["Kustomize overlays\noverlays/dev/\noverlays/staging/\noverlays/prod/"] -->|"patches XR fields"| X
+    X -->|"ArgoCD + Crossplane\nexpands to"| C[("Cluster\nDeployment\nService\nIngress\nExternalSecret\nNetworkPolicy\nServiceMonitor\nHPA ...")]
 ```
 
 ---

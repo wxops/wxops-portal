@@ -24,14 +24,16 @@ The catalog supports seven entity kinds. Five follow the standard `backstage.io/
 
 ### How they relate
 
-```
-System ──── owns ────► Component ──── providesApis ────► API
-                            │
-                            └──── dependsOn ────► Resource
-
-Doc ──── relatedTo ────► Component / API / Resource
-Doc ──── supersededBy ──► Doc   (RFC → ADR lifecycle)
-Group ──── members ────► User
+```mermaid
+flowchart LR
+    Sys[System] -->|"owns"| C[Component]
+    C -->|"providesApis"| A[API]
+    C -->|"dependsOn"| R[Resource]
+    D[Doc] -->|"relatedTo"| C
+    D -->|"relatedTo"| A
+    D -->|"relatedTo"| R
+    RFC[Doc · RFC] -->|"supersededBy"| ADR[Doc · ADR]
+    G[Group] -->|"members"| U[User]
 ```
 
 The portal renders Component/API/Resource relationships as a per-system Mermaid graph. Edges are only drawn between entities within the same system — cross-system dependencies are shown as external references via `consumesApis`.

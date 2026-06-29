@@ -16,19 +16,122 @@ An Internal Developer Portal (IDP) for Kubernetes-native platform teams. One OID
 
 ## Architecture
 
-```
-Browser → nginx :80
-              ├─ /auth/*    → Go backend  (OIDC, session, cluster token exchange)
-              ├─ /api/v1/*  → Go backend  (clusters, catalog, scaffold, lifecycle)
-              └─ /*         → Next.js SSR  (dashboard pages, BFF proxies)
+### Request routing
 
-Hub cluster:    Pinniped Supervisor + wxops-system Secrets (cluster registry)
-Spoke clusters: Pinniped Concierge + JWTAuthenticator per cluster
-Catalog source: gitops-infra/service-catalog/ in Gitea (read-only, 5-min TTL)
-Gitops writes:  portal → Gitea PR → ArgoCD reconcile (never direct cluster writes)
+```mermaid
+flowchart LR
+    Browser(["Browser"])
+
+    subgraph img["Single Docker Image · supervisord"]
+        nginx["nginx\n:80"]
+        go["Go backend\n:8080 · Gin"]
+        nextjs["Next.js\n:3000 · App Router"]
+    end
+
+    subgraph platform["Platform"]
+        hub["Hub Cluster\nPinniped Supervisor\nwxops-system Secrets"]
+        spokes["Spoke Clusters\nPinniped Concierge\nJWTAuthenticator"]
+        gitea["Gitea\ngitops-infra · catalog"]
+        argocd["ArgoCD"]
+    end
+
+    Browser --> nginx
+    nginx -->|"/auth/* · /api/v1/*"| go
+    nginx -->|"/api/* · /*"| nextjs
+
+    go -->|"OIDC discovery\ntoken exchange"| hub
+    go -->|"K8s API\nuser credentials"| spokes
+    go -->|"catalog read\nPR write"| gitea
+    gitea -->|"webhook"| argocd
+    argocd -->|"reconcile"| spokes
 ```
 
-All three processes (nginx, Go backend, Next.js) run inside a single Docker image managed by supervisord.
+All three processes run inside a **single Docker image** managed by supervisord. There is no separate frontend container — nginx, Go, and Next.js share one image and communicate on loopback.
+
+### BFF Proxy pattern
+
+The frontend uses a Backend-for-Frontend (BFF) proxy to bridge the gap between browser-side JavaScript and the Go backend:
+
+- `BACKEND_URL` resolves to `http://127.0.0.1:8080` inside the container — the browser cannot reach this address directly
+- The `wxops_session` cookie is `HttpOnly` — browser JavaScript cannot read it, so it cannot attach it to direct Go API calls
+- `src/app/api/` contains Next.js Route Handlers that run server-side: they read the session cookie via `next/headers`, forward it to Go as a `Cookie:` header, and return the response. The browser only ever talks to Next.js.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant N as nginx
+    participant SC as Next.js Server Component
+    participant BFF as Next.js Route Handler<br/>(src/app/api/)
+    participant G as Go Backend :8080
+
+    Note over SC,G: Path A — Server Component (catalog pages, cluster list)
+    SC->>G: GET /api/v1/… · Cookie: wxops_session=…
+    G-->>SC: JSON
+    SC-->>B: rendered HTML
+
+    Note over B,G: Path B — Client Component (wizard, cluster tabs, CI cards)
+    B->>N: GET /api/… · credentials: include
+    N->>BFF: forward
+    Note right of BFF: reads wxops_session<br/>via next/headers
+    BFF->>G: GET /api/v1/… · Cookie: wxops_session=…
+    G-->>BFF: JSON
+    BFF-->>B: JSON
+```
+
+Server Components (catalog pages, cluster list) bypass the BFF entirely — they run on the Next.js server and call `BACKEND_URL` directly at render time, forwarding the session cookie explicitly.
+
+### Frontend stack
+
+| Layer | Package | Role |
+|---|---|---|
+| Framework | Next.js 16 (App Router), React 19 | Server components, streaming, file-based routing |
+| UI primitives | `@base-ui/react` | Unstyled, accessible headless components |
+| Styling | Tailwind CSS v4 | All visual design — utility classes only, no CSS modules |
+| Variants | `class-variance-authority` | `cva()` for button/badge size and color variants |
+| Class merge | `clsx` + `tailwind-merge` → `cn()` | Safe Tailwind class composition |
+| Icons | `lucide-react` | SVG icon set — icons only, not a component library |
+| Toasts | `sonner` | Notification system |
+| Theme | `next-themes` | System-aware light/dark mode |
+| Fonts | Geist Sans + Geist Mono | Loaded via `next/font/google` |
+| Diagrams | `mermaid` v11 | Dependency graphs, sequence diagrams |
+| OpenAPI | `swagger-ui-dist` | Imperative UMD mount — no React wrapper or peer dep issues |
+| Markdown | `react-markdown` + `remark-gfm` | Doc viewer, RFC/ADR rendering |
+| YAML | `js-yaml` | OpenAPI spec parsing, edit-config YAML preview |
+
+The `src/components/ui/` directory contains **source files owned by this repo** — they wrap Base UI primitives with Tailwind styling. Use `npx shadcn@latest add <component>` to generate additional ones (the `shadcn` CLI is not in `package.json`; run it with `npx`).
+
+### Backend stack
+
+| Layer | Package | Role |
+|---|---|---|
+| Framework | `gin-gonic/gin` v1.10 | HTTP router, middleware, request binding |
+| OIDC / Auth | `coreos/go-oidc/v3` + `golang.org/x/oauth2` | PKCE flow with Pinniped Supervisor as the IdP |
+| Session | Custom AES-256-GCM encrypted cookie | Stateless — no Redis, no database; key is `SESSION_SECRET` |
+| Kubernetes | `k8s.io/client-go` v0.31 | Hub cluster Secret discovery + spoke cluster API calls |
+| YAML | `gopkg.in/yaml.v3` | Manifest generation, catalog entity parsing |
+| Config | `joho/godotenv` | `.env` file loader for local dev (real env vars win) |
+| Swagger | `swaggo/gin-swagger` + `swaggo/swag` | Annotation-driven spec generation — disabled by default |
+
+**Custom clients (no third-party SDK):**
+
+| Client | Package | Notes |
+|---|---|---|
+| Gitea | `internal/gitea/` | Plain HTTP + JSON against the Gitea REST API |
+| Vault | `internal/vault/` | KV v2 write-only — no Vault SDK; no reads or deletes |
+
+**Internal packages:**
+
+| Package | Responsibility |
+|---|---|
+| `internal/auth/` | OIDC client, AES-256-GCM session manager, `RequireSession` middleware |
+| `internal/catalog/` | Entity store with 5-min in-process cache; local-dir and Gitea readers |
+| `internal/cluster/` | Cluster registry (static JSON or K8s Secret discovery), Pinniped token exchange |
+| `internal/config/` | All env var loading via `config.Load()` — single source of truth |
+| `internal/gitea/` | Gitea API methods: repo CRUD, file commits, PR creation, CI/package queries |
+| `internal/handlers/` | Gin route handlers: `auth.go`, `catalog.go`, `clusters.go`, `scaffold.go` |
+| `internal/scaffold/` | Manifest generators: XTenantApp, XTenantDatabase, ExternalSecret, Kustomize overlays, Image Updater CR, catalog entities |
+| `internal/server/` | Gin engine setup, route registration, CORS middleware |
+| `internal/vault/` | Vault KV v2 HTTP client — create/update only |
 
 ## Quick Start
 

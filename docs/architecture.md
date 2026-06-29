@@ -4,23 +4,24 @@
 
 The user logs in once. Pinniped Supervisor federates to the upstream IDP (Dex, Gitea, LDAP, GitHub, SAML) and issues a single token. That token is used for both the portal session and every spoke cluster — no secondary auth, no per-cluster popups, no credential duplication.
 
-```
-Browser → Pinniped Supervisor (PKCE/OIDC) → AES-256-GCM encrypted session cookie
-                                                         │
-                                          ┌──────────────┴──────────────┐
-                                          │  Per cluster API call        │
-                                          │  (served from cache after    │
-                                          │   first miss)                │
-                                          │                              │
-                                          │  RFC 8693 token exchange     │
-                                          │  → cluster-scoped id_token   │
-                                          │                              │
-                                          │  TokenCredentialRequest      │
-                                          │  → short-lived mTLS cert     │
-                                          │    (5–15 min, cached)        │
-                                          │                              │
-                                          │  Spoke K8s API call (mTLS)   │
-                                          └──────────────────────────────┘
+```mermaid
+flowchart TD
+    B(["Browser"])
+    PS["Pinniped Supervisor\nPKCE / OIDC"]
+    SC["AES-256-GCM\nencrypted session cookie"]
+
+    B -->|"login once"| PS
+    PS --> SC
+
+    subgraph perCluster["Per-cluster API call · cached after first miss"]
+        direction TD
+        TE["RFC 8693 token exchange\n→ cluster-scoped id_token"]
+        TCR["TokenCredentialRequest\n→ short-lived mTLS cert\n(5–15 min, cached)"]
+        K8S["Spoke K8s API call (mTLS)"]
+        TE --> TCR --> K8S
+    end
+
+    SC -->|"each cluster request"| perCluster
 ```
 
 **Security properties:**
@@ -74,28 +75,24 @@ sequenceDiagram
 
 ## Hub-Spoke Topology
 
-```
-                        ┌─────────────────────────────┐
-                        │         Hub Cluster          │
-                        │                              │
-                        │  Pinniped Supervisor         │
-                        │  FederationDomain            │
-                        │                              │
-                        │  W'xOps Portal               │
-                        │  (Go backend + Next.js)      │
-                        │                              │
-                        │  wxops-system namespace      │
-                        │  └── Secrets (cluster list)  │
-                        └──────────────┬───────────────┘
-                                       │ discovers
-                        ┌──────────────┴───────────────┐
-               ┌────────┴───────┐           ┌──────────┴──────────┐
-               │  Spoke A        │           │  Spoke B             │
-               │                 │           │                      │
-               │  Concierge      │           │  Concierge           │
-               │  JWTAuthenticator│          │  JWTAuthenticator    │
-               │  audience=A     │           │  audience=B          │
-               └─────────────────┘           └──────────────────────┘
+```mermaid
+flowchart TB
+    subgraph hub["Hub Cluster"]
+        PS["Pinniped Supervisor\nFederationDomain"]
+        WX["W'xOps Portal\nGo backend + Next.js"]
+        SEC["wxops-system namespace\nSecrets · cluster registry"]
+    end
+
+    subgraph spokeA["Spoke A"]
+        CA["Concierge\nJWTAuthenticator\naudience=A"]
+    end
+
+    subgraph spokeB["Spoke B"]
+        CB["Concierge\nJWTAuthenticator\naudience=B"]
+    end
+
+    hub -->|"discovers"| spokeA
+    hub -->|"discovers"| spokeB
 ```
 
 ---

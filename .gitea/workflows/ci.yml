@@ -29,7 +29,7 @@ on:
 #
 env:
   GO_VERSION:     ${{ vars.GO_VERSION     || '1.23' }}
-  NODE_VERSION:   ${{ vars.NODE_VERSION   || '20'   }}
+  NODE_VERSION:   ${{ vars.NODE_VERSION   || '22'   }}
   REGISTRY:       ${{ vars.REGISTRY       || 'ghcr.io/wxops' }}
   GO_CACHE_PATH:  ${{ vars.GO_CACHE_PATH  || 'backend/go.sum' }}
   NPM_CACHE_PATH: ${{ vars.NPM_CACHE_PATH || 'frontend/package-lock.json' }}
@@ -91,10 +91,10 @@ jobs:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}  # for pushing changelog commit back to main
 
       # ── Build and push Docker image to Gitea registry ─────────────────────────
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Log in to ${{ env.REGISTRY }}
-        uses: docker/login-action@v3848c948dfd788546e5e9768f56d05abdf4c5ce90
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.REGISTRY_USERNAME }}

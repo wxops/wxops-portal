@@ -9,6 +9,10 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 ---
 ## [0.2.0] — 2026-06-29
 
+### CI/CD
+
+- **ci**: Fix break ci with new actions and update NodeJS and documentation ([`744bbbb`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/744bbbbe73df7238d080bbd04e264d0106b3dc7e))
+
 ### Features
 
 - Support service scaffolding template for create and import new project ([`2a9edd9`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/2a9edd901919a0b7edf4796e1a50688308d64016))

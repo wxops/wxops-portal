@@ -33,6 +33,15 @@ var kindDir = map[string]string{
 	"Doc":       "docs",
 }
 
+// KindDir returns the subdirectory name for a given entity kind.
+// Returns the lowercase-plural form (e.g. "Component" → "components").
+func KindDir(kind string) string {
+	if d, ok := kindDir[kind]; ok {
+		return d
+	}
+	return strings.ToLower(kind) + "s"
+}
+
 // kindDirSet is the set of known kind-directory names for O(1) lookup.
 var kindDirSet = func() map[string]bool {
 	s := make(map[string]bool, len(kindDir))
@@ -108,6 +117,38 @@ func (s *Store) Get(ctx context.Context, kind, name string) (*Entity, error) {
 		}
 	}
 	return nil, fmt.Errorf("entity %s/%s not found", kind, name)
+}
+
+// InvalidateCache clears the in-memory cache so the next read re-fetches
+// from the underlying reader. Call this after writing an entity to disk
+// in local-dev mode so the change is immediately visible.
+func (s *Store) InvalidateCache() {
+	s.mu.Lock()
+	s.cached = nil
+	s.mu.Unlock()
+}
+
+// CatalogPath returns the configured catalog path prefix (e.g. "service-catalog").
+func (s *Store) CatalogPath() string {
+	return s.catalogPath
+}
+
+// EntityRelPath returns the relative path of an entity within the catalog
+// directory. E.g. "payments-team/components/payment-api.yaml".
+// Returns "" if the entity's owner team cannot be determined.
+func (s *Store) EntityRelPath(kind, name string) string {
+	entity, err := s.Get(context.Background(), kind, name)
+	if err != nil || entity == nil {
+		return ""
+	}
+	team := entity.Spec.Owner
+	if strings.HasPrefix(team, "group:") {
+		team = team[6:]
+	}
+	if team == "" {
+		return ""
+	}
+	return team + "/" + KindDir(kind) + "/" + name + ".yaml"
 }
 
 // all returns the full entity list, reading from cache when fresh.

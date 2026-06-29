@@ -1,0 +1,2 @@
+name: go-service
+description: Go microservice with Gin, structured logging, health probes, and Dockerfile.

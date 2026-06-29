@@ -4,6 +4,9 @@ import { ArrowLeft, ExternalLink, FileText, GitBranch } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocViewer } from "@/components/catalog/doc-viewer";
+import { EntityActions } from "@/components/catalog/entity-actions";
+import { getSession } from "@/lib/session";
+import type { Entity } from "@/lib/types";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
@@ -50,22 +53,31 @@ async function fetchDoc(
 async function fetchDocContent(
   cookie: string,
   name: string,
-): Promise<string | null> {
+): Promise<{ content: string | null; contentError?: string }> {
   try {
     const res = await fetch(
       `${BACKEND_URL}/api/v1/catalog/entities/Doc/${name}/content`,
       { headers: { Cookie: `wxops_session=${cookie}` }, cache: "no-store" },
     );
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      let msg = `HTTP ${res.status}`;
+      try {
+        const j = JSON.parse(body);
+        if (j.error) msg = j.error;
+      } catch { /* not JSON */ }
+      return { content: null, contentError: msg };
+    }
+    return { content: await res.text() };
+  } catch (err) {
+    return { content: null, contentError: String(err) };
   }
 }
 
 const docTypeBadge: Record<string, string> = {
   rfc: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
   adr: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  runbook: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
   documentation: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
 };
 
@@ -95,10 +107,12 @@ export default async function DocDetailPage({
   const cookieStore  = await cookies();
   const session      = cookieStore.get("wxops_session")?.value ?? "";
 
-  const [{ entity, error }, content] = await Promise.all([
+  const [{ entity, error }, { content, contentError }, userSession] = await Promise.all([
     fetchDoc(session, name),
     fetchDocContent(session, name),
+    getSession(),
   ]);
+  const userGroups = userSession?.groups ?? [];
 
   if (error || !entity) {
     return (
@@ -124,7 +138,7 @@ export default async function DocDetailPage({
   );
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-7xl">
 
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -160,6 +174,9 @@ export default async function DocDetailPage({
           >
             {docStatus}
           </span>
+          <div className="ml-auto">
+            <EntityActions entity={entity as unknown as Entity} userGroups={userGroups} />
+          </div>
         </div>
 
         <h1 className="text-xl font-bold leading-tight">{displayTitle}</h1>
@@ -224,10 +241,10 @@ export default async function DocDetailPage({
       </div>
 
       {/* Sidebar + content layout */}
-      <div className="grid gap-4 lg:grid-cols-[240px_1fr] items-start">
+      <div className="grid gap-5 lg:grid-cols-[260px_1fr] items-start">
 
         {/* Sidebar */}
-        <div className="space-y-3">
+        <div className="space-y-3 lg:sticky lg:top-4">
 
           {/* Gitea link */}
           {(entity.spec.contentUrl || giteaLink) && (
@@ -333,16 +350,26 @@ export default async function DocDetailPage({
         </div>
 
         {/* Markdown content */}
-        <div className="rounded-lg border bg-card p-5 min-w-0">
+        <div className="rounded-lg border bg-card min-w-0 min-h-[60vh]">
           {content ? (
-            <DocViewer content={content} />
+            <div className="px-8 py-6 lg:px-10 lg:py-8">
+              <DocViewer content={content} />
+            </div>
           ) : (
-            <div className="rounded-md border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
+            <div className="flex flex-col items-center justify-center min-h-[40vh] px-6 py-10 text-center text-sm text-muted-foreground">
+              <FileText className="h-8 w-8 text-muted-foreground/40 mb-3" />
               <p>Content not available.</p>
-              <p className="text-xs mt-1 text-muted-foreground/60">
-                Requires Gitea configuration (GITEA_URL) or a reachable{" "}
-                <code className="font-mono">contentUrl</code>.
-              </p>
+              {contentError && (
+                <p className="text-xs mt-1 font-mono text-red-500 dark:text-red-400">
+                  {contentError}
+                </p>
+              )}
+              {!contentError && (
+                <p className="text-xs mt-1 text-muted-foreground/60">
+                  Set a <code className="font-mono">contentUrl</code> pointing to a markdown file
+                  (relative path or absolute URL).
+                </p>
+              )}
               {entity.spec.contentUrl && (
                 <a
                   href={entity.spec.contentUrl}

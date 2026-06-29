@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 
 export interface DocTooltipData {
   title: string;
@@ -21,7 +22,7 @@ interface MermaidDiagramProps {
   className?: string;
 }
 
-let initialised = false;
+let lastTheme = "";
 
 const statusColors: Record<string, string> = {
   proposed:       "text-amber-600 dark:text-amber-400",
@@ -38,6 +39,8 @@ const docTypeLabel: Record<string, string> = {
 };
 
 export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: MermaidDiagramProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme !== "light";
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef   = useRef<HTMLDivElement>(null);
   const [error, setError]     = useState<string | null>(null);
@@ -107,18 +110,23 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
     if (!chart.trim() || !containerRef.current) return;
     let cancelled = false;
 
+    const currentTheme = isDark ? "dark" : "light";
+
     import("mermaid").then(({ default: mermaid }) => {
       if (cancelled) return;
 
-      if (!initialised) {
+      if (lastTheme !== currentTheme) {
         mermaid.initialize({
           startOnLoad:   false,
-          theme:         "base",
+          theme:         isDark ? "dark" : "default",
+          themeVariables: isDark
+            ? { primaryColor: "#1e1347", lineColor: "#4b5563", textColor: "#c4b5fd" }
+            : { primaryColor: "#ede9fe", lineColor: "#94a3b8", textColor: "#1e1b4b" },
           flowchart:     { curve: "basis", useMaxWidth: true, nodeSpacing: 25, rankSpacing: 35, padding: 8 },
           securityLevel: "loose",
           fontSize:      13,
         });
-        initialised = true;
+        lastTheme = currentTheme;
       }
 
       const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -177,7 +185,7 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
       setTooltip(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, tooltipsKey]);
+  }, [chart, tooltipsKey, isDark]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("a")) return;
@@ -228,8 +236,9 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
     );
   }
 
-  const btnBase =
-    "flex h-7 w-7 items-center justify-center rounded border border-white/10 bg-black/60 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:bg-black/80 transition-colors";
+  const btnBase = isDark
+    ? "flex h-7 w-7 items-center justify-center rounded border border-white/10 bg-black/60 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:bg-black/80 transition-colors"
+    : "flex h-7 w-7 items-center justify-center rounded border border-border bg-white/80 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:bg-white shadow-sm transition-colors";
 
   return (
     <>
@@ -258,7 +267,7 @@ export function MermaidDiagram({ chart, docTooltips, mode = "fit", className }: 
             onMouseDown={(e) => e.stopPropagation()}
           >
             <button onClick={() => zoomBy(1.25)} className={btnBase} title="Zoom in">+</button>
-            <span className="min-w-[42px] text-center text-xs font-mono text-muted-foreground bg-black/60 backdrop-blur-sm rounded border border-white/10 px-1.5 py-1 select-none">
+            <span className={`min-w-[42px] text-center text-xs font-mono text-muted-foreground backdrop-blur-sm rounded border px-1.5 py-1 select-none ${isDark ? "bg-black/60 border-white/10" : "bg-white/80 border-border shadow-sm"}`}>
               {Math.round(scale * 100)}%
             </span>
             <button onClick={() => zoomBy(1 / 1.25)} className={btnBase} title="Zoom out">−</button>

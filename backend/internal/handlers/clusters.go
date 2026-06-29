@@ -85,10 +85,47 @@ func (h *ClusterHandler) GetCluster(c *gin.Context) {
 	})
 }
 
-// ListNamespaces lists namespaces on a spoke cluster using the user's session token.
+// ListNamespaces returns the namespaces accessible to the current user.
+//
+// K8s GET /api/v1/namespaces is cluster-scoped: a user either sees ALL
+// namespaces (cluster-admin) or receives 403.  There is no K8s API that
+// returns "only namespaces where I have RBAC access."
+//
+// Strategy:
+//   - platform-team: call K8s so they see every namespace on the cluster.
+//   - Everyone else: derive namespace names from Pinniped group membership.
+//     Gitea OIDC emits groups as "org-name" (org membership) and
+//     "org-name:team-name" (team membership).  The team name maps to a
+//     namespace named "tenant-{team-name}".
 //
 //	GET /api/v1/clusters/:id/namespaces
 func (h *ClusterHandler) ListNamespaces(c *gin.Context) {
+	session := auth.GetSession(c)
+
+	// Non-platform-team: namespace access is implied by group membership.
+	// Avoid the K8s list-namespaces call entirely — it will 403 for most devs.
+	if session != nil && !sessionIsPlatform(session.Groups) {
+		seen := make(map[string]bool)
+		var ns []string
+		for _, g := range session.Groups {
+			org := groupToTenant(g)
+			if org == "" {
+				continue
+			}
+			nsName := "tenant-" + org
+			if !seen[nsName] {
+				seen[nsName] = true
+				ns = append(ns, nsName)
+			}
+		}
+		if len(ns) > 0 {
+			c.JSON(http.StatusOK, gin.H{"namespaces": ns})
+			return
+		}
+		// Fallthrough if groups are empty (e.g. dev bypass auth with no groups).
+	}
+
+	// platform-team or no groups: enumerate namespaces from the K8s API.
 	client, ok := h.buildSpokeClient(c)
 	if !ok {
 		return
@@ -99,6 +136,35 @@ func (h *ClusterHandler) ListNamespaces(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"namespaces": namespaces})
+}
+
+// groupToTenant extracts the tenant (org) name from a Pinniped/Gitea OIDC group.
+//
+// Gitea emits exactly two levels: "orgName:teamName" (e.g. "wxops:rocket-team").
+// The org name is the tenant — it maps to namespace "tenant-{orgName}".
+// Multiple teams in the same org (wxops:rocket-team, wxops:Managers) all resolve
+// to the same namespace "tenant-wxops".
+// Groups without a colon or with system prefixes are skipped.
+func groupToTenant(group string) string {
+	org, _, ok := strings.Cut(group, ":")
+	if !ok || org == "" || strings.HasPrefix(org, "system") {
+		return ""
+	}
+	return org
+}
+
+// sessionIsPlatform returns true when the session groups contain platform-team
+// in either plain form ("platform-team") or Gitea OIDC form ("org:platform-team").
+func sessionIsPlatform(groups []string) bool {
+	for _, g := range groups {
+		if strings.EqualFold(g, auth.PlatformTeamGroup) {
+			return true
+		}
+		if _, team, ok := strings.Cut(g, ":"); ok && strings.EqualFold(team, auth.PlatformTeamGroup) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetIdentity performs a Pinniped WhoAmIRequest on a spoke cluster to return

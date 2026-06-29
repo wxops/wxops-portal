@@ -5,6 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GraphPanel } from "@/components/catalog/graph-panel";
 import { type DocTooltipData } from "@/components/catalog/mermaid-diagram";
+import { EntityActions } from "@/components/catalog/entity-actions";
+import { getSession } from "@/lib/session";
+import type { Entity as SharedEntity } from "@/lib/types";
+import { relatedToIncludesAny } from "@/lib/types";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
@@ -54,6 +58,7 @@ async function fetchEntities(
 
 const lifecycleBadge: Record<string, string> = {
   production:   "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  development:  "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   experimental: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
   deprecated:   "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
@@ -221,22 +226,43 @@ function roleLabel(kind: string, type?: string): string {
   return kind.toUpperCase();
 }
 
-function buildDiagram(members: Entity[]): string {
+const THEME_COLORS = {
+  dark: {
+    init: '%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#4b5563", "edgeLabelBackground": "#13111f"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60, "padding": 18, "curve": "basis"}}}%%',
+    service:  "fill:#1e1347,stroke:#8b5cf6,color:#c4b5fd,stroke-width:1.5px",
+    api:      "fill:#0c3547,stroke:#22d3ee,color:#a5f3fc,stroke-width:1.5px",
+    resource: "fill:#161550,stroke:#818cf8,color:#c7d2fe,stroke-width:1.5px",
+    rfc:      "fill:#1e1347,stroke:#a78bfa,color:#ddd6fe,stroke-width:1.5px,stroke-dasharray:6 3",
+    adr:      "fill:#0c1f4a,stroke:#60a5fa,color:#bfdbfe,stroke-width:1.5px",
+    doc:      "fill:#082a18,stroke:#34d399,color:#6ee7b7,stroke-width:1.5px",
+  },
+  light: {
+    init: '%%{init: {"theme": "default", "themeVariables": {"lineColor": "#94a3b8", "edgeLabelBackground": "#ffffff"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60, "padding": 18, "curve": "basis"}}}%%',
+    service:  "fill:#ede9fe,stroke:#7c3aed,color:#4c1d95,stroke-width:1.5px",
+    api:      "fill:#e0f2fe,stroke:#0891b2,color:#164e63,stroke-width:1.5px",
+    resource: "fill:#e0e7ff,stroke:#6366f1,color:#312e81,stroke-width:1.5px",
+    rfc:      "fill:#ede9fe,stroke:#8b5cf6,color:#4c1d95,stroke-width:1.5px,stroke-dasharray:6 3",
+    adr:      "fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f,stroke-width:1.5px",
+    doc:      "fill:#d1fae5,stroke:#10b981,color:#064e3b,stroke-width:1.5px",
+  },
+};
+
+function buildDiagram(members: Entity[], theme: "dark" | "light" = "dark"): string {
   if (members.length === 0) return "";
 
+  const colors = THEME_COLORS[theme];
   const memberNames = new Set(members.map((e) => e.metadata.name));
   const lines: string[] = [
-    '%%{init: {"theme": "dark", "themeVariables": {"lineColor": "#4b5563", "edgeLabelBackground": "#13111f"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 60, "padding": 18, "curve": "basis"}}}%%',
+    colors.init,
     "flowchart LR",
   ];
 
-  // Brand-aligned node classes — dark canvas, role-color per kind
-  lines.push("  classDef serviceNode fill:#1e1347,stroke:#8b5cf6,color:#c4b5fd,stroke-width:1.5px");
-  lines.push("  classDef apiNode fill:#0c3547,stroke:#22d3ee,color:#a5f3fc,stroke-width:1.5px");
-  lines.push("  classDef resourceNode fill:#161550,stroke:#818cf8,color:#c7d2fe,stroke-width:1.5px");
-  lines.push("  classDef rfcNode fill:#1e1347,stroke:#a78bfa,color:#ddd6fe,stroke-width:1.5px,stroke-dasharray:6 3");
-  lines.push("  classDef adrNode fill:#0c1f4a,stroke:#60a5fa,color:#bfdbfe,stroke-width:1.5px");
-  lines.push("  classDef docNode fill:#082a18,stroke:#34d399,color:#6ee7b7,stroke-width:1.5px");
+  lines.push(`  classDef serviceNode ${colors.service}`);
+  lines.push(`  classDef apiNode ${colors.api}`);
+  lines.push(`  classDef resourceNode ${colors.resource}`);
+  lines.push(`  classDef rfcNode ${colors.rfc}`);
+  lines.push(`  classDef adrNode ${colors.adr}`);
+  lines.push(`  classDef docNode ${colors.doc}`);
 
   // Node declarations ordered: Components → APIs → Resources → Docs
   const ordered = [
@@ -348,29 +374,52 @@ export default async function SystemDetailPage({
   const cookieStore  = await cookies();
   const session      = cookieStore.get("wxops_session")?.value ?? "";
 
-  const { entities, error } = await fetchEntities(session);
+  const [{ entities, error }, userSession] = await Promise.all([
+    fetchEntities(session),
+    getSession(),
+  ]);
+  const userGroups = userSession?.groups ?? [];
 
   const system = entities.find(
     (e) => e.kind === "System" && e.metadata.name === name,
   );
 
-  const members = entities.filter(
-    (e) => e.kind !== "System" && e.spec.system === name,
+  // Entities that belong to this system via spec.system
+  const directMembers = entities.filter(
+    (e) => e.kind !== "System" && e.kind !== "Doc" && e.spec.system === name,
   );
 
-  const components = members.filter((e) => e.kind === "Component");
-  const apis       = members.filter((e) => e.kind === "API");
-  const resources  = members.filter((e) => e.kind === "Resource");
-  const docs       = members.filter((e) => e.kind === "Doc");
+  // Build the set of refs for this system + its direct members
+  const memberRefs = new Set<string>();
+  memberRefs.add(`system:default/${name}`);
+  for (const m of directMembers) {
+    const ns = m.metadata.namespace || "default";
+    memberRefs.add(`${m.kind.toLowerCase()}:${ns}/${m.metadata.name}`);
+  }
+
+  // Docs linked via relatedTo to either the system or any of its members
+  // Uses namespace-insensitive matching (e.g. "api:platform/x" matches "api:default/x")
+  const relatedDocs = entities.filter(
+    (e) => e.kind === "Doc" && relatedToIncludesAny(e.spec.relatedTo, memberRefs),
+  );
+
+  const members = [...directMembers, ...relatedDocs];
+  const components = directMembers.filter((e) => e.kind === "Component");
+  const apis       = directMembers.filter((e) => e.kind === "API");
+  const resources  = directMembers.filter((e) => e.kind === "Resource");
+  const docs       = relatedDocs;
 
   const rfcs           = docs.filter((d) => d.spec.docType === "rfc");
   const adrs           = docs.filter((d) => d.spec.docType === "adr");
   const documentation  = docs.filter((d) => !d.spec.docType || d.spec.docType === "documentation");
 
   const displayName    = system?.metadata.title ?? system?.metadata.name ?? name;
-  const diagramBase    = buildDiagram(members.filter((e) => e.kind !== "Doc"));
-  const diagramFull    = buildDiagram(members);
-  const docTooltips    = buildDocTooltips(docs);
+  const baseMembers    = members.filter((e) => e.kind !== "Doc");
+  const diagramBase      = buildDiagram(baseMembers, "dark");
+  const diagramFull      = buildDiagram(members, "dark");
+  const diagramBaseLight = buildDiagram(baseMembers, "light");
+  const diagramFullLight = buildDiagram(members, "light");
+  const docTooltips      = buildDocTooltips(docs);
 
   return (
     <div className="space-y-8 max-w-7xl">
@@ -390,6 +439,11 @@ export default async function SystemDetailPage({
           <Badge variant="secondary">System</Badge>
           {system?.spec.domain && (
             <Badge variant="outline">{system.spec.domain}</Badge>
+          )}
+          {system && (
+            <div className="ml-auto">
+              <EntityActions entity={system as unknown as SharedEntity} userGroups={userGroups} />
+            </div>
           )}
         </div>
         <h1 className="text-2xl font-bold">{displayName}</h1>
@@ -451,6 +505,8 @@ export default async function SystemDetailPage({
         <GraphPanel
           chartBase={diagramBase}
           chartWithDocs={docs.length > 0 ? diagramFull : undefined}
+          chartBaseLight={diagramBaseLight}
+          chartWithDocsLight={docs.length > 0 ? diagramFullLight : undefined}
           docTooltips={Object.keys(docTooltips).length > 0 ? docTooltips : undefined}
           docsCount={docs.length}
         />

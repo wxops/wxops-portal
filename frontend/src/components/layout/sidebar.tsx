@@ -4,12 +4,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Server, BookOpen } from "lucide-react";
+import { LayoutDashboard, Server, BookOpen, Rocket, Activity } from "lucide-react";
 
 const navItems = [
-  { href: "/dashboard",          label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/clusters", label: "Clusters", icon: Server },
-  { href: "/dashboard/catalog",  label: "Catalog",  icon: BookOpen },
+  { href: "/dashboard",           label: "Overview",  icon: LayoutDashboard },
+  { href: "/dashboard/clusters",  label: "Clusters",  icon: Server },
+  { href: "/dashboard/catalog",   label: "Catalog",   icon: BookOpen },
+  { href: "/dashboard/scaffold",  label: "Scaffold",  icon: Rocket },
+  { href: "/dashboard/activity",  label: "Activity",  icon: Activity },
 ];
 
 interface SidebarProps {

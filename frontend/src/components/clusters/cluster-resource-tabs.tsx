@@ -50,13 +50,12 @@ function resourceReducer(state: ResourceState, action: ResourceAction): Resource
   }
 }
 
-// token prop removed — the backend reads the session cookie directly.
-// The "One Token" from Pinniped Supervisor is stored server-side.
 interface Props {
   clusterId: string;
+  reloadKey?: number;
 }
 
-export function ClusterResourceTabs({ clusterId }: Props) {
+export function ClusterResourceTabs({ clusterId, reloadKey = 0 }: Props) {
   const [tab, setTab] = useState<Tab>("pods");
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [namespace, setNamespace] = useState<string>("default");
@@ -68,7 +67,7 @@ export function ClusterResourceTabs({ clusterId }: Props) {
   });
   const { loading, error, pods, deployments } = resources;
 
-  // Fetch namespaces once on mount to populate the namespace selector.
+  // Fetch namespaces on mount, cluster change, or parent reload.
   useEffect(() => {
     fetch(`/api/v1/clusters/${clusterId}/namespaces`)
       .then((r) => r.json())
@@ -78,9 +77,9 @@ export function ClusterResourceTabs({ clusterId }: Props) {
         if (list.length > 0) setNamespace(list[0]);
       })
       .catch(() => {/* namespace selector stays at "default" */});
-  }, [clusterId]);
+  }, [clusterId, reloadKey]);
 
-  // Fetch resources whenever tab or namespace changes.
+  // Fetch resources whenever tab, namespace, cluster, or parent reload changes.
   useEffect(() => {
     dispatchResource({ type: "loading" });
     const endpoint = tab === "pods" ? "pods" : "deployments";
@@ -96,7 +95,7 @@ export function ClusterResourceTabs({ clusterId }: Props) {
         }
       })
       .catch(() => dispatchResource({ type: "error", message: "Failed to fetch resources" }));
-  }, [tab, namespace, clusterId]);
+  }, [tab, namespace, clusterId, reloadKey]);
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "pods", label: "Pods", icon: <Box className="h-4 w-4" /> },

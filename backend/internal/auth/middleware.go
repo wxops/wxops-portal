@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -48,4 +49,51 @@ func GetSession(c *gin.Context) *Session {
 // request sees updated tokens after an inline refresh.
 func SetSession(c *gin.Context, s *Session) {
 	c.Set(sessionContextKey, s)
+}
+
+// PlatformTeamGroup is the OIDC group that grants platform-wide access.
+const PlatformTeamGroup = "platform-team"
+
+// MemberOfTeam returns true when groups contains the team name (case-insensitive)
+// or the platform-team group.
+func MemberOfTeam(groups []string, team string) bool {
+	for _, g := range groups {
+		if strings.EqualFold(g, team) || strings.EqualFold(g, PlatformTeamGroup) {
+			return true
+		}
+	}
+	return false
+}
+
+// OwnerTeam extracts the team name from a Backstage owner reference.
+// "group:rocket-team" → "rocket-team", "user:alice" → "alice".
+func OwnerTeam(owner string) string {
+	if _, after, ok := strings.Cut(owner, ":"); ok {
+		return after
+	}
+	return owner
+}
+
+// IsPlatformTeam returns true when groups contains the platform-team group.
+func IsPlatformTeam(groups []string) bool {
+	for _, g := range groups {
+		if strings.EqualFold(g, PlatformTeamGroup) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTeamManager returns true when groups contains the "<team>:Managers" sub-group
+// for the team derived from a Backstage owner reference (e.g. "group:rocket-team").
+// Managers can approve lifecycle promotions on behalf of their team.
+func IsTeamManager(groups []string, owner string) bool {
+	team := OwnerTeam(owner) // "group:rocket-team" → "rocket-team"
+	managerGroup := team + ":Managers"
+	for _, g := range groups {
+		if strings.EqualFold(g, managerGroup) {
+			return true
+		}
+	}
+	return false
 }

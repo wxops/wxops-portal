@@ -18,6 +18,52 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/catalog/activity": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Returns recent portal-created PRs (scaffold, register, edit) from gitops-infra.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "List catalog activity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "PR state: open, closed, all (default: all)",
+                        "name": "state",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page (default: 20)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/catalog/entities": {
             "get": {
                 "security": [
@@ -51,6 +97,71 @@ const docTemplate = `{
                     },
                     "502": {
                         "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Creates a new catalog entity. Returns 409 Conflict if it already exists.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Register a new catalog entity",
+                "parameters": [
+                    {
+                        "description": "Entity to create",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/catalog.Entity"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -106,6 +217,176 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Updates a catalog entity. Commits via PR in production or writes to disk in dev mode.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Update catalog entity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated entity",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/catalog.Entity"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Deletes a catalog entity. Only platform-team admins can delete.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Delete catalog entity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/catalog/entities/{kind}/{name}/ci": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Returns recent Gitea Actions workflow runs for the entity's source repo.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Get CI status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -170,6 +451,126 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/catalog/entities/{kind}/{name}/packages": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Reads go.mod, package.json, requirements.txt, pyproject.toml from the source repo.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Get package dependencies",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/catalog/entities/{kind}/{name}/promote": {
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Promote entity lifecycle",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/v1/catalog/entities/{kind}/{name}/releases": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Returns Gitea Releases and container images from the Package Registry.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Get releases and container images",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/catalog/entities/{kind}/{name}/spec": {
             "get": {
                 "security": [
@@ -210,6 +611,352 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/scaffold/projects": {
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "description": "Project scaffold request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/scaffold.CreateProjectRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/scaffold.CreateProjectResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/scaffold/projects/{team}/{appName}/config": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Returns the current XTenantApp configuration for a project.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scaffold"
+                ],
+                "summary": "Get project config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Team name",
+                        "name": "team",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/scaffold.XTenantApp"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Updates the XTenantApp configuration. Creates a PR in Gitea mode.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scaffold"
+                ],
+                "summary": "Update project config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Team name",
+                        "name": "team",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated config",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/scaffold.UpdateConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/scaffold/repos": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Creates a Gitea repo from a golden-path template, generates XTenantApp CR and catalog entities. Opens a PR to gitops-infra.\nReturns non-template repos for the given owner org.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json",
+                    "application/json"
+                ],
+                "tags": [
+                    "scaffold",
+                    "scaffold"
+                ],
+                "summary": "List team repos",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Org/team name",
+                        "name": "owner",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/scaffold/secrets": {
+            "put": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Creates or updates vault secrets at {team}/{appName}/env.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scaffold"
+                ],
+                "summary": "Write vault secrets for a project",
+                "parameters": [
+                    {
+                        "description": "team, appName, envVars[]",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/scaffold/templates": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Returns scaffold templates — from the local filesystem (dev) or from the Gitea template repository (production).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "scaffold"
+                ],
+                "summary": "List scaffold templates",
+                "responses": {
+                    "200": {
+                        "description": "templates array",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -507,12 +1254,16 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "docType": {
-                    "description": "── Doc ──────────────────────────────────────────────────────────────────\nDocType classifies the document: rfc | adr | documentation",
+                    "description": "── Doc ──────────────────────────────────────────────────────────────────\nDocType classifies the document: rfc | adr | runbook | documentation",
                     "type": "string"
                 },
                 "domain": {
                     "description": "── System ───────────────────────────────────────────────────────────",
                     "type": "string"
+                },
+                "draft": {
+                    "description": "Draft marks a Doc as not yet published. Draft docs are only visible\nto members of the owner team. Set to false (or omit) to publish.",
+                    "type": "boolean"
                 },
                 "email": {
                     "description": "Email is the user's contact address.",
@@ -586,6 +1337,655 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "scaffold.AuthSpec": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "scaffold.CreateProjectRequest": {
+            "type": "object",
+            "required": [
+                "appName",
+                "team",
+                "templateId"
+            ],
+            "properties": {
+                "apiEnabled": {
+                    "type": "boolean"
+                },
+                "apiType": {
+                    "description": "openapi | asyncapi | grpc",
+                    "type": "string"
+                },
+                "appFlavor": {
+                    "description": "Step 3: XTenantApp configuration",
+                    "type": "string"
+                },
+                "appName": {
+                    "description": "Step 1: Repository",
+                    "type": "string"
+                },
+                "certClusterIssuer": {
+                    "type": "string"
+                },
+                "certManager": {
+                    "type": "boolean"
+                },
+                "containerPort": {
+                    "type": "integer"
+                },
+                "databaseSecrets": {
+                    "type": "boolean"
+                },
+                "dbClusterNamespace": {
+                    "type": "string"
+                },
+                "dbClusterRef": {
+                    "type": "string"
+                },
+                "dbEnvironment": {
+                    "type": "string"
+                },
+                "dbExtensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "dbName": {
+                    "description": "Database (XTenantDatabase)",
+                    "type": "string"
+                },
+                "dbReclaimPolicy": {
+                    "type": "string"
+                },
+                "dbTier": {
+                    "type": "string"
+                },
+                "dedicatedCluster": {
+                    "$ref": "#/definitions/scaffold.DedicatedClusterRequest"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "devSpaceEnabled": {
+                    "type": "boolean"
+                },
+                "domain": {
+                    "type": "string"
+                },
+                "envVars": {
+                    "description": "Plain env vars (non-secret, go into XTenantApp spec.parameters.env)",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.KeyValue"
+                    }
+                },
+                "extraLabels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.KeyValue"
+                    }
+                },
+                "ingressEnabled": {
+                    "description": "Advanced",
+                    "type": "boolean"
+                },
+                "ingressHost": {
+                    "type": "string"
+                },
+                "livenessPath": {
+                    "type": "string"
+                },
+                "metricsPath": {
+                    "description": "e.g. /metrics",
+                    "type": "string"
+                },
+                "monitoringEnabled": {
+                    "type": "boolean"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "openapiPath": {
+                    "description": "relative path or public URL to spec",
+                    "type": "string"
+                },
+                "packageManager": {
+                    "type": "string"
+                },
+                "podAnnotations": {
+                    "description": "Pod annotations and extra labels",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.KeyValue"
+                    }
+                },
+                "readinessPath": {
+                    "type": "string"
+                },
+                "reloader": {
+                    "description": "Platform toggles",
+                    "type": "boolean"
+                },
+                "replicas": {
+                    "type": "integer"
+                },
+                "resourcesCpuLim": {
+                    "type": "string"
+                },
+                "resourcesCpuReq": {
+                    "type": "string"
+                },
+                "resourcesMemLim": {
+                    "type": "string"
+                },
+                "resourcesMemReq": {
+                    "type": "string"
+                },
+                "rolloutType": {
+                    "type": "string"
+                },
+                "runtimeVersion": {
+                    "description": "Runtime (from template.yaml runtime section)",
+                    "type": "string"
+                },
+                "ssoAuth": {
+                    "type": "boolean"
+                },
+                "systemName": {
+                    "description": "Catalog — System is auto-created with name = appName",
+                    "type": "string"
+                },
+                "team": {
+                    "type": "string"
+                },
+                "templateId": {
+                    "description": "Step 2: Template",
+                    "type": "string"
+                },
+                "vaultEnvVars": {
+                    "description": "Vault env vars (parsed from .env upload or manual entry)",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.KeyValue"
+                    }
+                },
+                "vaultSecrets": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "scaffold.CreateProjectResponse": {
+            "type": "object",
+            "properties": {
+                "appName": {
+                    "type": "string"
+                },
+                "repoUrl": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "team": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.DedicatedClusterRequest": {
+            "type": "object",
+            "properties": {
+                "enablePooler": {
+                    "type": "boolean"
+                },
+                "instances": {
+                    "type": "integer"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "postgresVersion": {
+                    "type": "integer"
+                },
+                "storageSize": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.DevSpaceSpec": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "image": {
+                    "type": "string"
+                },
+                "replicas": {
+                    "type": "integer"
+                }
+            }
+        },
+        "scaffold.EnvFromRef": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.EnvFromSource": {
+            "type": "object",
+            "properties": {
+                "configMapRef": {
+                    "$ref": "#/definitions/scaffold.EnvFromRef"
+                },
+                "secretRef": {
+                    "$ref": "#/definitions/scaffold.EnvFromRef"
+                }
+            }
+        },
+        "scaffold.EnvVar": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.IngressSpec": {
+            "type": "object",
+            "properties": {
+                "auth": {
+                    "$ref": "#/definitions/scaffold.AuthSpec"
+                },
+                "className": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "pathType": {
+                    "type": "string"
+                },
+                "tls": {
+                    "$ref": "#/definitions/scaffold.TLSSpec"
+                }
+            }
+        },
+        "scaffold.KeyValue": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.ProbeDetail": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "failureThreshold": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "periodSeconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "scaffold.ProbesSpec": {
+            "type": "object",
+            "properties": {
+                "liveness": {
+                    "$ref": "#/definitions/scaffold.ProbeDetail"
+                },
+                "readiness": {
+                    "$ref": "#/definitions/scaffold.ProbeDetail"
+                },
+                "startup": {
+                    "$ref": "#/definitions/scaffold.ProbeDetail"
+                }
+            }
+        },
+        "scaffold.ReloaderSpec": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "scaffold.RepositorySpec": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.ResourceMeta": {
+            "type": "object",
+            "properties": {
+                "labels": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.ResourceSpec": {
+            "type": "object",
+            "properties": {
+                "limits": {
+                    "$ref": "#/definitions/scaffold.ResourceValues"
+                },
+                "requests": {
+                    "$ref": "#/definitions/scaffold.ResourceValues"
+                }
+            }
+        },
+        "scaffold.ResourceValues": {
+            "type": "object",
+            "properties": {
+                "cpu": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.RollingUpdate": {
+            "type": "object",
+            "properties": {
+                "maxSurge": {
+                    "type": "string"
+                },
+                "maxUnavailable": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.RolloutStrategy": {
+            "type": "object",
+            "properties": {
+                "rollingUpdate": {
+                    "$ref": "#/definitions/scaffold.RollingUpdate"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.SecretRefToggle": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "secretName": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.SecretsFromSpec": {
+            "type": "object",
+            "properties": {
+                "app": {
+                    "$ref": "#/definitions/scaffold.SecretRefToggle"
+                },
+                "database": {
+                    "$ref": "#/definitions/scaffold.SecretRefToggle"
+                }
+            }
+        },
+        "scaffold.ServiceSpec": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.TLSSpec": {
+            "type": "object",
+            "properties": {
+                "clusterIssuer": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "secretName": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.UpdateConfigRequest": {
+            "type": "object",
+            "properties": {
+                "appFlavor": {
+                    "type": "string"
+                },
+                "certClusterIssuer": {
+                    "type": "string"
+                },
+                "certManager": {
+                    "type": "boolean"
+                },
+                "containerPort": {
+                    "type": "integer"
+                },
+                "databaseSecrets": {
+                    "type": "boolean"
+                },
+                "devSpaceEnabled": {
+                    "type": "boolean"
+                },
+                "envVars": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.KeyValue"
+                    }
+                },
+                "extraLabels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.KeyValue"
+                    }
+                },
+                "ingressEnabled": {
+                    "type": "boolean"
+                },
+                "ingressHost": {
+                    "type": "string"
+                },
+                "livenessPath": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "podAnnotations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.KeyValue"
+                    }
+                },
+                "readinessPath": {
+                    "type": "string"
+                },
+                "reloader": {
+                    "type": "boolean"
+                },
+                "replicas": {
+                    "type": "integer"
+                },
+                "resourcesCpuLim": {
+                    "type": "string"
+                },
+                "resourcesCpuReq": {
+                    "type": "string"
+                },
+                "resourcesMemLim": {
+                    "type": "string"
+                },
+                "resourcesMemReq": {
+                    "type": "string"
+                },
+                "rolloutType": {
+                    "type": "string"
+                },
+                "ssoAuth": {
+                    "type": "boolean"
+                },
+                "templateId": {
+                    "type": "string"
+                },
+                "vaultSecrets": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "scaffold.XTenantApp": {
+            "type": "object",
+            "properties": {
+                "apiVersion": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/scaffold.ResourceMeta"
+                },
+                "spec": {
+                    "$ref": "#/definitions/scaffold.XTenantAppSpec"
+                }
+            }
+        },
+        "scaffold.XTenantAppParams": {
+            "type": "object",
+            "properties": {
+                "appFlavor": {
+                    "type": "string"
+                },
+                "appName": {
+                    "type": "string"
+                },
+                "containerPort": {
+                    "type": "integer"
+                },
+                "devSpace": {
+                    "$ref": "#/definitions/scaffold.DevSpaceSpec"
+                },
+                "env": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.EnvVar"
+                    }
+                },
+                "envFrom": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.EnvFromSource"
+                    }
+                },
+                "image": {
+                    "type": "string"
+                },
+                "imagePullSecrets": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ingress": {
+                    "$ref": "#/definitions/scaffold.IngressSpec"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "podAnnotations": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "probes": {
+                    "$ref": "#/definitions/scaffold.ProbesSpec"
+                },
+                "reloader": {
+                    "$ref": "#/definitions/scaffold.ReloaderSpec"
+                },
+                "replicas": {
+                    "type": "integer"
+                },
+                "repository": {
+                    "$ref": "#/definitions/scaffold.RepositorySpec"
+                },
+                "resources": {
+                    "$ref": "#/definitions/scaffold.ResourceSpec"
+                },
+                "rolloutStrategy": {
+                    "$ref": "#/definitions/scaffold.RolloutStrategy"
+                },
+                "secretsFrom": {
+                    "$ref": "#/definitions/scaffold.SecretsFromSpec"
+                },
+                "service": {
+                    "$ref": "#/definitions/scaffold.ServiceSpec"
+                },
+                "templateId": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.XTenantAppSpec": {
+            "type": "object",
+            "properties": {
+                "parameters": {
+                    "$ref": "#/definitions/scaffold.XTenantAppParams"
                 }
             }
         }

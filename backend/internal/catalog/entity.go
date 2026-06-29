@@ -103,11 +103,15 @@ type EntitySpec struct {
 	// (uses Type, Owner, System, DependsOn from above)
 
 	// ── Doc ──────────────────────────────────────────────────────────────────
-	// DocType classifies the document: rfc | adr | documentation
+	// DocType classifies the document: rfc | adr | runbook | documentation
 	DocType string `yaml:"docType,omitempty" json:"docType,omitempty"`
 
 	// DocStatus is the review lifecycle: proposed | under-review | accepted | deprecated | superseded
 	DocStatus string `yaml:"docStatus,omitempty" json:"docStatus,omitempty"`
+
+	// Draft marks a Doc as not yet published. Draft docs are only visible
+	// to members of the owner team. Set to false (or omit) to publish.
+	Draft *bool `yaml:"draft,omitempty" json:"draft,omitempty"`
 
 	// SupersededBy is a Doc entity ref that replaces this document (e.g. RFC → ADR).
 	// Format: "doc:default/adr-001-kafka"
@@ -177,7 +181,7 @@ func (e *Entity) Validate() error {
 			return errorf("Doc %q missing spec.owner", e.Metadata.Name)
 		}
 		if e.Spec.DocType == "" {
-			return errorf("Doc %q missing spec.docType (rfc | adr | documentation)", e.Metadata.Name)
+			return errorf("Doc %q missing spec.docType (rfc | adr | runbook | documentation)", e.Metadata.Name)
 		}
 	}
 	return nil

@@ -1,0 +1,2 @@
+name: python-fastapi
+description: Python FastAPI service with uv, auto-generated OpenAPI, health probes, and Docker.

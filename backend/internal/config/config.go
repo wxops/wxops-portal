@@ -90,6 +90,44 @@ type Config struct {
 	GiteaCatalogOwner string
 	GiteaCatalogRepo  string
 	GiteaCatalogPath  string
+
+	// Scaffold — template source, Gitea credential settings, and local dev overrides.
+	//
+	// Templates live in a dedicated Gitea repository (GITEA_TEMPLATE_REPO) under the
+	// same owner as the catalog repo (GITEA_CATALOG_OWNER), or under GITEA_TEMPLATE_OWNER
+	// if set.  Each top-level directory inside that repo is one template.
+	//
+	// SCAFFOLD_LOCAL_DIR overrides Gitea for local development — point it at a directory
+	// containing template subdirectories (e.g. ./internal/scaffold/examples).
+	ScaffoldLocalDir         string // local filesystem path for dev/testing (takes priority over Gitea)
+	GiteaTemplateOwner       string // org owning the template repo (defaults to GiteaCatalogOwner)
+	GiteaTemplateRepo        string // repo containing scaffold templates (e.g. "scaffold-templates")
+	GiteaCredSecretName      string // Crossplane Secret name for XGiteaRepository
+	GiteaCredSecretNamespace string // Crossplane Secret namespace for XGiteaRepository
+
+	// Vault — used by scaffold to write .env secrets.
+	// When empty, vault write is skipped (secrets are not uploaded).
+	VaultAddr    string // e.g. "https://vault.example.com"
+	VaultToken   string
+	VaultKVMount string // KV v2 mount path (default: "secret")
+
+	// WebhookToken is a shared secret for authenticating webhook calls from
+	// ArgoCD notifications (or other automation). Used by the promote endpoint.
+	// When empty, webhook-triggered promotions are disabled — only portal
+	// users with platform-team role can promote.
+	WebhookToken string
+
+	// GiteaBotUsername is the Gitea username of the CI bot account (e.g. "gitea-bot").
+	// This user is added to the push whitelist on the main branch so the
+	// bot can push changelog commits (chore(release): [skip ci]) directly
+	// without hitting the branch protection 403.
+	// When empty, no whitelist is set — only PR merges can reach main.
+	GiteaBotUsername string
+
+	// GiteaBotEmail is the git author email for the CI bot.
+	// Substituted into scaffold template CI workflow files as {{ .BotEmail }}
+	// so generated pipelines use the correct committer identity.
+	GiteaBotEmail string
 }
 
 // Load reads configuration from environment variables.
@@ -132,11 +170,22 @@ func Load() *Config {
 		ClustersConfigFile: getEnv("CLUSTERS_CONFIG_FILE", ""),
 		ClustersConfig:     getEnv("CLUSTERS_CONFIG", ""),
 		CatalogLocalDir:    getEnv("CATALOG_LOCAL_DIR", ""),
-		GiteaURL:           getEnv("GITEA_URL", ""),
-		GiteaToken:         getEnv("GITEA_TOKEN", ""),
-		GiteaCatalogOwner:  getEnv("GITEA_CATALOG_OWNER", ""),
-		GiteaCatalogRepo:   getEnv("GITEA_CATALOG_REPO", "gitops-infra"),
-		GiteaCatalogPath:   getEnv("GITEA_CATALOG_PATH", "service-catalog"),
+		GiteaURL:                 getEnv("GITEA_URL", ""),
+		GiteaToken:               getEnv("GITEA_TOKEN", ""),
+		GiteaCatalogOwner:        getEnv("GITEA_CATALOG_OWNER", ""),
+		GiteaCatalogRepo:         getEnv("GITEA_CATALOG_REPO", "gitops-infra"),
+		GiteaCatalogPath:         getEnv("GITEA_CATALOG_PATH", "service-catalog"),
+		ScaffoldLocalDir:         getEnv("SCAFFOLD_LOCAL_DIR", ""),
+		GiteaTemplateOwner:       getEnv("GITEA_TEMPLATE_OWNER", ""),
+		GiteaTemplateRepo:        getEnv("GITEA_TEMPLATE_REPO", "scaffold-templates"),
+		GiteaCredSecretName:      getEnv("GITEA_CRED_SECRET_NAME", "gitea-credentials"),
+		GiteaCredSecretNamespace: getEnv("GITEA_CRED_SECRET_NAMESPACE", "crossplane-system"),
+		VaultAddr:                getEnv("VAULT_ADDR", ""),
+		VaultToken:               getEnv("VAULT_TOKEN", ""),
+		VaultKVMount:             getEnv("VAULT_KV_MOUNT", "secret"),
+		WebhookToken:             getEnv("WEBHOOK_TOKEN", ""),
+		GiteaBotUsername:         getEnv("GITEA_BOT_USERNAME", ""),
+		GiteaBotEmail:            getEnv("GITEA_BOT_EMAIL", ""),
 	}
 }
 

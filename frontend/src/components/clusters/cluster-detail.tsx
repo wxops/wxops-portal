@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useReducer } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Download, Loader2 } from "lucide-react";
+import { User, Download, Loader2, RefreshCw } from "lucide-react";
 import { ClusterResourceTabs } from "@/components/clusters/cluster-resource-tabs";
 
 interface IdentityInfo {
@@ -41,18 +41,33 @@ function identityReducer(_: IdentityState, action: IdentityAction): IdentityStat
 // to the spoke cluster automatically.
 export function ClusterDetail({ clusterId, clusterName }: Props) {
   const [identityState, dispatch] = useReducer(identityReducer, { status: "loading" });
+  const [fetchTrigger, setFetchTrigger] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // Load identity via Pinniped WhoAmIRequest on mount / cluster change.
-  useEffect(() => {
+  // Button handler — dispatches loading state from an event handler (not inside an
+  // effect) so the react-hooks/set-state-in-effect rule is not triggered.
+  const handleReload = useCallback(() => {
     dispatch({ type: "loading" });
+    setFetchTrigger((t) => t + 1);
+    setReloadKey((k) => k + 1);
+  }, []);
+
+  // Pure async fetch — no synchronous setState here; initial loading state comes
+  // from useReducer's initial value, subsequent loading from handleReload above.
+  useEffect(() => {
+    let cancelled = false;
     fetch(`/api/v1/clusters/${clusterId}/identity`)
       .then((r) => r.json())
       .then((data) => {
+        if (cancelled) return;
         if (data.error) dispatch({ type: "error", message: data.error as string });
         else dispatch({ type: "success", data: data as IdentityInfo });
       })
-      .catch((e: unknown) => dispatch({ type: "error", message: String(e) }));
-  }, [clusterId]);
+      .catch((e: unknown) => {
+        if (!cancelled) dispatch({ type: "error", message: String(e) });
+      });
+    return () => { cancelled = true; };
+  }, [clusterId, fetchTrigger]);
 
   async function downloadKubeconfig() {
     const res = await fetch(`/api/v1/clusters/${clusterId}/kubeconfig`);
@@ -78,13 +93,23 @@ export function ClusterDetail({ clusterId, clusterName }: Props) {
               <User className="h-4 w-4 text-muted-foreground" />
               <CardTitle className="text-base">Kubernetes Identity — {clusterName}</CardTitle>
             </div>
-            <button
-              onClick={downloadKubeconfig}
-              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              <Download className="h-3 w-3" />
-              Download kubeconfig
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleReload}
+                disabled={identityState.status === "loading"}
+                className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3 w-3 ${identityState.status === "loading" ? "animate-spin" : ""}`} />
+                Reload
+              </button>
+              <button
+                onClick={downloadKubeconfig}
+                className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <Download className="h-3 w-3" />
+                Download kubeconfig
+              </button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -95,7 +120,9 @@ export function ClusterDetail({ clusterId, clusterName }: Props) {
             </div>
           )}
           {identityState.status === "error" && (
-            <p className="text-sm text-destructive">{identityState.message}</p>
+            <p className="text-sm text-destructive">
+              {identityState.message || "session expired — please log in or reload again"}
+            </p>
           )}
           {identityState.status === "success" && (
             <div className="space-y-3">
@@ -130,7 +157,7 @@ export function ClusterDetail({ clusterId, clusterName }: Props) {
       </Card>
 
       {/* Resource tabs — session cookie forwarded automatically */}
-      <ClusterResourceTabs clusterId={clusterId} />
+      <ClusterResourceTabs clusterId={clusterId} reloadKey={reloadKey} />
     </div>
   );
 }

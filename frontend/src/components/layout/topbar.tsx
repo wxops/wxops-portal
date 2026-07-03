@@ -17,6 +17,7 @@ import {
 import { LogOut, Settings, User } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
+import { NotificationBell } from "@/components/layout/notification-bell";
 
 interface TopBarProps {
   user: UserSession;
@@ -37,7 +38,7 @@ export function TopBar({ user }: TopBarProps) {
   }
 
   return (
-    <header className="h-14 shrink-0 border-b border-border bg-card/80 backdrop-blur-sm flex items-center justify-between px-6 gap-4">
+    <header className="h-14 shrink-0 border-b border-border bg-card/80 backdrop-blur-sm flex items-center justify-between px-6 gap-4 z-10">
 
       {/* Left — breadcrumb */}
       <div className="flex-1 min-w-0">
@@ -46,6 +47,7 @@ export function TopBar({ user }: TopBarProps) {
 
       {/* Right controls */}
       <div className="flex items-center gap-2 shrink-0">
+        <NotificationBell />
         <ThemeToggle />
 
         <DropdownMenu>

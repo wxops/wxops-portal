@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import yaml from "js-yaml";
+import { addNotification } from "@/lib/notifications";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
@@ -15,6 +17,7 @@ import {
   CheckCircle,
   ArrowLeft,
   EyeOff,
+  Eye,
 } from "lucide-react";
 import type { Entity } from "@/lib/types";
 
@@ -115,6 +118,8 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
       : null,
   );
   const [submitting, setSubmitting] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState(false);
   const [success, setSuccess] = useState<{ kind: string; name: string } | null>(null);
   const [allEntities, setAllEntities] = useState<Entity[]>([]);
 
@@ -123,8 +128,9 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
+  const topLevelGroups = groups.filter((g) => !g.includes(":"));
   const [owner, setOwner] = useState(
-    groups[0] ? `group:${groups[0]}` : "",
+    topLevelGroups[0] ? `group:${topLevelGroups[0]}` : "",
   );
   const [lifecycle, setLifecycle] = useState("experimental");
   const [entityType, setEntityType] = useState(
@@ -187,7 +193,7 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
   const relatedToOptions = useMemo(
     () =>
       allEntities
-        .filter((e) => ["Component", "System", "Resource", "API"].includes(e.kind))
+        .filter((e) => ["Component", "Resource", "API"].includes(e.kind))
         .map((e) => {
           const ns = e.metadata.namespace || "default";
           return `${e.kind.toLowerCase()}:${ns}/${e.metadata.name}`;
@@ -200,7 +206,7 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
     setTitle("");
     setDescription("");
     setTags("");
-    setOwner(groups[0] ? `group:${groups[0]}` : "");
+    setOwner(topLevelGroups[0] ? `group:${topLevelGroups[0]}` : "");
     setLifecycle("experimental");
     setEntityType("");
     setSystem("");
@@ -214,7 +220,7 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
   const handleKindSelect = (k: EntityKind) => {
     setKind(k);
     resetFields();
-    setOwner(groups[0] ? `group:${groups[0]}` : "");
+    setOwner(topLevelGroups[0] ? `group:${topLevelGroups[0]}` : "");
     if (k === "Component") setEntityType("service");
     if (k === "API") setEntityType("openapi");
     if (k === "Resource") setEntityType("database");
@@ -254,6 +260,7 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
       entity.spec.docType = docType;
       entity.spec.docStatus = docStatus;
       entity.spec.author = author || undefined;
+      entity.spec.system = system || undefined;
       entity.spec.contentUrl = contentUrl || undefined;
       entity.spec.relatedTo = relatedTo.length > 0 ? relatedTo : undefined;
     }
@@ -261,17 +268,31 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
     return entity;
   };
 
-  const handleSubmit = async (asDraft = false) => {
-    if (!name.trim()) {
-      toast.error("Name is required");
-      return;
+  // Live YAML — updates as the user types (drives the right-side preview panel).
+  const liveYAML = useMemo(() => {
+    if (!kind) return "";
+    try {
+      const entity = buildEntity();
+      if (kind === "Doc") entity.spec.draft = pendingDraft;
+      return yaml.dump(entity, { lineWidth: 80, noRefs: true });
+    } catch {
+      return "# error generating preview";
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, name, title, description, tags, owner, lifecycle, entityType, system, domain,
+      docType, docStatus, contentUrl, relatedTo, pendingDraft]);
+
+  const handleReview = (asDraft = false) => {
+    if (!name.trim()) { toast.error("Name is required"); return; }
+    setPendingDraft(asDraft);
+    setReviewing(true);
+  };
+
+  const handleSubmit = async () => {
     setSubmitting(true);
     try {
       const entity = buildEntity();
-      if (kind === "Doc") {
-        entity.spec.draft = asDraft;
-      }
+      if (kind === "Doc") entity.spec.draft = pendingDraft;
       const res = await fetch("/api/catalog/entities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -286,6 +307,11 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
 
       setSuccess({ kind: kind!, name });
       toast.success(`${kind} registered`);
+      addNotification({
+        type: "pr_opened",
+        title: `${kind} registered`,
+        body: name,
+      });
     } catch (err) {
       toast.error(String(err));
     } finally {
@@ -370,9 +396,14 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
   // ── Entity form ──
   const kindMeta = KINDS.find((k) => k.kind === kind)!;
   const KindIcon = kindMeta.icon;
+  const FORM_STEPS = [
+    { num: 1 as const, label: "Details" },
+    { num: 2 as const, label: "Review" },
+  ];
+  const currentStep = reviewing ? 2 : 1;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
       <div>
         <nav className="flex items-center gap-1.5 text-sm text-muted-foreground mb-4">
           <Link href="/dashboard/catalog" className="hover:text-foreground">
@@ -381,7 +412,7 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
           <span>/</span>
           <button
             type="button"
-            onClick={() => setKind(null)}
+            onClick={() => { setReviewing(false); setKind(null); }}
             className="hover:text-foreground"
           >
             Register
@@ -403,7 +434,64 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
         </div>
       </div>
 
+      {/* Step indicator */}
+      <div className="flex items-center gap-2">
+        {FORM_STEPS.map(({ num, label }) => (
+          <div key={num} className="flex items-center gap-2">
+            {num > 1 && (
+              <div className={cn("h-px w-8", currentStep >= num ? "bg-wxops-purple" : "bg-border")} />
+            )}
+            <div className={cn(
+              "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+              currentStep === num
+                ? "bg-wxops-purple/10 text-wxops-purple"
+                : currentStep > num
+                  ? "bg-muted text-foreground"
+                  : "bg-muted/50 text-muted-foreground",
+            )}>
+              <span className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold",
+                currentStep === num
+                  ? "bg-wxops-purple text-white"
+                  : currentStep > num
+                    ? "bg-foreground/20 text-foreground"
+                    : "bg-border text-muted-foreground",
+              )}>
+                {num}
+              </span>
+              {label}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Two-column: form left, live YAML right */}
+      <div className="grid gap-6 lg:grid-cols-2 items-start">
+
+      {/* ── Left: form or review summary ── */}
       <div className="rounded-xl border border-border p-6 space-y-5">
+
+        {/* Review summary — shown on step 2 instead of the form */}
+        {reviewing && (
+          <div className="space-y-3">
+            <p className="text-sm font-semibold">Ready to register?</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Review the YAML on the right. Click <strong>Confirm</strong> to commit it to the
+              catalog{kind !== "Doc" ? " via a PR" : " directly"}.
+            </p>
+            <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1 text-xs font-mono">
+              <div><span className="text-muted-foreground">kind:</span> {kind}</div>
+              <div><span className="text-muted-foreground">name:</span> {name}</div>
+              {title && <div><span className="text-muted-foreground">title:</span> {title}</div>}
+              {owner && <div><span className="text-muted-foreground">owner:</span> {owner}</div>}
+              {system && <div><span className="text-muted-foreground">system:</span> {system}</div>}
+              {kind === "Doc" && <div><span className="text-muted-foreground">draft:</span> {pendingDraft ? "true" : "false"}</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Form fields — hidden on step 2 */}
+        {!reviewing && (<>
         {/* Name */}
         <FormField label="Name" required>
           <input
@@ -463,11 +551,13 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
             className={inputClass}
           >
             <option value="">Select owner...</option>
-            {groups.map((g) => (
-              <option key={g} value={`group:${g}`}>
-                group:{g}
-              </option>
-            ))}
+            {groups
+              .filter((g) => !g.includes(":"))
+              .map((g) => (
+                <option key={g} value={`group:${g}`}>
+                  group:{g}
+                </option>
+              ))}
           </select>
         </FormField>
 
@@ -586,6 +676,19 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
                 {author}
               </div>
             </FormField>
+            <FormField label="System" hint="Optional — the system this document belongs to">
+              <select
+                value={system}
+                onChange={(e) => setSystem(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">None</option>
+                {systemNames.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </FormField>
+
             <FormField label="Content URL" hint="Relative path or absolute URL to markdown">
               <input
                 type="text"
@@ -596,8 +699,8 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
               />
             </FormField>
 
-            {/* Related systems/components */}
-            <FormField label="Related To" hint="Link this doc to systems or services">
+            {/* Related components/resources/APIs */}
+            <FormField label="Related To" hint="Components, resources, or APIs this doc describes">
               <div className="space-y-2">
                 {relatedTo.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -627,7 +730,7 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
                   }}
                   className={inputClass}
                 >
-                  <option value="">Select a system or service...</option>
+                  <option value="">Select a component, resource, or API...</option>
                   {relatedToOptions
                     .filter((r) => !relatedTo.includes(r))
                     .map((r) => (
@@ -637,57 +740,100 @@ export function RegisterEntityForm({ groups, username, initialKind, initialRelat
                     ))}
                 </select>
                 <p className="text-[10px] text-muted-foreground">
-                  Link this document to the systems and services it describes.
+                  Link this document to the components, resources, and APIs it describes.
                 </p>
               </div>
             </FormField>
           </>
         )}
 
-
-
+        </>)}{/* end !reviewing fields */}
       </div>
+
+      {/* ── Right: live YAML preview ── */}
+      <div className="rounded-xl border border-border bg-muted/20 p-5 space-y-3 lg:sticky lg:top-4">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Eye className="h-4 w-4 text-wxops-purple" />
+          {reviewing ? "Confirm YAML" : "Live Preview"}
+          {kind === "Doc" && reviewing && (
+            <span className={cn(
+              "ml-auto text-xs rounded-full px-2 py-0.5 font-medium",
+              pendingDraft
+                ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+            )}>
+              {pendingDraft ? "Draft" : "Published"}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {reviewing
+            ? "This exact YAML will be committed to the catalog."
+            : "Updates as you fill in the form."}
+        </p>
+        {liveYAML ? (
+          <pre className="overflow-auto rounded-md border bg-background p-4 font-mono text-[11px] leading-relaxed whitespace-pre-wrap max-h-[60vh]">
+            {liveYAML}
+          </pre>
+        ) : (
+          <div className="rounded-md border border-dashed p-6 text-center text-xs text-muted-foreground">
+            Fill in the form to see the entity YAML.
+          </div>
+        )}
+      </div>
+
+      </div>{/* end two-column grid */}
 
       {/* Actions */}
       <div className="flex items-center justify-between">
         <button
           type="button"
-          onClick={() => setKind(null)}
+          onClick={() => reviewing ? setReviewing(false) : setKind(null)}
           className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted/50"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back
+          {reviewing ? "Back to Edit" : "Back"}
         </button>
-        <div className="flex items-center gap-2">
-          {kind === "Doc" && (
-            <button
-              type="button"
-              onClick={() => handleSubmit(true)}
-              disabled={submitting || !name.trim()}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted/50 disabled:opacity-60"
-            >
-              <EyeOff className="h-4 w-4" />
-              Save as Draft
-            </button>
-          )}
+
+        {reviewing ? (
           <button
             type="button"
-            onClick={() => handleSubmit(false)}
-            disabled={submitting || !name.trim()}
+            onClick={handleSubmit}
+            disabled={submitting}
             className="flex items-center gap-1.5 rounded-lg bg-wxops-purple px-5 py-2 text-sm font-medium text-white hover:bg-wxops-purple/90 disabled:opacity-60"
           >
             {submitting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Registering...
-              </>
+              <><Loader2 className="h-4 w-4 animate-spin" /> Submitting...</>
             ) : kind === "Doc" ? (
-              "Publish"
+              pendingDraft ? "Save as Draft" : "Publish"
             ) : (
-              `Register ${kindMeta.label}`
+              `Confirm & Register`
             )}
           </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {kind === "Doc" && (
+              <button
+                type="button"
+                onClick={() => handleReview(true)}
+                disabled={!name.trim()}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted/50 disabled:opacity-60"
+              >
+                <EyeOff className="h-4 w-4" />
+                Save as Draft
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handleReview(false)}
+              disabled={!name.trim()}
+              className="flex items-center gap-1.5 rounded-lg bg-wxops-purple px-5 py-2 text-sm font-medium text-white hover:bg-wxops-purple/90 disabled:opacity-60"
+            >
+              <Eye className="h-4 w-4" />
+              {kind === "Doc" ? "Review & Publish" : `Review ${kindMeta.label}`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

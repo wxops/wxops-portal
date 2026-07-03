@@ -304,7 +304,7 @@ Developer                Portal                Gitea              Cluster
 
 | Document | Description |
 |----------|-------------|
-| [ROADMAP.md](ROADMAP.md) | Release history, current branch status, versioned plans (v0.2.0 → v0.4.0+), architecture decisions |
+| [ROADMAP.md](../ROADMAP.md) | Release history, current branch status, versioned plans (v0.3.0 → v0.5.0+), architecture decisions |
 | [platform-engineering-rationale.md](platform-engineering-rationale.md) | Why Crossplane + Portal + Golden Path: tradeoffs, complexity analysis, business case, proving the model |
 | [cross-environment-promotion.md](cross-environment-promotion.md) | Enterprise feature design: per-environment config, lifecycle-driven promotion, ArgoCD+Pinniped status |
 

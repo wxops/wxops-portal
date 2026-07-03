@@ -150,75 +150,12 @@ type AuthSpec struct {
 }
 
 // NewXTenantAppBase constructs the environment-agnostic base XTenantApp manifest.
-// It intentionally omits replicas, resources, ingress, and secretsFrom — those
-// are environment-specific and belong in overlay patch files so each environment
-// (dev/staging/prod) can override them independently.
+// The base is the golden-path contract: it declares all platform feature toggles
+// (secretsFrom, ingress enabled, TLS, auth, reloader, probes, rolloutStrategy).
+// Only env-specific values are omitted: replicas, resources, and ingress host
+// — those are patched per environment in overlay/patch-xtenant-app.yaml.
 func NewXTenantAppBase(req *CreateProjectRequest, giteaURL string) *XTenantApp {
 	return NewXTenantApp(req, giteaURL)
-}
-
-// NewEnvPatch builds a sparse XTenantApp patch for a specific environment.
-// Only environment-varying fields are set: replicas, resources, ingress host,
-// and secretsFrom paths. Kustomize merges this on top of the base manifest.
-// name must match metadata.name in the base resource.
-func NewEnvPatch(req *CreateProjectRequest, name string) *XTenantApp {
-	patch := &XTenantApp{
-		APIVersion: "platform.wxops.cloud/v1alpha1",
-		Kind:       "XTenantApp",
-		Metadata:   ResourceMeta{Name: name},
-		Spec:       XTenantAppSpec{},
-	}
-
-	params := &XTenantAppParams{}
-
-	if req.Replicas != nil {
-		params.Replicas = req.Replicas
-	}
-
-	if req.ResourcesCPUReq != "" || req.ResourcesCPULim != "" || req.ResourcesMemReq != "" || req.ResourcesMemLim != "" {
-		res := &ResourceSpec{}
-		if req.ResourcesCPUReq != "" || req.ResourcesMemReq != "" {
-			res.Requests = &ResourceValues{CPU: req.ResourcesCPUReq, Memory: req.ResourcesMemReq}
-		}
-		if req.ResourcesCPULim != "" || req.ResourcesMemLim != "" {
-			res.Limits = &ResourceValues{CPU: req.ResourcesCPULim, Memory: req.ResourcesMemLim}
-		}
-		params.Resources = res
-	}
-
-	if req.IngressEnabled || req.CertManager || req.SSOAuth || req.IngressHost != "" {
-		ing := &IngressSpec{Enabled: true, Host: req.IngressHost}
-		if req.CertManager {
-			issuer := req.CertIssuer
-			if issuer == "" {
-				issuer = "letsencrypt-prod"
-			}
-			ing.TLS = &TLSSpec{Enabled: true, ClusterIssuer: issuer}
-		}
-		if req.SSOAuth {
-			ing.Auth = &AuthSpec{Enabled: true}
-		}
-		params.Ingress = ing
-	}
-
-	if req.VaultSecrets || req.DatabaseSecrets {
-		sf := &SecretsFromSpec{}
-		if req.VaultSecrets {
-			sf.App = &SecretRefToggle{Enabled: true}
-		}
-		if req.DatabaseSecrets {
-			dbSecret := &SecretRefToggle{Enabled: true}
-			target := DbSecretTarget(req.AppName, req.DbName)
-			if target != req.AppName+"-db-creds" {
-				dbSecret.SecretName = target
-			}
-			sf.Database = dbSecret
-		}
-		params.SecretsFrom = sf
-	}
-
-	patch.Spec.Parameters = *params
-	return patch
 }
 
 // MergeEnvPatch overlays environment-specific patch fields onto base in-place.
@@ -275,8 +212,43 @@ func NewXTenantApp(req *CreateProjectRequest, giteaURL string) *XTenantApp {
 		}
 	}
 
-	// Fields below are environment-agnostic platform toggles — they apply
-	// equally across all environments so they live in the base manifest.
+	// Environment-agnostic platform toggles: declared once in the base and
+	// inherited by every overlay. Overlays only patch env-specific values
+	// (replicas, resources, ingress host).
+
+	// secretsFrom — which K8s secrets the XTenantApp should mount.
+	// Lives in base so all environments (dev/staging/production) inherit it
+	// without each overlay having to re-declare it.
+	if req.VaultSecrets || req.DatabaseSecrets {
+		sf := &SecretsFromSpec{}
+		if req.VaultSecrets {
+			sf.App = &SecretRefToggle{Enabled: true}
+		}
+		if req.DatabaseSecrets {
+			dbSecret := &SecretRefToggle{Enabled: true}
+			target := DbSecretTarget(req.AppName, "")
+			if target != req.AppName+"-db-creds" {
+				dbSecret.SecretName = target
+			}
+			sf.Database = dbSecret
+		}
+		app.Spec.Parameters.SecretsFrom = sf
+	}
+
+	// ingress enabled toggle + TLS/auth config — platform decision, belongs in base.
+	// The host and ClusterIssuer are env-specific and are patched by each overlay
+	// via JSON 6902 in kustomization.yaml through the Promote flow.
+	if req.IngressEnabled || req.CertManager || req.SSOAuth {
+		ing := &IngressSpec{Enabled: true}
+		if req.CertManager {
+			ing.TLS = &TLSSpec{Enabled: true}
+		}
+		if req.SSOAuth {
+			ing.Auth = &AuthSpec{Enabled: true}
+		}
+		app.Spec.Parameters.Ingress = ing
+	}
+
 	if req.Reloader {
 		app.Spec.Parameters.Reloader = &ReloaderSpec{Enabled: true}
 	}

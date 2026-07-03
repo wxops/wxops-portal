@@ -198,4 +198,35 @@ The catalog store caches all entities in memory with a 5-minute TTL. This means:
 - Removing or renaming an entity is reflected within 5 minutes.
 - On cache miss the store fetches all entity files from Gitea in one pass and rebuilds the in-memory index.
 
-The cache is intentionally simple — no invalidation webhook, no push mechanism. For a catalog that changes infrequently (new services are added through the Phase 3 scaffold, not manually), a 5-minute TTL is the right trade-off.
+### Immediate cache invalidation
+
+For zero-wait invalidation after a catalog commit, wire a Gitea push webhook on `gitops-infra`:
+
+```
+POST /api/v1/webhooks/catalog/refresh
+Authorization: Bearer <WEBHOOK_TOKEN>
+```
+
+This flushes the in-memory cache on the next request. The same `WEBHOOK_TOKEN` used for lifecycle webhooks is reused — no new secret.
+
+Doc entities created or updated via the portal trigger immediate invalidation automatically (the backend calls `store.InvalidateCache()` after every direct commit). Other entity kinds go through a PR — the cache refreshes when the PR merges and the Gitea webhook fires.
+
+## Write Paths
+
+Two write paths exist depending on entity kind:
+
+| Action | Kind | Write Path |
+|---|---|---|
+| Register / update | `Doc` | Direct commit to `gitops-infra/catalog/` on `main` → immediate cache invalidation |
+| Register / update | All others | Open PR to `gitops-infra` (requires platform review before merge) |
+
+Doc entities use direct commit because they are living documents — authors iterate frequently and a PR gate adds friction without adding safety. The `spec.draft` flag lets authors control visibility without a merge gate.
+
+### Draft visibility
+
+| `spec.draft` | Who can see the entity |
+|---|---|
+| `true` | The author (matched by session username) and `platform-team` only |
+| `false` or absent | All authenticated portal users |
+
+When an author publishes (sets `draft: false`), the entity becomes visible to the entire platform.

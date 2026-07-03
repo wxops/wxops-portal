@@ -78,14 +78,14 @@ func NewImageUpdater(req *CreateProjectRequest, giteaURL, gitopsRepoURL string) 
 	imageBase := fmt.Sprintf("%s/%s/%s", registry, req.Team, req.AppName)
 
 	// ArgoCD Application names follow the convention set by the ApplicationSet:
-	// tenants-apps-{team}-{app}-{env}  (hyphens, all lowercase)
-	appPrefix := fmt.Sprintf("tenants-apps-%s-%s", req.Team, req.AppName)
+	// {team}-{app}-{env}  (hyphens, all lowercase)
+	appPrefix := fmt.Sprintf("%s-%s", req.Team, req.AppName)
 
 	return &ImageUpdater{
 		APIVersion: "argocd-image-updater.argoproj.io/v1alpha1",
 		Kind:       "ImageUpdater",
 		Metadata: ResourceMeta{
-			Name: req.AppName,
+			Name: fmt.Sprintf("%s-%s", req.Team, req.AppName),
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "wxops-portal",
 				"wxops.cloud/team":             req.Team,
@@ -134,7 +134,7 @@ func NewImageUpdater(req *CreateProjectRequest, giteaURL, gitopsRepoURL string) 
 					Images: []AppImage{
 						{
 							Alias:     "application",
-							ImageName: imageBase + ":0.x-0",
+							ImageName: imageBase + ":x-0",
 							ManifestTargets: ManifestTargets{
 								Kustomize: KustomizeTarget{Name: imageBase},
 							},

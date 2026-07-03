@@ -379,11 +379,6 @@ func (h *ScaffoldHandler) CreateProject(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		// Vault write happens AFTER local manifests succeed — no orphaned secrets on failure.
-		if err := h.writeVaultSecrets(c.Request.Context(), &req); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-			return
-		}
 		c.JSON(http.StatusCreated, resp)
 		return
 	}
@@ -447,7 +442,6 @@ const (
 	stepTemplate     = 3
 	stepGitOpsConfig = 4
 	stepOpenPR       = 5
-	stepSecrets      = 6
 )
 
 func scaffoldErr(c *gin.Context, status, step int, msg string) {
@@ -559,10 +553,9 @@ func (h *ScaffoldHandler) createViaGitea(c *gin.Context, req *scaffold.CreatePro
 		return
 	}
 
-	// ── Step 4b: Infrastructure PR — Kustomize base + dev overlay. ──
-	// Needs platform-team approval. When merged:
-	//   1. ArgoCD syncs overlays/dev → service deploys to dev
-	//   2. ArgoCD notification → portal promotes lifecycle to development
+	// ── Step 4b: Infrastructure PR — Kustomize base (no dev overlay). ──
+	// The dev overlay is created separately via the Promote flow once the
+	// developer confirms the service is ready for development promotion.
 	infraBranch := fmt.Sprintf("scaffold/%s/%s-%d", req.Team, req.AppName, time.Now().Unix())
 	if err := h.giteaClient.CreateBranch(ctx, gitopsOwner, gitopsRepo, infraBranch, "main"); err != nil {
 		scaffoldErr(c, http.StatusBadGateway, stepGitOpsConfig, fmt.Sprintf("create infra branch: %s", err))
@@ -570,7 +563,6 @@ func (h *ScaffoldHandler) createViaGitea(c *gin.Context, req *scaffold.CreatePro
 	}
 
 	baseDir := fmt.Sprintf("tenants-apps/%s/%s/base", req.Team, req.AppName)
-	overlayDir := fmt.Sprintf("tenants-apps/%s/%s/overlays/dev", req.Team, req.AppName)
 
 	infraFiles := make(map[string][]byte)
 	var baseResources []string
@@ -585,23 +577,6 @@ func (h *ScaffoldHandler) createViaGitea(c *gin.Context, req *scaffold.CreatePro
 		return
 	}
 	infraFiles[baseDir+"/kustomization.yaml"] = baseKustomization
-
-	overlayFiles, err := scaffold.BuildOverlayFiles()
-	if err != nil {
-		scaffoldErr(c, http.StatusInternalServerError, stepGitOpsConfig, fmt.Sprintf("build overlay kustomization: %s", err))
-		return
-	}
-	for name, data := range overlayFiles {
-		infraFiles[overlayDir+"/"+name] = data
-	}
-
-	devPatch := scaffold.NewEnvPatch(req, req.Team+"-"+req.AppName)
-	devPatchYAML, err := devPatch.Marshal()
-	if err != nil {
-		scaffoldErr(c, http.StatusInternalServerError, stepGitOpsConfig, fmt.Sprintf("build env patch: %s", err))
-		return
-	}
-	infraFiles[overlayDir+"/patch-xtenant-app.yaml"] = devPatchYAML
 
 	imageUpdater := scaffold.NewImageUpdater(req, h.cfg.GiteaURL, scaffold.GitopsRepoURL(h.cfg.GiteaURL, gitopsOwner, gitopsRepo))
 	imageUpdaterYAML, err := imageUpdater.Marshal()
@@ -630,43 +605,12 @@ func (h *ScaffoldHandler) createViaGitea(c *gin.Context, req *scaffold.CreatePro
 		return
 	}
 
-	// Step 6: Vault write — only after all remote operations succeed.
-	if err := h.writeVaultSecrets(ctx, req); err != nil {
-		scaffoldErr(c, http.StatusBadGateway, stepSecrets, err.Error())
-		return
-	}
-
 	c.JSON(http.StatusCreated, scaffold.CreateProjectResponse{
 		RepoURL: repoInfo.HTMLURL,
 		Status:  "Project created — platform review PR opened",
 		AppName: req.AppName,
 		Team:    req.Team,
 	})
-}
-
-// writeVaultSecrets writes initial env vars to Vault if enabled and provided.
-// Returns nil if vault is not configured, not enabled, or no env vars supplied.
-func (h *ScaffoldHandler) writeVaultSecrets(ctx context.Context, req *scaffold.CreateProjectRequest) error {
-	if !req.VaultSecrets || len(req.VaultEnvVars) == 0 || h.vaultClient == nil {
-		return nil
-	}
-
-	secretData := make(map[string]string, len(req.VaultEnvVars))
-	for _, kv := range req.VaultEnvVars {
-		if kv.Key != "" {
-			secretData[kv.Key] = kv.Value
-		}
-	}
-	if len(secretData) == 0 {
-		return nil
-	}
-
-	vaultPath := fmt.Sprintf("%s/%s/env", req.Team, req.AppName)
-	if err := h.vaultClient.WriteSecret(ctx, vaultPath, secretData); err != nil {
-		return fmt.Errorf("vault write: %s", err)
-	}
-	log.Printf("[scaffold] wrote %d secrets to vault: %s", len(secretData), vaultPath)
-	return nil
 }
 
 // UpdateSecrets writes (creates or replaces) vault secrets for an existing
@@ -686,9 +630,10 @@ func (h *ScaffoldHandler) writeVaultSecrets(ctx context.Context, req *scaffold.C
 // @Router       /api/v1/scaffold/secrets [put]
 func (h *ScaffoldHandler) UpdateSecrets(c *gin.Context) {
 	var req struct {
-		Team    string           `json:"team" binding:"required"`
-		AppName string           `json:"appName" binding:"required"`
-		EnvVars []scaffold.KeyValue `json:"envVars" binding:"required"`
+		Team      string              `json:"team" binding:"required"`
+		AppName   string              `json:"appName" binding:"required"`
+		TargetEnv string              `json:"targetEnv"` // "dev" | "staging" | "production"; defaults to "dev"
+		EnvVars   []scaffold.KeyValue `json:"envVars"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -702,6 +647,11 @@ func (h *ScaffoldHandler) UpdateSecrets(c *gin.Context) {
 	}
 	if !auth.MemberOfTeam(session.Groups, req.Team) {
 		c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("you are not a member of %q", req.Team)})
+		return
+	}
+
+	if len(req.EnvVars) == 0 {
+		c.JSON(http.StatusOK, gin.H{"written": 0})
 		return
 	}
 
@@ -738,7 +688,11 @@ func (h *ScaffoldHandler) UpdateSecrets(c *gin.Context) {
 		return
 	}
 
-	vaultPath := fmt.Sprintf("%s/%s/env", req.Team, req.AppName)
+	targetEnv := req.TargetEnv
+	if targetEnv == "" {
+		targetEnv = "dev"
+	}
+	vaultPath := fmt.Sprintf("%s/%s/%s/env", req.Team, req.AppName, targetEnv)
 	if err := h.vaultClient.WriteSecret(c.Request.Context(), vaultPath, secretData); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("vault write: %s", err)})
 		return
@@ -867,7 +821,10 @@ func (h *ScaffoldHandler) UpdateProjectConfig(c *gin.Context) {
 		return
 	}
 
-	// Build XTenantApp from the update request by converting to a CreateProjectRequest.
+	// Build XTenantApp base from the update request.
+	// Only platform feature toggles and env-agnostic config are updated here.
+	// Env-specific values (replicas, resources, ingress host) live in overlay
+	// patches and are managed via the Promote flow.
 	createReq := &scaffold.CreateProjectRequest{
 		AppName:    appName,
 		Team:       team,
@@ -875,19 +832,12 @@ func (h *ScaffoldHandler) UpdateProjectConfig(c *gin.Context) {
 		AppFlavor:  req.AppFlavor,
 		Namespace:     req.Namespace,
 		ContainerPort: req.ContainerPort,
-		Replicas:      req.Replicas,
 		Reloader:      req.Reloader,
 		VaultSecrets:    req.VaultSecrets,
 		DatabaseSecrets: req.DatabaseSecrets,
-		CertManager:     req.CertManager,
-		CertIssuer:      req.CertIssuer,
-		SSOAuth:         req.SSOAuth,
+		CertManager: req.CertManager,
+		SSOAuth:     req.SSOAuth,
 		IngressEnabled:  req.IngressEnabled,
-		IngressHost:     req.IngressHost,
-		ResourcesCPUReq: req.ResourcesCPUReq,
-		ResourcesCPULim: req.ResourcesCPULim,
-		ResourcesMemReq: req.ResourcesMemReq,
-		ResourcesMemLim: req.ResourcesMemLim,
 		LivenessPath:    req.LivenessPath,
 		ReadinessPath:   req.ReadinessPath,
 		RolloutType:     req.RolloutType,
@@ -908,33 +858,23 @@ func (h *ScaffoldHandler) UpdateProjectConfig(c *gin.Context) {
 		return
 	}
 
-	patch := scaffold.NewEnvPatch(createReq, app.Metadata.Name)
-	patchYAML, err := yaml.Marshal(patch)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "marshal env patch: " + err.Error()})
-		return
-	}
-
-	// Local dev mode.
+	// Local dev mode — only write the base manifest.
 	if h.cfg.ScaffoldLocalDir != "" {
 		basePath := filepath.Join(h.cfg.ScaffoldLocalDir, "_output", team, appName, "base", "xtenant-app.yaml")
-		patchPath := filepath.Join(h.cfg.ScaffoldLocalDir, "_output", team, appName, "overlays", "dev", "patch-xtenant-app.yaml")
-		for _, p := range []struct{ path string; data []byte }{{basePath, appYAML}, {patchPath, patchYAML}} {
-			if err := os.MkdirAll(filepath.Dir(p.path), 0o755); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "mkdir: " + err.Error()})
-				return
-			}
-			if err := os.WriteFile(p.path, p.data, 0o644); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "write: " + err.Error()})
-				return
-			}
+		if err := os.MkdirAll(filepath.Dir(basePath), 0o755); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "mkdir: " + err.Error()})
+			return
+		}
+		if err := os.WriteFile(basePath, appYAML, 0o644); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "write: " + err.Error()})
+			return
 		}
 		log.Printf("[scaffold] config updated: %s/%s", team, appName)
 		c.JSON(http.StatusOK, gin.H{"updated": true})
 		return
 	}
 
-	// Gitea mode — commit base + overlay patch together via PR.
+	// Gitea mode — commit base directly to main (dev iteration; no PR review needed for base config).
 	if h.giteaClient == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Gitea not configured"})
 		return
@@ -944,38 +884,19 @@ func (h *ScaffoldHandler) UpdateProjectConfig(c *gin.Context) {
 	gitopsOwner := h.cfg.GiteaCatalogOwner
 	gitopsRepo := h.cfg.GiteaCatalogRepo
 
-	branchName := fmt.Sprintf("config/%s/%s-%d", team, appName, time.Now().Unix())
-	if err := h.giteaClient.CreateBranch(ctx, gitopsOwner, gitopsRepo, branchName, "main"); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "create branch: " + err.Error()})
-		return
-	}
-
-	commitMsg := fmt.Sprintf("chore(config): update %s/%s XTenantApp", team, appName)
+	commitMsg := fmt.Sprintf("chore(config): update %s/%s XTenantApp base", team, appName)
 	configFiles := map[string][]byte{
-		fmt.Sprintf("tenants-apps/%s/%s/base/xtenant-app.yaml", team, appName):                   appYAML,
-		fmt.Sprintf("tenants-apps/%s/%s/overlays/dev/patch-xtenant-app.yaml", team, appName): patchYAML,
+		fmt.Sprintf("tenants-apps/%s/%s/base/xtenant-app.yaml", team, appName): appYAML,
 	}
-	if err := h.giteaClient.CommitFiles(ctx, gitopsOwner, gitopsRepo, branchName, commitMsg, configFiles); err != nil {
+	if err := h.giteaClient.CommitFiles(ctx, gitopsOwner, gitopsRepo, "main", commitMsg, configFiles); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "commit: " + err.Error()})
 		return
 	}
 
-	prTitle := fmt.Sprintf("[Config] Update %s/%s", team, appName)
-	prBody := fmt.Sprintf("Updated XTenantApp configuration for `%s/%s` via WxOps Portal.", team, appName)
-	cfgLabelID := h.ensurePortalLabel(ctx)
-	if cfgLabelID > 0 {
-		_, err = h.giteaClient.CreatePullRequest(ctx, gitopsOwner, gitopsRepo, prTitle, prBody, branchName, "main", cfgLabelID)
-	} else {
-		_, err = h.giteaClient.CreatePullRequest(ctx, gitopsOwner, gitopsRepo, prTitle, prBody, branchName, "main")
-	}
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "create PR: " + err.Error()})
-		return
-	}
-
+	log.Printf("[scaffold] config committed to main: %s/%s by %s", team, appName, session.Username)
 	c.JSON(http.StatusOK, gin.H{
 		"updated": true,
-		"status":  "Config update PR opened for platform review",
+		"status":  "Config saved to main",
 	})
 }
 
@@ -1008,15 +929,11 @@ func buildPRBody(req *scaffold.CreateProjectRequest, repoURL string) string {
 	if req.DatabaseSecrets {
 		fmt.Fprintf(&b, "- `%s/external-secret-db.yaml` — ExternalSecret (db creds)\n", baseDir)
 	}
-	overlayDir := fmt.Sprintf("tenants-apps/%s/%s/overlays/dev", req.Team, req.AppName)
-	fmt.Fprintf(&b, "- `%s/kustomization.yaml` — Dev environment overlay\n", overlayDir)
-
-	b.WriteString("\n### Catalog (separate PR)\n\n")
-	b.WriteString("Catalog entities are in a separate PR so the project is visible in the portal before this infrastructure PR is approved.\n")
+	b.WriteString("\n### Catalog (separate commit)\n\n")
+	b.WriteString("Catalog entities are committed directly to main so the project is visible in the portal immediately.\n")
 
 	b.WriteString("\n### After merge\n\n")
-	b.WriteString("ArgoCD will pick up `overlays/dev/` and deploy to the dev environment. ")
-	b.WriteString("The catalog entity lifecycle will transition from `experimental` to `development`.\n")
+	b.WriteString("The Kustomize base will be in place. Use the Promotion panel in the portal to create the dev overlay and promote the lifecycle to `development`.\n")
 	b.WriteString("\n---\n*Created via WxOps Portal*\n")
 	return b.String()
 }

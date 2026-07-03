@@ -47,6 +47,21 @@ function compareSemver(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+type Env = "dev" | "staging" | "production";
+
+const ENV_META: Record<Env, { label: string; dot: string; text: string; bg: string; border: string }> = {
+  dev:        { label: "dev",     dot: "bg-blue-500",  text: "text-blue-700 dark:text-blue-400",   bg: "bg-blue-50 dark:bg-blue-950/20",   border: "border-l-blue-400" },
+  staging:    { label: "staging", dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/20", border: "border-l-amber-400" },
+  production: { label: "prod",    dot: "bg-green-500", text: "text-green-700 dark:text-green-400", bg: "bg-green-50 dark:bg-green-950/20", border: "border-l-green-400" },
+};
+
+function tagEnv(version: string): Env | null {
+  if (version.startsWith("dev-")) return "dev";
+  if (version.startsWith("v") && version.includes("-rc")) return "staging";
+  if (version.startsWith("v")) return "production";
+  return null;
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
@@ -114,7 +129,11 @@ export function ReleasesCard({ entityKind, entityName }: ReleasesCardProps) {
     );
   }
 
-  if (releases.length === 0 && images.length === 0) {
+  const sortedImages = images
+    .filter((img) => !img.version.toLowerCase().startsWith("sha256"))
+    .sort((a, b) => compareSemver(b.version, a.version));
+
+  if (releases.length === 0 && sortedImages.length === 0) {
     return (
       <Card>
         <CardHeader className="pb-3">
@@ -131,7 +150,6 @@ export function ReleasesCard({ entityKind, entityName }: ReleasesCardProps) {
 
   const latest = releases[0];
   const olderReleases = releases.slice(1);
-  const sortedImages = [...images].sort((a, b) => compareSemver(b.version, a.version));
   const previewImages = sortedImages.slice(0, 1);
   const restImages = sortedImages.slice(1);
 
@@ -142,7 +160,7 @@ export function ReleasesCard({ entityKind, entityName }: ReleasesCardProps) {
           <Tag className="h-3.5 w-3.5" /> Releases
           <span className="ml-auto text-[10px] font-normal">
             {releases.length} release{releases.length !== 1 ? "s" : ""}
-            {images.length > 0 && ` · ${images.length} image${images.length !== 1 ? "s" : ""}`}
+            {sortedImages.length > 0 && ` · ${sortedImages.length} image${sortedImages.length !== 1 ? "s" : ""}`}
           </span>
         </CardTitle>
       </CardHeader>
@@ -214,32 +232,32 @@ export function ReleasesCard({ entityKind, entityName }: ReleasesCardProps) {
               <Package className="h-3.5 w-3.5 text-muted-foreground" />
               <p className="text-xs font-medium text-muted-foreground">Container Images</p>
             </div>
-            {previewImages.map((img, i) => (
-              <div key={`${img.name}-${img.version}-${i}`} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                <span className="font-mono text-xs text-foreground truncate flex-1">
-                  {img.name}:{img.version}
-                </span>
-                <CopyButton text={`docker pull ${img.name}:${img.version}`} />
-                {img.html_url && (
-                  <a href={img.html_url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-            ))}
-            {showAllImages && restImages.map((img, i) => (
-              <div key={`${img.name}-${img.version}-${i}`} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                <span className="font-mono text-xs text-foreground truncate flex-1">
-                  {img.name}:{img.version}
-                </span>
-                <CopyButton text={`docker pull ${img.name}:${img.version}`} />
-                {img.html_url && (
-                  <a href={img.html_url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-            ))}
+            {[...previewImages, ...(showAllImages ? restImages : [])].map((img, i) => {
+              const env = tagEnv(img.version);
+              const meta = env ? ENV_META[env] : null;
+              return (
+                <div
+                  key={`${img.name}-${img.version}-${i}`}
+                  className={`flex items-center gap-2 rounded-md border border-border border-l-2 px-2.5 py-1.5 ${meta ? `${meta.border} ${meta.bg}` : ""}`}
+                >
+                  {meta && (
+                    <span className={`shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${meta.text}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                      {meta.label}
+                    </span>
+                  )}
+                  <span className="font-mono text-xs text-foreground truncate flex-1">
+                    {img.name}:{img.version}
+                  </span>
+                  <CopyButton text={`docker pull ${img.name}:${img.version}`} />
+                  {img.html_url && (
+                    <a href={img.html_url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              );
+            })}
             {restImages.length > 0 && (
               <button
                 onClick={() => setShowAllImages(!showAllImages)}

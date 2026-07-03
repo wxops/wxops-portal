@@ -43,9 +43,6 @@ function buildSteps(state: WizardState): StepDef[] {
     { id: 4, label: "Preparing GitOps config", description: "Committing XTenantApp, ExternalSecrets, and catalog entities" },
     { id: 5, label: "Opening review PR", description: "Creating pull request for platform review" },
   ];
-  if (state.vaultSecrets && state.vaultEnvVars.some((v) => v.key)) {
-    steps.push({ id: 6, label: "Writing secrets", description: "Storing environment variables in Vault" });
-  }
   return steps;
 }
 
@@ -56,7 +53,6 @@ const STEP_MIN_DISPLAY: Record<number, number> = {
   3: 5000,  // Template fetch + substitution + push — heaviest step
   4: 3000,  // GitOps branch + commit manifests
   5: 2000,  // Open PR
-  6: 1500,  // Vault write
 };
 
 function buildSubmitBody(state: WizardState): Record<string, unknown> {
@@ -69,13 +65,12 @@ function buildSubmitBody(state: WizardState): Record<string, unknown> {
     packageManager: state.packageManager || undefined,
     appFlavor: state.appFlavor,
     containerPort: state.containerPort ?? undefined,
-    replicas: state.replicas ?? undefined,
     domain: state.domain || undefined,
     reloader: state.reloader,
     vaultSecrets: state.vaultSecrets,
     databaseSecrets: state.databaseSecrets,
     certManager: state.certManager,
-    certClusterIssuer: state.certManager ? state.certClusterIssuer : undefined,
+    // certClusterIssuer omitted — set per-env in the Promote flow.
     ssoAuth: state.ssoAuth,
     apiEnabled: state.apiEnabled,
     apiType: state.apiEnabled ? state.apiType : undefined,
@@ -83,30 +78,12 @@ function buildSubmitBody(state: WizardState): Record<string, unknown> {
     monitoringEnabled: state.monitoringEnabled,
     metricsPath: state.monitoringEnabled ? state.metricsPath : undefined,
     ingressEnabled: state.ingressEnabled,
-    ingressHost: state.ingressHost || undefined,
-    resourcesCpuReq: state.resourcesCpuReq || undefined,
-    resourcesCpuLim: state.resourcesCpuLim || undefined,
-    resourcesMemReq: state.resourcesMemReq || undefined,
-    resourcesMemLim: state.resourcesMemLim || undefined,
     livenessPath: state.livenessPath || undefined,
     readinessPath: state.readinessPath || undefined,
     rolloutType: state.rolloutType || undefined,
     devSpaceEnabled: state.devSpaceEnabled,
-    vaultEnvVars: state.vaultEnvVars.filter((p) => p.key),
-    dbName: state.dbName || undefined,
+    // DB: only extensions are project-level; name/tier/cluster go in the Promote flow.
     dbExtensions: state.dbExtensions.length > 0 ? state.dbExtensions : undefined,
-    dbTier: state.dbTier || undefined,
-    dbEnvironment: state.databaseSecrets ? state.dbEnvironment || "dev" : undefined,
-    dbClusterRef: state.databaseSecrets && state.dbTier === "shared" && state.dbClusterRef ? state.dbClusterRef : undefined,
-    dbClusterNamespace: state.databaseSecrets && state.dbTier === "shared" && state.dbClusterNamespace ? state.dbClusterNamespace : undefined,
-    dbReclaimPolicy: state.databaseSecrets && state.dbReclaimPolicy !== "retain" ? state.dbReclaimPolicy : undefined,
-    dedicatedCluster: state.databaseSecrets && state.dbTier === "dedicated" ? {
-      instances: state.dbDedicatedInstances || 1,
-      storageSize: state.dbDedicatedStorageSize || "1Gi",
-      postgresVersion: state.dbDedicatedPostgresVersion || 16,
-      enablePooler: state.dbDedicatedEnablePooler,
-      namespace: state.dbDedicatedNamespace || undefined,
-    } : undefined,
     envVars: state.envVars.filter((p) => p.key),
     podAnnotations: state.podAnnotations.filter((p) => p.key),
     extraLabels: state.extraLabels.filter((p) => p.key),

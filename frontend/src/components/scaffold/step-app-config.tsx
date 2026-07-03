@@ -13,7 +13,6 @@ import {
   Activity,
 } from "lucide-react";
 import type { WizardState } from "./project-wizard";
-import { dbSecretTarget } from "./xtenant-app-builder";
 import { KeyValueEditor } from "./key-value-editor";
 import type { KVPair } from "./key-value-editor";
 
@@ -34,21 +33,6 @@ const DB_EXTENSIONS = [
   { value: "pg_stat_statements", label: "pg_stat_statements", description: "Track query execution statistics for performance tuning" },
 ];
 
-const DB_TIERS = [
-  { value: "shared", label: "Shared", description: "Auto-assigns to the least-loaded shared cluster matching the environment" },
-  { value: "dedicated", label: "Dedicated", description: "Provisions a new dedicated CNPG cluster (1 cluster = 1 db)" },
-];
-
-const DB_ENVIRONMENTS = [
-  { value: "dev", label: "Development" },
-  { value: "staging", label: "Staging" },
-  { value: "prod", label: "Production" },
-];
-
-const DB_RECLAIM_POLICIES = [
-  { value: "retain", label: "Retain", description: "Database and role survive XR deletion — must be cleaned up manually" },
-  { value: "delete", label: "Delete", description: "CNPG drops the database on XR deletion — ordered cleanup with ClusterUsage" },
-];
 
 const APP_FLAVORS = [
   { value: "webapp", label: "Web App", description: "Standard web application (API + frontend)" },
@@ -130,38 +114,20 @@ function EssentialsTab({
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="containerPort" className="block text-sm font-medium mb-1.5">
-            Container Port
-          </label>
-          <input
-            id="containerPort"
-            type="number"
-            value={state.containerPort ?? ""}
-            onChange={(e) =>
-              onChange({ containerPort: e.target.value ? Number(e.target.value) : null })
-            }
-            placeholder="8080"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-          />
-        </div>
-        <div>
-          <label htmlFor="replicas" className="block text-sm font-medium mb-1.5">
-            Replicas
-          </label>
-          <input
-            id="replicas"
-            type="number"
-            min={0}
-            value={state.replicas ?? ""}
-            onChange={(e) =>
-              onChange({ replicas: e.target.value ? Number(e.target.value) : null })
-            }
-            placeholder="1"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-          />
-        </div>
+      <div>
+        <label htmlFor="containerPort" className="block text-sm font-medium mb-1.5">
+          Container Port
+        </label>
+        <input
+          id="containerPort"
+          type="number"
+          value={state.containerPort ?? ""}
+          onChange={(e) =>
+            onChange({ containerPort: e.target.value ? Number(e.target.value) : null })
+          }
+          placeholder="8080"
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
+        />
       </div>
 
       <div>
@@ -180,52 +146,6 @@ function EssentialsTab({
           Business domain that groups related systems. A System entity is created automatically with the app name.
         </p>
       </div>
-
-      {/* ── Resources (from template defaults) ──────────────────── */}
-      <fieldset className="space-y-3 pt-2 border-t border-border">
-        <legend className="text-sm font-medium">Resources</legend>
-        <p className="text-[11px] text-muted-foreground">
-          Pre-filled from the template defaults. Adjust for your workload.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <ResourceInput
-            label="CPU Request"
-            hint="e.g. 100m, 250m, 0.5, 1"
-            value={state.resourcesCpuReq}
-            placeholder="100m"
-            onChange={(v) => onChange({ resourcesCpuReq: v })}
-            validate={isValidCPU}
-            errorMsg="Use millicores (e.g. 100m) or cores (e.g. 0.5)"
-          />
-          <ResourceInput
-            label="CPU Limit"
-            hint="e.g. 500m, 1, 2"
-            value={state.resourcesCpuLim}
-            placeholder="500m"
-            onChange={(v) => onChange({ resourcesCpuLim: v })}
-            validate={isValidCPU}
-            errorMsg="Use millicores (e.g. 500m) or cores (e.g. 1)"
-          />
-          <ResourceInput
-            label="Memory Request"
-            hint="e.g. 128Mi, 256Mi, 1Gi"
-            value={state.resourcesMemReq}
-            placeholder="128Mi"
-            onChange={(v) => onChange({ resourcesMemReq: v })}
-            validate={isValidMemory}
-            errorMsg="Use Ki, Mi, or Gi (e.g. 128Mi, 1Gi)"
-          />
-          <ResourceInput
-            label="Memory Limit"
-            hint="e.g. 256Mi, 512Mi, 1Gi, 2Gi"
-            value={state.resourcesMemLim}
-            placeholder="512Mi"
-            onChange={(v) => onChange({ resourcesMemLim: v })}
-            validate={isValidMemory}
-            errorMsg="Use Ki, Mi, or Gi (e.g. 512Mi, 1Gi)"
-          />
-        </div>
-      </fieldset>
 
       {/* ── Health Probes (from template defaults) ────────────────── */}
       <fieldset className="space-y-3">
@@ -320,224 +240,33 @@ function EssentialsTab({
         </div>
 
         {/* Conditional inputs for toggles that need extra config */}
-        {state.ingressEnabled && (
-          <div className="mt-3">
-            <label htmlFor="ingressHost" className="block text-xs font-medium mb-1 text-muted-foreground">
-              Hostname <span className="text-destructive">*</span>
-            </label>
-            <input
-              id="ingressHost"
-              type="text"
-              value={state.ingressHost}
-              onChange={(e) => onChange({ ingressHost: e.target.value })}
-              placeholder={`${state.appName}.${state.team}.example.com`}
-              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-            />
-          </div>
-        )}
         {state.certManager && (
-          <div className="mt-3">
-            <label htmlFor="certClusterIssuer" className="block text-xs font-medium mb-1 text-muted-foreground">
-              ClusterIssuer
-            </label>
-            <input
-              id="certClusterIssuer"
-              type="text"
-              value={state.certClusterIssuer}
-              onChange={(e) => onChange({ certClusterIssuer: e.target.value })}
-              placeholder="letsencrypt-prod"
-              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-            />
+          <div className="mt-3 rounded-lg border border-border/50 bg-muted/30 px-4 py-3 space-y-1">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">TLS / ClusterIssuer</p>
+            <p className="text-[11px] text-muted-foreground">
+              ClusterIssuer is set per environment when you create overlays via the Promote flow.
+            </p>
           </div>
         )}
 
-        {/* Vault env vars — shown when Vault Secrets is on */}
+        {/* Vault info — shown when Vault Secrets is on */}
         {state.vaultSecrets && (
-          <div className="mt-4 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              Vault Secrets → <code className="text-foreground">{state.team}/{state.appName}/env</code>
+          <div className="mt-4 rounded-lg border border-border/50 bg-muted/30 px-4 py-3 space-y-1">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Vault secret path</p>
+            <p className="text-xs font-mono">{state.team || "<team>"}/{state.appName || "<app>"}/&#123;env&#125;/env</p>
+            <p className="text-[11px] text-muted-foreground">
+              Vault secrets are written per environment when you create overlays via the Promote flow — not at scaffold time.
             </p>
-            <p className="text-xs text-muted-foreground">
-              These will be stored in Vault and synced to Secret <code>{state.appName}-env</code> via ExternalSecret.
-            </p>
-            <KeyValueEditor
-              pairs={state.vaultEnvVars as KVPair[]}
-              onChange={(pairs) => onChange({ vaultEnvVars: pairs })}
-              keyPlaceholder="SECRET_KEY"
-              valuePlaceholder="secret-value"
-              allowImport
-              secret
-            />
           </div>
         )}
 
         {/* Database config — shown when Database Secrets is on */}
         {state.databaseSecrets && (
           <div className="mt-4 space-y-3">
-            <p className="text-xs font-medium text-muted-foreground">
-              Database → XTenantDatabase · Vault: <code>{state.team}/databases/{state.dbName || `${state.appName}-db`}/connection-creds</code> → Secret: <code>{dbSecretTarget(state.appName, state.dbName)}</code>
-            </p>
-
-            {/* Core: dbName, tier, environment */}
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Database Name</label>
-                <input
-                  type="text"
-                  value={state.dbName}
-                  onChange={(e) => onChange({ dbName: e.target.value })}
-                  placeholder={`${state.appName}-db`}
-                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Tier</label>
-                <select
-                  value={state.dbTier}
-                  onChange={(e) => onChange({ dbTier: e.target.value })}
-                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                >
-                  {DB_TIERS.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[10px] text-muted-foreground leading-tight">
-                  {DB_TIERS.find((t) => t.value === state.dbTier)?.description}
-                </p>
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Environment</label>
-                <select
-                  value={state.dbEnvironment}
-                  onChange={(e) => onChange({ dbEnvironment: e.target.value })}
-                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                >
-                  {DB_ENVIRONMENTS.map((e) => (
-                    <option key={e.value} value={e.value}>{e.label}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[10px] text-muted-foreground leading-tight">
-                  Pool filtered by environment — must match cluster&apos;s environment
-                </p>
-              </div>
-            </div>
-
-            {/* Shared tier: optional cluster override */}
-            {state.dbTier === "shared" && isPlatformTeam && (
-              <div className="rounded-md border border-dashed border-border p-3 space-y-2">
-                <p className="text-[10px] font-medium text-muted-foreground">
-                  Cluster Override <span className="font-normal">(platform-team only — bypasses tier logic)</span>
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-[10px] text-muted-foreground mb-1">clusterRef</label>
-                    <input
-                      type="text"
-                      value={state.dbClusterRef}
-                      onChange={(e) => onChange({ dbClusterRef: e.target.value })}
-                      placeholder="e.g. cluster-a"
-                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-muted-foreground mb-1">clusterNamespace</label>
-                    <input
-                      type="text"
-                      value={state.dbClusterNamespace}
-                      onChange={(e) => onChange({ dbClusterNamespace: e.target.value })}
-                      placeholder="cnpg-system"
-                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Dedicated tier: cluster configuration */}
-            {state.dbTier === "dedicated" && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                  Dedicated Cluster Configuration
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-[10px] text-muted-foreground mb-1">Instances</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={5}
-                      value={state.dbDedicatedInstances}
-                      onChange={(e) => onChange({ dbDedicatedInstances: Number(e.target.value) || 1 })}
-                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                    />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">CNPG replicas (1 = standalone, 2+ = HA)</p>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-muted-foreground mb-1">Storage Size</label>
-                    <input
-                      type="text"
-                      value={state.dbDedicatedStorageSize}
-                      onChange={(e) => onChange({ dbDedicatedStorageSize: e.target.value })}
-                      placeholder="1Gi"
-                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                    />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">e.g. 1Gi, 5Gi, 10Gi</p>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-muted-foreground mb-1">PostgreSQL Version</label>
-                    <select
-                      value={state.dbDedicatedPostgresVersion}
-                      onChange={(e) => onChange({ dbDedicatedPostgresVersion: Number(e.target.value) })}
-                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                    >
-                      <option value={17}>17</option>
-                      <option value={16}>16</option>
-                      <option value={15}>15</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2 self-end pb-1.5">
-                    <label className="flex items-center gap-2 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={state.dbDedicatedEnablePooler}
-                        onChange={(e) => onChange({ dbDedicatedEnablePooler: e.target.checked })}
-                        className="rounded border-border accent-wxops-purple"
-                      />
-                      Enable PgBouncer Pooler
-                    </label>
-                  </div>
-                </div>
-                {isPlatformTeam && (
-                  <div>
-                    <label className="block text-[10px] text-muted-foreground mb-1">
-                      Namespace <span className="font-normal">(optional — defaults to cnpg-system)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={state.dbDedicatedNamespace}
-                      onChange={(e) => onChange({ dbDedicatedNamespace: e.target.value })}
-                      placeholder="cnpg-system"
-                      className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Reclaim Policy */}
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Reclaim Policy</label>
-              <select
-                value={state.dbReclaimPolicy}
-                onChange={(e) => onChange({ dbReclaimPolicy: e.target.value })}
-                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-              >
-                {DB_RECLAIM_POLICIES.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
-                ))}
-              </select>
-              <p className="mt-1 text-[10px] text-muted-foreground leading-tight">
-                {DB_RECLAIM_POLICIES.find((p) => p.value === state.dbReclaimPolicy)?.description}
+            <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3 space-y-1">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Database</p>
+              <p className="text-[11px] text-muted-foreground">
+                Name, tier, environment, and cluster are configured per environment when you create overlays via the Promote flow.
               </p>
             </div>
 
@@ -648,11 +377,7 @@ function EssentialsTab({
                   type="text"
                   value={state.openapiPath}
                   onChange={(e) => onChange({ openapiPath: e.target.value })}
-                  placeholder={
-                    state.ingressEnabled && state.ingressHost
-                      ? `https://${state.ingressHost}/swagger/doc.json`
-                      : `${state.team}/apis/${state.appName}-openapi.json`
-                  }
+                  placeholder={`${state.team}/apis/${state.appName}-openapi.json`}
                   className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
                 />
                 <p className="mt-1 text-[10px] text-muted-foreground">
@@ -745,58 +470,10 @@ export function isValidMemory(v: string): boolean {
   return /^\d+(\.\d+)?(Ki|Mi|Gi|Ti|k|M|G|T)?$/.test(v);
 }
 
-export function validateResources(state: {
-  resourcesCpuReq: string;
-  resourcesCpuLim: string;
-  resourcesMemReq: string;
-  resourcesMemLim: string;
-}): string | null {
-  if (!isValidCPU(state.resourcesCpuReq)) return "Invalid CPU Request format";
-  if (!isValidCPU(state.resourcesCpuLim)) return "Invalid CPU Limit format";
-  if (!isValidMemory(state.resourcesMemReq)) return "Invalid Memory Request format";
-  if (!isValidMemory(state.resourcesMemLim)) return "Invalid Memory Limit format";
+// Resources (CPU/memory, replicas) are env-specific and configured per environment
+// via the Promote flow — not in the scaffold wizard. No validation needed here.
+export function validateResources(_state: unknown): string | null {
   return null;
-}
-
-function ResourceInput({
-  label,
-  hint,
-  value,
-  placeholder,
-  onChange,
-  validate,
-  errorMsg,
-}: {
-  label: string;
-  hint: string;
-  value: string;
-  placeholder: string;
-  onChange: (v: string) => void;
-  validate: (v: string) => boolean;
-  errorMsg: string;
-}) {
-  const invalid = value !== "" && !validate(value);
-  return (
-    <div>
-      <label className="block text-xs text-muted-foreground mb-1">{label}</label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={`w-full rounded-md border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 ${
-          invalid
-            ? "border-red-400 focus:ring-red-400/50"
-            : "border-border focus:ring-wxops-purple/50"
-        }`}
-      />
-      {invalid ? (
-        <p className="text-[10px] text-red-500 mt-0.5">{errorMsg}</p>
-      ) : (
-        <p className="text-[10px] text-muted-foreground mt-0.5">{hint}</p>
-      )}
-    </div>
-  );
 }
 
 /* ── Advanced Tab ──────────────────────────────────────────────────────────── */

@@ -25,12 +25,11 @@ const LINK_TYPES = [
   { value: "gitea", label: "Gitea", description: "Link to Gitea repository" },
 ];
 
-const LIFECYCLES = [
-  { value: "experimental", label: "Experimental", description: "Newly created, not yet validated or deployed" },
-  { value: "development", label: "Development", description: "Actively being built and tested in dev/staging" },
-  { value: "production", label: "Production", description: "Running in production, serving real traffic" },
-  { value: "deprecated", label: "Deprecated", description: "Being decommissioned, avoid new dependencies" },
-];
+
+function refName(ref: string): string {
+  const afterColon = ref.includes(":") ? ref.split(":")[1] : ref;
+  return afterColon.includes("/") ? afterColon.split("/").pop()! : afterColon;
+}
 
 export function EntityEditPanel({
   entity,
@@ -47,7 +46,6 @@ export function EntityEditPanel({
     entity.metadata.description ?? "",
   );
   const [tags, setTags] = useState((entity.metadata.tags ?? []).join(", "));
-  const [lifecycle, setLifecycle] = useState(entity.spec.lifecycle ?? "");
   const [links, setLinks] = useState<EntityLink[]>([
     ...(entity.metadata.links ?? []),
   ]);
@@ -66,9 +64,12 @@ export function EntityEditPanel({
   // Doc
   const [draft, setDraft] = useState(entity.spec.draft ?? false);
   const [contentUrl, setContentUrl] = useState(entity.spec.contentUrl ?? "");
+  const [docStatus, setDocStatus] = useState(entity.spec.docStatus ?? "");
+  const [author, setAuthor] = useState(entity.spec.author ? refName(entity.spec.author) : "");
 
-  // Relationships
-  const [system, setSystem] = useState(entity.spec.system ?? "");
+  // Relationships — normalize stored refs (e.g. "group:rocket-team") to bare names
+  const [owner, setOwner] = useState(entity.spec.owner ? refName(entity.spec.owner) : "");
+  const [system, setSystem] = useState(entity.spec.system ? refName(entity.spec.system) : "");
   const [dependsOn, setDependsOn] = useState<string[]>([
     ...(entity.spec.dependsOn ?? []),
   ]);
@@ -77,6 +78,9 @@ export function EntityEditPanel({
   ]);
   const [consumesApis, setConsumesApis] = useState<string[]>([
     ...(entity.spec.consumesApis ?? []),
+  ]);
+  const [relatedTo, setRelatedTo] = useState<string[]>([
+    ...(entity.spec.relatedTo ?? []),
   ]);
 
   useEffect(() => {
@@ -119,14 +123,17 @@ export function EntityEditPanel({
       },
       spec: {
         ...entity.spec,
-        lifecycle: lifecycle || undefined,
+        owner: owner || undefined,
         system: system || undefined,
         domain: entity.kind === "System" ? (domain || undefined) : entity.spec.domain,
         dependsOn: dependsOn.filter(Boolean),
         providesApis: providesApis.filter(Boolean),
         consumesApis: consumesApis.filter(Boolean),
+        relatedTo: entity.kind === "Doc" ? relatedTo.filter(Boolean) : entity.spec.relatedTo,
         draft: entity.kind === "Doc" ? draft : undefined,
         contentUrl: entity.kind === "Doc" ? (contentUrl || undefined) : entity.spec.contentUrl,
+        docStatus: entity.kind === "Doc" ? (docStatus || undefined) : entity.spec.docStatus,
+        author: entity.kind === "Doc" ? (author ? `user:${author}` : undefined) : entity.spec.author,
       },
     };
     if (!updated.spec.dependsOn?.length) delete updated.spec.dependsOn;
@@ -143,7 +150,7 @@ export function EntityEditPanel({
       return "# error generating preview";
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reviewing, title, description, tags, lifecycle, links, annotations, system, domain, dependsOn, providesApis, consumesApis, draft, contentUrl]);
+  }, [reviewing, title, description, tags, links, annotations, owner, system, domain, dependsOn, providesApis, consumesApis, relatedTo, draft, contentUrl, docStatus, author]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -174,9 +181,20 @@ export function EntityEditPanel({
     }
   };
 
-  const showRelationships = ["Component", "API", "Resource"].includes(
+  const showRelationships = ["Component", "API", "Resource", "Doc", "System"].includes(
     entity.kind,
   );
+  const groupNames = useMemo(() => {
+    return allEntities
+      .filter((e) => e.kind === "Group" && !e.metadata.name.includes(":"))
+      .map((e) => e.metadata.name);
+  }, [allEntities]);
+
+  const userNames = useMemo(() => {
+    return allEntities
+      .filter((e) => e.kind === "User")
+      .map((e) => e.metadata.name);
+  }, [allEntities]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -247,24 +265,6 @@ export function EntityEditPanel({
             />
           </Field>
 
-          {entity.spec.lifecycle !== undefined && (
-            <Field label="Lifecycle">
-              <select
-                value={lifecycle}
-                onChange={(e) => setLifecycle(e.target.value)}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-wxops-purple/50"
-              >
-                <option value="">—</option>
-                {LIFECYCLES.map((l) => (
-                  <option key={l.value} value={l.value}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
-              <SelectHint items={LIFECYCLES} value={lifecycle} />
-            </Field>
-          )}
-
           {/* ── Domain (System only) ────────────────────────────── */}
           {entity.kind === "System" && (
             <Field label="Domain" hint="Business domain">
@@ -318,6 +318,45 @@ export function EntityEditPanel({
             </Field>
           )}
 
+          {/* ── Doc status (Doc only) ───────────────────────────── */}
+          {entity.kind === "Doc" && (
+            <Field label="Status">
+              <div className="grid grid-cols-3 gap-1.5">
+                {(["proposed", "under-review", "accepted", "deprecated", "superseded"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDocStatus(s)}
+                    className={cn(
+                      "rounded-md border px-2 py-1.5 text-xs font-medium transition-colors text-center",
+                      docStatus === s
+                        ? s === "accepted"    ? "border-green-400 bg-green-50 text-green-800 dark:border-green-600 dark:bg-green-900/20 dark:text-green-400"
+                        : s === "deprecated"  ? "border-gray-400 bg-gray-50 text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                        : s === "superseded"  ? "border-orange-400 bg-orange-50 text-orange-700 dark:border-orange-600 dark:bg-orange-900/20 dark:text-orange-400"
+                        : s === "under-review"? "border-blue-400 bg-blue-50 text-blue-800 dark:border-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                        :                       "border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-400"
+                        : "border-border text-muted-foreground hover:bg-muted/50",
+                    )}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+
+          {/* ── Author (Doc only) ────────────────────────────────── */}
+          {entity.kind === "Doc" && (
+            <Field label="Author">
+              <EntityRefSelect
+                value={author}
+                onChange={setAuthor}
+                options={userNames}
+                placeholder="Select an author..."
+              />
+            </Field>
+          )}
+
           {/* ── Content URL (Doc only) ───────────────────────────── */}
           {entity.kind === "Doc" && (
             <Field label="Content URL" hint="Path or URL to markdown source">
@@ -339,6 +378,18 @@ export function EntityEditPanel({
             <>
               <SectionHeading>Relationships</SectionHeading>
 
+              <Field label="Owner" hint="Owning team or user">
+                <EntityRefSelect
+                  value={owner}
+                  onChange={setOwner}
+                  options={groupNames}
+                  placeholder="Select a group..."
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground leading-tight">
+                  The team responsible for this entity. Must be a Group in the catalog.
+                </p>
+              </Field>
+
               <Field label="System">
                 <EntityRefSelect
                   value={system}
@@ -348,32 +399,47 @@ export function EntityEditPanel({
                 />
               </Field>
 
-              <RefArrayEditor
-                label="Depends On"
-                hint="Components and resources this entity depends on"
-                items={dependsOn}
-                onChange={setDependsOn}
-                suggestions={entityRefs}
-                filterKinds={["component", "resource"]}
-              />
+              {entity.kind === "Doc" && (
+                <RefArrayEditor
+                  label="Related To"
+                  hint="Components, resources, or APIs this document covers"
+                  items={relatedTo}
+                  onChange={setRelatedTo}
+                  suggestions={entityRefs}
+                  filterKinds={["component", "resource", "api"]}
+                />
+              )}
 
-              <RefArrayEditor
-                label="Provides APIs"
-                hint="APIs exposed by this entity"
-                items={providesApis}
-                onChange={setProvidesApis}
-                suggestions={entityRefs}
-                filterKinds={["api"]}
-              />
+              {["Component", "API", "Resource"].includes(entity.kind) && (
+                <>
+                  <RefArrayEditor
+                    label="Depends On"
+                    hint="Components and resources this entity depends on"
+                    items={dependsOn}
+                    onChange={setDependsOn}
+                    suggestions={entityRefs}
+                    filterKinds={["component", "resource"]}
+                  />
 
-              <RefArrayEditor
-                label="Consumes APIs"
-                hint="APIs consumed by this entity"
-                items={consumesApis}
-                onChange={setConsumesApis}
-                suggestions={entityRefs}
-                filterKinds={["api"]}
-              />
+                  <RefArrayEditor
+                    label="Provides APIs"
+                    hint="APIs exposed by this entity"
+                    items={providesApis}
+                    onChange={setProvidesApis}
+                    suggestions={entityRefs}
+                    filterKinds={["api"]}
+                  />
+
+                  <RefArrayEditor
+                    label="Consumes APIs"
+                    hint="APIs consumed by this entity"
+                    items={consumesApis}
+                    onChange={setConsumesApis}
+                    suggestions={entityRefs}
+                    filterKinds={["api"]}
+                  />
+                </>
+              )}
             </>
           )}
 
@@ -579,20 +645,6 @@ function Field({
       </label>
       {children}
     </div>
-  );
-}
-
-function SelectHint({
-  items,
-  value,
-}: {
-  items: Array<{ value: string; description: string }>;
-  value: string;
-}) {
-  const desc = items.find((i) => i.value === value)?.description;
-  if (!desc) return null;
-  return (
-    <p className="mt-1 text-[11px] text-muted-foreground leading-tight">{desc}</p>
   );
 }
 

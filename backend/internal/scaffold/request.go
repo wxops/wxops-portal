@@ -20,49 +20,35 @@ type CreateProjectRequest struct {
 	AppFlavor     string `json:"appFlavor"`
 	Namespace     string `json:"namespace"`
 	ContainerPort *int32 `json:"containerPort,omitempty"`
-	Replicas      *int32 `json:"replicas,omitempty"`
 
 	// Catalog — System is auto-created with name = appName
 	SystemName string `json:"systemName,omitempty"`
 	Domain     string `json:"domain,omitempty"`
 
-	// Platform toggles
-	Reloader        bool   `json:"reloader,omitempty"`
-	VaultSecrets    bool   `json:"vaultSecrets,omitempty"`
-	DatabaseSecrets bool   `json:"databaseSecrets,omitempty"`
-	CertManager     bool   `json:"certManager,omitempty"`
-	CertIssuer      string `json:"certClusterIssuer,omitempty"`
-	SSOAuth         bool   `json:"ssoAuth,omitempty"`
-	APIEnabled      bool   `json:"apiEnabled,omitempty"`
-	APIType         string `json:"apiType,omitempty"`     // openapi | asyncapi | grpc
-	OpenAPIPath     string `json:"openapiPath,omitempty"` // relative path or public URL to spec
-	MonitorEnabled  bool   `json:"monitoringEnabled,omitempty"`
-	MetricsPath     string `json:"metricsPath,omitempty"` // e.g. /metrics
+	// Platform feature toggles — these declare WHAT is enabled project-wide.
+	// HOW each feature is configured per environment is handled via the Promote flow.
+	Reloader        bool `json:"reloader,omitempty"`
+	VaultSecrets    bool `json:"vaultSecrets,omitempty"`
+	DatabaseSecrets bool `json:"databaseSecrets,omitempty"`
+	CertManager     bool `json:"certManager,omitempty"`
+	// CertIssuer intentionally absent — ClusterIssuer is set per-env in the Promote flow.
+	SSOAuth        bool `json:"ssoAuth,omitempty"`
+	APIEnabled     bool `json:"apiEnabled,omitempty"`
+	APIType        string `json:"apiType,omitempty"`     // openapi | asyncapi | grpc
+	OpenAPIPath    string `json:"openapiPath,omitempty"` // relative path or public URL to spec
+	MonitorEnabled bool   `json:"monitoringEnabled,omitempty"`
+	MetricsPath    string `json:"metricsPath,omitempty"` // e.g. /metrics
 
-	// Advanced
+	// Base config — env-agnostic settings that live in base/xtenant-app.yaml.
 	IngressEnabled  bool   `json:"ingressEnabled,omitempty"`
-	IngressHost     string `json:"ingressHost,omitempty"`
-	ResourcesCPUReq string `json:"resourcesCpuReq,omitempty"`
-	ResourcesCPULim string `json:"resourcesCpuLim,omitempty"`
-	ResourcesMemReq string `json:"resourcesMemReq,omitempty"`
-	ResourcesMemLim string `json:"resourcesMemLim,omitempty"`
 	LivenessPath    string `json:"livenessPath,omitempty"`
 	ReadinessPath   string `json:"readinessPath,omitempty"`
 	RolloutType     string `json:"rolloutType,omitempty"`
 	DevSpaceEnabled bool   `json:"devSpaceEnabled,omitempty"`
 
-	// Vault env vars (parsed from .env upload or manual entry)
-	VaultEnvVars []KeyValue `json:"vaultEnvVars,omitempty"`
-
-	// Database (XTenantDatabase)
-	DbName              string                    `json:"dbName,omitempty"`
-	DbExtensions        []string                  `json:"dbExtensions,omitempty"`
-	DbTier              string                    `json:"dbTier,omitempty"`
-	DbEnvironment       string                    `json:"dbEnvironment,omitempty"`
-	DbClusterRef        string                    `json:"dbClusterRef,omitempty"`
-	DbClusterNamespace  string                    `json:"dbClusterNamespace,omitempty"`
-	DbReclaimPolicy     string                    `json:"dbReclaimPolicy,omitempty"`
-	DedicatedCluster    *DedicatedClusterRequest  `json:"dedicatedCluster,omitempty"`
+	// Database (XTenantDatabase) — only extensions are project-level.
+	// Name, tier, environment, and cluster details are configured per-env via the Promote flow.
+	DbExtensions []string `json:"dbExtensions,omitempty"`
 
 	// Plain env vars (non-secret, go into XTenantApp spec.parameters.env)
 	EnvVars []KeyValue `json:"envVars,omitempty"`
@@ -78,38 +64,24 @@ type KeyValue struct {
 	Value string `json:"value"`
 }
 
-// DedicatedClusterRequest holds configuration for a dedicated CNPG cluster (tier: dedicated).
-type DedicatedClusterRequest struct {
-	Instances       int32  `json:"instances"`
-	StorageSize     string `json:"storageSize"`
-	PostgresVersion int32  `json:"postgresVersion"`
-	EnablePooler    bool   `json:"enablePooler"`
-	Namespace       string `json:"namespace,omitempty"`
-}
-
 // UpdateConfigRequest is the JSON body for PUT /api/v1/scaffold/projects/:team/:appName/config.
-// templateId is immutable (cannot be changed) but must be echoed back so the
-// backend can preserve it when rebuilding the base manifest.
+// Only platform feature toggles and env-agnostic config are accepted.
+// Env-specific values (replicas, resources, ingress host, cert issuer, DB details)
+// are managed via the Promote flow.
 type UpdateConfigRequest struct {
 	TemplateID string `json:"templateId,omitempty"`
 	AppFlavor  string `json:"appFlavor"`
 	Namespace     string `json:"namespace"`
 	ContainerPort *int32 `json:"containerPort,omitempty"`
-	Replicas      *int32 `json:"replicas,omitempty"`
 
-	Reloader        bool   `json:"reloader,omitempty"`
-	VaultSecrets    bool   `json:"vaultSecrets,omitempty"`
-	DatabaseSecrets bool   `json:"databaseSecrets,omitempty"`
-	CertManager     bool   `json:"certManager,omitempty"`
-	CertIssuer      string `json:"certClusterIssuer,omitempty"`
-	SSOAuth         bool   `json:"ssoAuth,omitempty"`
-	IngressEnabled  bool   `json:"ingressEnabled,omitempty"`
-	IngressHost     string `json:"ingressHost,omitempty"`
+	Reloader        bool `json:"reloader,omitempty"`
+	VaultSecrets    bool `json:"vaultSecrets,omitempty"`
+	DatabaseSecrets bool `json:"databaseSecrets,omitempty"`
+	CertManager     bool `json:"certManager,omitempty"`
+	// CertIssuer intentionally absent — ClusterIssuer is set per-env in the Promote flow.
+	SSOAuth        bool `json:"ssoAuth,omitempty"`
+	IngressEnabled bool `json:"ingressEnabled,omitempty"`
 
-	ResourcesCPUReq string `json:"resourcesCpuReq,omitempty"`
-	ResourcesCPULim string `json:"resourcesCpuLim,omitempty"`
-	ResourcesMemReq string `json:"resourcesMemReq,omitempty"`
-	ResourcesMemLim string `json:"resourcesMemLim,omitempty"`
 	LivenessPath    string `json:"livenessPath,omitempty"`
 	ReadinessPath   string `json:"readinessPath,omitempty"`
 	RolloutType     string `json:"rolloutType,omitempty"`

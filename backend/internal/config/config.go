@@ -111,10 +111,10 @@ type Config struct {
 	VaultToken   string
 	VaultKVMount string // KV v2 mount path (default: "secret")
 
-	// WebhookToken is a shared secret for authenticating webhook calls from
-	// ArgoCD notifications (or other automation). Used by the promote endpoint.
-	// When empty, webhook-triggered promotions are disabled — only portal
-	// users with platform-team role can promote.
+	// WebhookToken is a shared secret for authenticating the catalog cache
+	// refresh webhook (POST /api/v1/webhooks/catalog/refresh). When empty,
+	// the endpoint returns 401. Lifecycle promotion uses the portal UI, not
+	// this token — the old promote webhook was removed in v0.3.0.
 	WebhookToken string
 
 	// GiteaBotUsername is the Gitea username of the CI bot account (e.g. "gitea-bot").

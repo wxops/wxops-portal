@@ -3,13 +3,17 @@ import { cookies } from "next/headers";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
-export async function GET() {
+export async function GET(request: Request) {
   const cookieStore = await cookies();
   const session = cookieStore.get("wxops_session")?.value ?? "";
 
+  // Forward all query params (search, limit, kind, owner, page) to the Go backend.
+  const { searchParams } = new URL(request.url);
+  const qs = searchParams.toString();
+
   let res: Response;
   try {
-    res = await fetch(`${BACKEND_URL}/api/v1/catalog/entities`, {
+    res = await fetch(`${BACKEND_URL}/api/v1/catalog/entities${qs ? `?${qs}` : ""}`, {
       headers: { Cookie: `wxops_session=${session}` },
       cache: "no-store",
     });

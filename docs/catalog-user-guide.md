@@ -448,6 +448,8 @@ No `lifecycle` or `type` field for User — the only required field is `metadata
 
 The portal renders the document's markdown inline by fetching `spec.contentUrl`. The document's relationship to components and its review lifecycle are tracked in the spec.
 
+**Write path:** Doc entities created or updated via the portal are committed directly to `gitops-infra/catalog/` on `main` — no PR required. The `spec.draft` flag controls visibility while the document is being written. Other entity kinds (Component, API, etc.) still go through a PR.
+
 ### RFC example
 
 ```yaml
@@ -534,8 +536,9 @@ spec:
 | `owner` | yes | Group or user ref |
 | `system` | no | Associates this document with a system |
 | `author` | no | User ref: `user:alice` |
+| `draft` | no | `true` = visible only to the author and `platform-team`. `false` (default) = visible to all authenticated users. |
 | `contentUrl` | no | Path to the markdown source file — see Content URL below |
-| `relatedTo` | no | List of entity refs this document describes |
+| `relatedTo` | no | List of entity refs this document describes (`component`, `api`, `resource` — not `system`) |
 | `supersededBy` | no | Doc ref that replaces this document (RFC → ADR) |
 
 ### `spec.docStatus` values

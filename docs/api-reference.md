@@ -25,9 +25,18 @@ The browser only ever talks to one origin. See [container.md](./container.md) fo
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/v1/webhooks/promote/:kind/:name` | Promotes entity lifecycle from `experimental → development`. Auth: `Authorization: Bearer <WEBHOOK_TOKEN>`. Called by GitOps CI or ArgoCD notifications — not the portal UI. |
+| `POST` | `/api/v1/webhooks/catalog/refresh` | Invalidates the in-memory catalog cache immediately. Auth: `Authorization: Bearer <WEBHOOK_TOKEN>`. Wire to a Gitea push webhook on `gitops-infra` so new catalog entities appear instantly instead of waiting for the 5-minute TTL. |
 
-See [lifecycle-webhook.md](./lifecycle-webhook.md) for the full setup and token configuration.
+> `POST /api/v1/webhooks/promote/:kind/:name` was removed in v0.3.0. Lifecycle promotion is now UI-driven via the Promotion panel.
+
+See [lifecycle-webhook.md](./lifecycle-webhook.md) for token configuration.
+
+**Gitea webhook setup for cache refresh** (one-time platform-team config):
+- Repository: `gitops-infra` → Settings → Webhooks → Add
+- URL: `https://<portal-host>/api/v1/webhooks/catalog/refresh`
+- Content type: `application/json`
+- Authorization header: `Bearer <WEBHOOK_TOKEN>` (same `WEBHOOK_TOKEN` used for lifecycle promotion)
+- Trigger: Push events (optionally restrict to paths matching `catalog/**`)
 
 ---
 
@@ -56,7 +65,7 @@ Catalog responses follow the Backstage `backstage.io/v1alpha1` envelope. See [se
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/v1/catalog/entities` | List all entities — optional `?kind=Component&page=1&limit=50` filters |
+| `GET` | `/api/v1/catalog/entities` | List all entities — optional `?kind=Component&search=pay&owner=rocket-team&page=1&limit=50` filters. `search` is case-insensitive substring across name, title, description, tags. `owner` strips the `group:` prefix. `limit=0` returns all (used internally). |
 | `GET` | `/api/v1/catalog/entities/:kind/:name` | Single entity detail |
 | `POST` | `/api/v1/catalog/entities` | Register a new catalog entity (writes YAML to gitops-infra) |
 | `PUT` | `/api/v1/catalog/entities/:kind/:name` | Update an existing entity |
@@ -71,12 +80,15 @@ Catalog responses follow the Backstage `backstage.io/v1alpha1` envelope. See [se
 | `GET` | `/api/v1/catalog/entities/:kind/:name/ci` | Latest CI workflow runs from Gitea Actions — requires `gitea/source-location` annotation |
 | `GET` | `/api/v1/catalog/entities/:kind/:name/releases` | Git releases and container images from Gitea package registry |
 | `GET` | `/api/v1/catalog/entities/:kind/:name/packages` | Dependency manifests parsed from the source repo (`go.mod`, `package.json`, `requirements.txt`) |
+| `GET` | `/api/v1/catalog/entities/:kind/:name/versions` | Latest image tag per environment (`dev-*`, `v*-rc*`, `v*`) inferred from the Gitea package registry — used by the environment versions row on entity detail pages. |
 
-### Lifecycle
+### Lifecycle promotion
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/v1/catalog/entities/:kind/:name/promote` | Promote entity lifecycle (`development → staging → production`). Session auth — platform-team or owning team's managers only. |
+| `GET` | `/api/v1/catalog/entities/:kind/:name/promostatus` | Overlay existence per environment, open gitops-infra PRs, and latest image tags. Used by the Promotion panel to determine which step (create-overlay / confirm / PR pending) to show. |
+| `POST` | `/api/v1/catalog/entities/:kind/:name/promote` | Two actions: `create-overlay` — generates Kustomize overlay files and opens a `[Promote]` PR in gitops-infra; `update-overlay` — edits an existing overlay and opens a `[Update]` PR. `confirm` — verifies the overlay is on `main` and updates the catalog lifecycle. Body: `{ action, targetLifecycle, replicas?, ingressHost?, …, dbName?, dbTier?, … }`. Session auth — experimental→development: any team member; development→staging or staging→production: platform-team or team Managers only. |
+| `POST` | `/api/v1/catalog/entities/:kind/:name/deprecate` | Writes `wxops.cloud/deprecated`, `-reason`, `-by`, `-at` annotations to the catalog entity and opens a `[Deprecate]` removal PR in gitops-infra. Sets lifecycle to `deprecated`. Platform-team or team Managers only. Body: `{ reason }`. |
 
 ### Activity
 

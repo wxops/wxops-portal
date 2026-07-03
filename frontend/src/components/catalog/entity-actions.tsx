@@ -4,11 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Pencil, LinkIcon, KeyRound, Eye, Loader2, GitBranch, Plus, FileText, Database, Globe, ChevronDown, Trash2, AlertTriangle, Settings } from "lucide-react";
+import { Pencil, LinkIcon, Eye, Loader2, GitBranch, Plus, FileText, Database, Globe, ChevronDown, Trash2, AlertTriangle, Settings } from "lucide-react";
 import type { Entity } from "@/lib/types";
 import { EntityEditPanel } from "./entity-edit-panel";
 import { AddLinkModal } from "./add-link-modal";
-import { UpdateSecretsModal } from "./update-secrets-modal";
 import { DocEditGuideModal } from "./doc-edit-guide-modal";
 import { EditDomainModal } from "./edit-domain-modal";
 
@@ -30,7 +29,6 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
-  const [secretsOpen, setSecretsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [domainOpen, setDomainOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -40,7 +38,6 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
   const [allEntities, setAllEntities] = useState<Entity[]>([]);
 
   const editable = canEdit(entity, userGroups);
-  const hasVault = !!entity.metadata.annotations?.["wxops.cloud/vault-path"];
   const isDraft = entity.kind === "Doc" && entity.spec.draft === true;
   const isPlatformTeam = userGroups.some((g) => g === PLATFORM_TEAM);
   const hasScaffoldConfig = entity.kind === "Component" && !!entity.metadata.annotations?.["wxops.cloud/template-id"];
@@ -159,16 +156,6 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
           >
             <GitBranch className="h-3.5 w-3.5" />
             Edit Content
-          </button>
-        )}
-        {hasVault && (
-          <button
-            type="button"
-            onClick={() => setSecretsOpen(true)}
-            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50"
-          >
-            <KeyRound className="h-3.5 w-3.5" />
-            Secrets
           </button>
         )}
         {hasScaffoldConfig && (
@@ -295,9 +282,6 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
       )}
       {linkOpen && (
         <AddLinkModal entity={entity} onClose={() => setLinkOpen(false)} />
-      )}
-      {secretsOpen && (
-        <UpdateSecretsModal entity={entity} onClose={() => setSecretsOpen(false)} />
       )}
       {guideOpen && (
         <DocEditGuideModal entity={entity} onClose={() => setGuideOpen(false)} />

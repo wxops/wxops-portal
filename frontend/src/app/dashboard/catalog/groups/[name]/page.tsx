@@ -25,6 +25,8 @@ interface Entity {
     docType?: string;
     docStatus?: string;
     author?: string;
+    consumesApis?: string[];
+    providesApis?: string[];
   };
 }
 
@@ -66,8 +68,10 @@ const docStatusColors: Record<string, string> = {
 };
 
 const lifecycleBadge: Record<string, string> = {
-  production:   "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   experimental: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  development:  "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  staging:      "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
+  production:   "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   deprecated:   "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
@@ -197,6 +201,23 @@ export default async function GroupDetailPage({
   const ownedComponents = entities.filter(
     (e) => e.kind === "Component" && ownerName(e.spec.owner ?? "") === name,
   );
+  const ownedAPIs = entities.filter(
+    (e) => e.kind === "API" && ownerName(e.spec.owner ?? "") === name,
+  );
+  const ownedResources = entities.filter(
+    (e) => e.kind === "Resource" && ownerName(e.spec.owner ?? "") === name,
+  );
+
+  // Consumed APIs: union of consumesApis refs from all owned components.
+  const consumedApiNames = new Set<string>();
+  for (const comp of ownedComponents) {
+    for (const ref of comp.spec.consumesApis ?? []) {
+      consumedApiNames.add(refName(ref));
+    }
+  }
+  const consumedAPIs = entities.filter(
+    (e) => e.kind === "API" && consumedApiNames.has(e.metadata.name),
+  );
 
   const rfcs          = ownedDocs.filter((d) => d.spec.docType === "rfc");
   const adrs          = ownedDocs.filter((d) => d.spec.docType === "adr");
@@ -291,6 +312,42 @@ export default async function GroupDetailPage({
             {ownedComponents.map((c) => (
               <ServiceCard key={c.metadata.name} entity={c} />
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Owned APIs */}
+      {ownedAPIs.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            APIs <span className="font-normal normal-case">({ownedAPIs.length})</span>
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {ownedAPIs.map((a) => <ServiceCard key={a.metadata.name} entity={a} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Owned Resources */}
+      {ownedResources.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Resources <span className="font-normal normal-case">({ownedResources.length})</span>
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {ownedResources.map((r) => <ServiceCard key={r.metadata.name} entity={r} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Consumed APIs */}
+      {consumedAPIs.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Consumes <span className="font-normal normal-case">({consumedAPIs.length} external API{consumedAPIs.length !== 1 ? "s" : ""})</span>
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {consumedAPIs.map((a) => <ServiceCard key={a.metadata.name} entity={a} />)}
           </div>
         </section>
       )}

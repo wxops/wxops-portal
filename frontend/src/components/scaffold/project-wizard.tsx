@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { addNotification } from "@/lib/notifications";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StepRepository } from "./step-repository";
@@ -24,48 +25,28 @@ export interface WizardState {
   // Step 3 — essentials
   appFlavor: string;
   containerPort: number | null;
-  replicas: number | null;
 
   domain: string;
-  // Step 3 — toggles
+  // Step 3 — platform feature toggles (base manifest)
   reloader: boolean;
   vaultSecrets: boolean;
   databaseSecrets: boolean;
   certManager: boolean;
-  certClusterIssuer: string;
+  // certClusterIssuer intentionally absent — ClusterIssuer is set per-env in the Promote flow.
   ssoAuth: boolean;
   apiEnabled: boolean;
   apiType: string;
   openapiPath: string;
   monitoringEnabled: boolean;
   metricsPath: string;
-  // Step 3 — advanced
+  // Step 3 — advanced (base-level, env-agnostic)
   ingressEnabled: boolean;
-  ingressHost: string;
-  resourcesCpuReq: string;
-  resourcesCpuLim: string;
-  resourcesMemReq: string;
-  resourcesMemLim: string;
   livenessPath: string;
   readinessPath: string;
   rolloutType: string;
   devSpaceEnabled: boolean;
-  // Vault env vars (parsed from .env upload or manual)
-  vaultEnvVars: Array<{ key: string; value: string }>;
-  // Database
-  dbName: string;
+  // Database — only extensions are project-level; name/tier/cluster go in the Promote flow.
   dbExtensions: string[];
-  dbTier: string;
-  dbEnvironment: string;
-  dbClusterRef: string;
-  dbClusterNamespace: string;
-  dbReclaimPolicy: string;
-  // Dedicated cluster config
-  dbDedicatedInstances: number;
-  dbDedicatedStorageSize: string;
-  dbDedicatedPostgresVersion: number;
-  dbDedicatedEnablePooler: boolean;
-  dbDedicatedNamespace: string;
   // Plain env vars
   envVars: Array<{ key: string; value: string }>;
   // Annotations & Labels
@@ -95,14 +76,12 @@ const INITIAL_STATE: WizardState = {
   packageManager: "",
   appFlavor: "webapp",
   containerPort: null,
-  replicas: null,
 
   domain: "",
   reloader: false,
   vaultSecrets: false,
   databaseSecrets: false,
   certManager: false,
-  certClusterIssuer: "letsencrypt-prod",
   ssoAuth: false,
   apiEnabled: false,
   apiType: "openapi",
@@ -110,28 +89,11 @@ const INITIAL_STATE: WizardState = {
   monitoringEnabled: false,
   metricsPath: "/metrics",
   ingressEnabled: false,
-  ingressHost: "",
-  resourcesCpuReq: "",
-  resourcesCpuLim: "",
-  resourcesMemReq: "",
-  resourcesMemLim: "",
   livenessPath: "/healthz",
   readinessPath: "/readyz",
   rolloutType: "RollingUpdate",
   devSpaceEnabled: false,
-  vaultEnvVars: [],
-  dbName: "",
   dbExtensions: ["uuid-ossp", "pgcrypto"],
-  dbTier: "shared",
-  dbEnvironment: "dev",
-  dbClusterRef: "",
-  dbClusterNamespace: "",
-  dbReclaimPolicy: "retain",
-  dbDedicatedInstances: 1,
-  dbDedicatedStorageSize: "1Gi",
-  dbDedicatedPostgresVersion: 16,
-  dbDedicatedEnablePooler: true,
-  dbDedicatedNamespace: "",
   envVars: [],
   podAnnotations: [],
   extraLabels: [],
@@ -153,11 +115,6 @@ function applyTemplateDefaults(tmpl: TemplateInfo): Partial<WizardState> {
   const d = tmpl.defaults;
   if (d) {
     if (d.port) p.containerPort = d.port;
-    if (d.replicas) p.replicas = d.replicas;
-    if (d.cpuRequest) p.resourcesCpuReq = d.cpuRequest;
-    if (d.memoryRequest) p.resourcesMemReq = d.memoryRequest;
-    if (d.cpuLimit) p.resourcesCpuLim = d.cpuLimit;
-    if (d.memoryLimit) p.resourcesMemLim = d.memoryLimit;
     if (d.healthPath) {
       p.livenessPath = d.healthPath;
       p.readinessPath = d.healthPath;
@@ -223,6 +180,11 @@ export function ProjectWizard({ groups, username }: ProjectWizardProps) {
           setCreating(false);
           setSuccess(result);
           toast.success("Project scaffolded successfully");
+          addNotification({
+            type: "scaffold_created",
+            title: "Project scaffolded",
+            body: `${result.team}/${result.appName}`,
+          });
         }}
         onBack={() => setCreating(false)}
       />

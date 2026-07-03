@@ -5,12 +5,14 @@ An Internal Developer Portal (IDP) for Kubernetes-native platform teams. One OID
 ## What it does
 
 - **Single sign-on across clusters** — log in once; every spoke cluster is accessible with the same Pinniped session. No per-cluster popups, no credential duplication.
-- **Service catalog** — browse all platform services, APIs, and infrastructure dependencies. Relationship graphs, lifecycle filters, OpenAPI rendering, RFC/ADR/Runbook linking.
-- **Golden-path scaffolding** — fill a wizard; the portal commits XTenantApp + XTenantDatabase + ExternalSecrets + Kustomize overlays + catalog entities to `gitops-infra`; ArgoCD + Crossplane provision namespace, database, Vault mount, and Gitea repo automatically.
+- **Service catalog** — browse all platform services, APIs, and infrastructure dependencies. Full-text search, kind and owner filters, lifecycle tabs, relationship graphs, OpenAPI rendering, RFC/ADR/Runbook linking. Global command palette (Ctrl+K / Cmd+K) for instant keyboard-driven entity lookup.
+- **Lifecycle promotion** — UI-driven promotion from `experimental` → `development` → `staging` → `production`. Creates Kustomize overlay PRs in `gitops-infra` for platform review; role-gated (developers → dev, managers/platform-team → staging/production). Includes deprecation with reason and removal PR.
+- **Golden-path scaffolding** — fill a wizard; the portal commits XTenantApp + XTenantDatabase + ExternalSecrets + Kustomize base manifests + catalog entities to `gitops-infra`; ArgoCD + Crossplane provision namespace, database, Vault mount, and Gitea repo automatically.
 - **Import existing repos** — register an existing Gitea project into the catalog without re-scaffolding.
 - **Config edit via PR** — update XTenantApp platform features (replicas, ingress, secrets, probes) through a diff-review UI that creates a gitops-infra PR.
-- **CI/CD and release visibility** — per-entity cards showing Gitea Actions runs, git releases, container images, and package dependencies (go.mod, package.json, requirements.txt, pyproject.toml).
-- **Activity feed** — portal-managed PR history per team, filtered by role; lifecycle status per service.
+- **Documentation management** — create and edit RFC, ADR, and runbook Doc entities directly from the portal. Doc entities commit to `gitops-infra` instantly (no PR). Draft mode restricts visibility to the author; publishing makes the document visible to all.
+- **CI/CD and release visibility** — per-entity cards showing Gitea Actions runs, git releases, container images (color-coded by environment), package dependencies, and latest image tag per environment (dev/staging/production).
+- **Activity feed** — portal-managed PR history per team, filtered by role; lifecycle status per service. Session notifications for scaffold, import, and catalog update events.
 - **Cluster views** — namespace-scoped pods and deployments derived from Pinniped group membership (no cluster-admin required); WhoAmI identity; reload without page refresh; kubeconfig download.
 - **CLI** *(planned v0.5.0)* — `wxops` binary with the same API, usable in CI/CD pipelines.
 
@@ -169,7 +171,7 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | Container design (nginx, supervisord, Dockerfile) | [docs/container.md](docs/container.md) |
 | API reference | [docs/api-reference.md](docs/api-reference.md) |
 | Release workflow | [docs/release-workflow.md](docs/release-workflow.md) |
-| Roadmap & architecture decisions | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Roadmap & architecture decisions | [ROADMAP.md](ROADMAP.md) |
 
 ## Roadmap
 
@@ -179,12 +181,13 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | v0.1.1–v0.1.2 | CI/CD pipeline, operations readiness | `shipped` |
 | v0.1.3 | Full service catalog with relationship graphs | `shipped` |
 | v0.1.4 | Catalog UI & visualization refinements | `shipped` |
-| v0.2.0 | Golden-path scaffolding, CI/CD visibility, activity feed, cluster UX | `in progress` |
-| v0.3.0 | Platform visibility — version comparison, catalog search, team ownership | `next` |
-| v0.4.0 | Environment promotion UI, ArgoCD/Crossplane status | `planned` |
-| v0.5.0 | `wxops` CLI binary | `planned` |
+| v0.2.0 | Golden-path scaffolding, CI/CD visibility, activity feed, cluster UX | `shipped` |
+| v0.2.1 | Scaffolding fixes (Image Updater naming, nginx routing, Vault update) | `shipped` |
+| v0.3.0 | Platform visibility — lifecycle promotion UI, FlexSearch command palette, catalog search, dark theme | `shipped` |
+| v0.4.0 | CLI (`wxops` binary) + inner-loop tools (DevSpace, Mirrord/Telepresence, feature flags, A/B testing) | `planned` |
+| v0.5.0 | Runtime observability — ArgoCD/Crossplane status via Pinniped, DORA-lite metrics | `planned` |
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full feature list and architecture decisions.
+See [ROADMAP.md](ROADMAP.md) for the full feature list and architecture decisions.
 
 ## Portal Scope
 

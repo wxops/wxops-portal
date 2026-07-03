@@ -71,29 +71,27 @@ or deletes. When `VAULT_ADDR` is empty, the Vault write step is skipped silently
 | `VAULT_TOKEN` | — | | Short-lived token with `wxops-portal` policy. Create with `vault token create -policy=wxops-portal -period=720h -orphan -renewable=true` and keep the accessor for renewal. |
 | `VAULT_KV_MOUNT` | `secret` | | KV v2 mount path. Secrets are written to `{VAULT_KV_MOUNT}/{team}/{appName}`. |
 
-### Lifecycle Webhook
+### Catalog Cache Refresh Webhook
 
-The lifecycle webhook is called by the CI pipeline in `gitops-infra` after a
-successful build, promoting a catalog entity's lifecycle (e.g. `experimental` →
-`development`). When `WEBHOOK_TOKEN` is empty, webhook-triggered promotion is
-disabled — lifecycle changes can only be made by portal users with `platform-team`
-role or the owning team's managers.
+`WEBHOOK_TOKEN` authenticates the catalog cache invalidation webhook. Wire a Gitea
+push webhook on `gitops-infra` to flush the 5-minute in-memory TTL immediately after
+a catalog commit so new entities appear without delay.
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `WEBHOOK_TOKEN` | — | | Shared secret for `Authorization: Bearer` on the promote endpoint. Generate with `openssl rand -hex 32`. |
-
-The CI step in `gitops-infra` calls:
+| `WEBHOOK_TOKEN` | — | | Shared secret for `Authorization: Bearer` on `POST /api/v1/webhooks/catalog/refresh`. Generate with `openssl rand -hex 32`. When empty, the endpoint returns 401. |
 
 ```sh
-curl -sf -X POST "$PORTAL_URL/api/v1/webhooks/promote/Component/$APP_NAME" \
-  -H "Authorization: Bearer $PORTAL_WEBHOOK_TOKEN" \
-  -H "Content-Type: application/json" \
-  --data '{"lifecycle":"development"}'
+# Gitea → gitops-infra → Settings → Webhooks → Add
+# URL:     https://<portal-host>/api/v1/webhooks/catalog/refresh
+# Header:  Authorization: Bearer <WEBHOOK_TOKEN>
+# Trigger: Push events
 ```
 
-`PORTAL_URL` and `PORTAL_WEBHOOK_TOKEN` are Gitea repository secrets set by the
-platform team on the `gitops-infra` repo — they are never injected at scaffold time.
+> **v0.3.0 change:** `POST /api/v1/webhooks/promote/:kind/:name` has been removed.
+> Lifecycle promotion (`experimental → development → staging → production`) is now
+> UI-driven via the Promotion panel on each Component detail page.
+> See [lifecycle-webhook.md](./lifecycle-webhook.md) for the full promotion flow.
 
 ### Secret management in production
 

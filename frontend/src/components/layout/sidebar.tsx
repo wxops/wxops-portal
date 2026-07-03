@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Server, BookOpen, Rocket, Activity } from "lucide-react";
+import { LayoutDashboard, Server, BookOpen, Rocket, Activity, Search } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard",           label: "Overview",  icon: LayoutDashboard },
@@ -41,6 +41,21 @@ export function Sidebar(_props: SidebarProps) {
           W&apos;xOps{" "}
           <span className="text-gradient font-bold">Portal</span>
         </span>
+      </div>
+
+      {/* Search trigger */}
+      <div className="px-2 py-2 border-b border-border">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent("command-palette:open"))}
+          className="flex w-full items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+        >
+          <Search className="h-3 w-3 shrink-0" />
+          <span className="flex-1 text-left">Search…</span>
+          <kbd className="rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]">
+            ⌘K
+          </kbd>
+        </button>
       </div>
 
       {/* Nav */}

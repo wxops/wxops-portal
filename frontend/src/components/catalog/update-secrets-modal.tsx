@@ -8,24 +8,25 @@ import { KeyValueEditor, type KVPair } from "@/components/scaffold/key-value-edi
 
 interface UpdateSecretsModalProps {
   entity: Entity;
+  targetEnv: "dev" | "staging" | "production";
   onClose: () => void;
 }
 
-export function UpdateSecretsModal({ entity, onClose }: UpdateSecretsModalProps) {
+export function UpdateSecretsModal({ entity, targetEnv, onClose }: UpdateSecretsModalProps) {
   const [envVars, setEnvVars] = useState<KVPair[]>([{ key: "", value: "" }]);
   const [submitting, setSubmitting] = useState(false);
 
   const team = entity.spec.owner?.includes(":")
     ? entity.spec.owner.split(":")[1]
     : entity.spec.owner ?? "";
-  // Derive appName from the vault path annotation (format: team/appName/env) rather than
+  // Derive appName from the vault path annotation (format: team/appName/dev/env) rather than
   // entity.metadata.name — vault Resource entities are named "{appName}-vault" in the
   // catalog, not "{appName}", so using the entity name would cause a repo-not-found error.
   const rawVaultPath = entity.metadata.annotations?.["wxops.cloud/vault-path"];
   const appName = rawVaultPath
     ? rawVaultPath.split("/")[1] ?? entity.metadata.name
     : entity.metadata.name;
-  const vaultPath = rawVaultPath ?? `${team}/${appName}/env`;
+  const vaultPath = `${team}/${appName}/${targetEnv}/env`;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -51,6 +52,7 @@ export function UpdateSecretsModal({ entity, onClose }: UpdateSecretsModalProps)
         body: JSON.stringify({
           team,
           appName,
+          targetEnv,
           envVars: filtered,
         }),
       });
@@ -75,7 +77,10 @@ export function UpdateSecretsModal({ entity, onClose }: UpdateSecretsModalProps)
       <div className="relative w-full max-w-lg rounded-xl border bg-background shadow-xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold">Update Vault Secrets</h3>
+            <h3 className="text-sm font-semibold">
+              Update Vault Secrets —{" "}
+              <span className="capitalize">{targetEnv}</span>
+            </h3>
             <p className="text-xs text-muted-foreground mt-0.5 font-mono">
               {vaultPath}
             </p>

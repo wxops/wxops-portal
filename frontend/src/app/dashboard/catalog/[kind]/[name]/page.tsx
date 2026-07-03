@@ -10,6 +10,7 @@ import { RuntimeStatusCard } from "@/components/catalog/runtime-status-card";
 import { CIStatusCard } from "@/components/catalog/ci-status-card";
 import { ReleasesCard } from "@/components/catalog/releases-card";
 import { PackagesCard } from "@/components/catalog/packages-card";
+import { PromotionPanel } from "@/components/catalog/promotion-panel";
 import { getSession } from "@/lib/session";
 import type { Entity } from "@/lib/types";
 import { relatedToIncludes } from "@/lib/types";
@@ -67,9 +68,10 @@ const docTypeIcon: Record<string, string> = {
 };
 
 const lifecycleBadge: Record<string, string> = {
-  production:   "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  development:  "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   experimental: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  development:  "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  staging:      "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
+  production:   "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   deprecated:   "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
@@ -282,6 +284,15 @@ export default async function EntityDetailPage({
   const docLinks   = allLinks.filter((l) => l.type !== "rfc" && l.type !== "adr" && l.type !== "openapi");
   const hasLinks   = rfcLinks.length + adrLinks.length + docLinks.length > 0;
 
+  // Compute promotion permissions server-side so the client panel
+  // knows immediately what actions to enable without an extra fetch.
+  const ownerTeam = (entity.spec.owner ?? "").replace(/^group:/, "");
+  const groupsLower = userGroups.map((g) => g.toLowerCase());
+  const isPlatform = groupsLower.some((g) => g === "platform-team");
+  const isManager  = groupsLower.some((g) => g === `${ownerTeam.toLowerCase()}:managers`);
+  const isMember   = groupsLower.some((g) => g === ownerTeam.toLowerCase() || g === "platform-team");
+  const canElevate = isPlatform || isManager;
+
   const scaffoldAnnotationKeys = new Set([
     "wxops.cloud/template-id",
     "wxops.cloud/scaffold-date",
@@ -412,6 +423,25 @@ export default async function EntityDetailPage({
         <RuntimeStatusCard
           appName={entity.metadata.name}
           team={entity.spec.owner?.includes(":") ? entity.spec.owner.split(":")[1] : entity.spec.owner ?? ""}
+        />
+      )}
+
+      {/* ── Promotion panel (Component entities with source repo) ───────── */}
+      {hasSourceRepo && entity.kind === "Component" && (
+        <PromotionPanel
+          entityKind={entity.kind}
+          entityName={entity.metadata.name}
+          team={ownerTeam}
+          canElevate={canElevate}
+          isMember={isMember}
+          ingressEnabled={entity.metadata.annotations?.["wxops.cloud/ingress"] === "true"}
+          vaultEnabled={(entity.spec.dependsOn ?? []).some((d: string) => d.endsWith("-vault"))}
+          databaseEnabled={(entity.spec.dependsOn ?? []).some((d: string) => {
+            const r = (d as string).replace("resource:default/", "");
+            return r.endsWith("-db");
+          })}
+          dbName={(entity.spec.dependsOn ?? []).find((d: string) => d.replace("resource:default/", "").endsWith("-db"))?.replace("resource:default/", "") ?? ""}
+          certEnabled={entity.metadata.annotations?.["wxops.cloud/cert-manager"] === "true"}
         />
       )}
 

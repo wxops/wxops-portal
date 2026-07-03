@@ -41,7 +41,7 @@ type ExternalSecretExtract struct {
 
 // NewEnvExternalSecret creates an ExternalSecret for vault app secrets.
 // Secret target: {appName}-env
-// Vault path:    {team}/{appName}/env
+// Vault path:    {team}/{appName}/env  (base/standard path — each overlay patches to env-specific path)
 func NewEnvExternalSecret(req *CreateProjectRequest) *ExternalSecret {
 	ns := req.Namespace
 	if ns == "" {
@@ -81,8 +81,8 @@ func NewDbExternalSecret(req *CreateProjectRequest) *ExternalSecret {
 	if ns == "" {
 		ns = DefaultNamespace(req.Team)
 	}
-	dbName := ResolveDbName(req.AppName, req.DbName)
-	secretName := DbSecretTarget(req.AppName, req.DbName)
+	dbName := ResolveDbName(req.AppName, "")
+	secretName := DbSecretTarget(req.AppName, "")
 
 	return &ExternalSecret{
 		APIVersion: "external-secrets.io/v1",

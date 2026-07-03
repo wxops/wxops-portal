@@ -21,11 +21,11 @@ type XTenantDatabaseSpec struct {
 
 type XTenantDatabaseParams struct {
 	Tier                  string                `yaml:"tier,omitempty"                   json:"tier,omitempty"`
-	Environment           string                `yaml:"environment"                      json:"environment"`
+	Environment           string                `yaml:"environment,omitempty"             json:"environment,omitempty"`
 	ClusterRef            string                `yaml:"clusterRef,omitempty"             json:"clusterRef,omitempty"`
 	ClusterNamespace      string                `yaml:"clusterNamespace,omitempty"       json:"clusterNamespace,omitempty"`
 	DedicatedCluster      *DedicatedClusterSpec `yaml:"dedicatedCluster,omitempty"       json:"dedicatedCluster,omitempty"`
-	DbName                string                `yaml:"dbName"                           json:"dbName"`
+	DbName                string                `yaml:"dbName,omitempty"                 json:"dbName,omitempty"`
 	Owner                 string                `yaml:"owner"                            json:"owner"`
 	Extensions            []string              `yaml:"extensions,omitempty"             json:"extensions,omitempty"`
 	DatabaseReclaimPolicy string                `yaml:"databaseReclaimPolicy,omitempty"  json:"databaseReclaimPolicy,omitempty"`
@@ -41,63 +41,17 @@ type DedicatedClusterSpec struct {
 }
 
 // NewXTenantDatabase constructs an XTenantDatabase from the scaffold request.
+// NewXTenantDatabase creates the base XTenantDatabase stub for the project.
+// Only project-level fields (extensions, owner, vault store) are set here.
+// Per-environment fields (dbName, tier, environment, clusterRef) are patched
+// via JSON 6902 in each overlay's kustomization.yaml through the Promote flow.
 func NewXTenantDatabase(req *CreateProjectRequest) *XTenantDatabase {
-	dbName := ResolveDbName(req.AppName, req.DbName)
+	// Default name — used for metadata.name and as the patch target in overlays.
+	dbName := req.AppName + "-db"
 
 	extensions := req.DbExtensions
 	if len(extensions) == 0 {
 		extensions = []string{"uuid-ossp", "pgcrypto"}
-	}
-
-	tier := req.DbTier
-	if tier == "" {
-		tier = "shared"
-	}
-
-	env := req.DbEnvironment
-	if env == "" {
-		env = "dev"
-	}
-
-	params := XTenantDatabaseParams{
-		Tier:                 tier,
-		Environment:          env,
-		DbName:               dbName,
-		Owner:                req.Team,
-		Extensions:           extensions,
-		VaultSecretStoreName: "vault-tenant",
-	}
-
-	if req.DbReclaimPolicy != "" {
-		params.DatabaseReclaimPolicy = req.DbReclaimPolicy
-	}
-
-	if tier == "shared" {
-		params.ClusterRef = req.DbClusterRef
-		params.ClusterNamespace = req.DbClusterNamespace
-	}
-
-	if tier == "dedicated" && req.DedicatedCluster != nil {
-		dc := req.DedicatedCluster
-		instances := dc.Instances
-		if instances == 0 {
-			instances = 1
-		}
-		storageSize := dc.StorageSize
-		if storageSize == "" {
-			storageSize = "1Gi"
-		}
-		pgVersion := dc.PostgresVersion
-		if pgVersion == 0 {
-			pgVersion = 16
-		}
-		params.DedicatedCluster = &DedicatedClusterSpec{
-			Instances:       instances,
-			StorageSize:     storageSize,
-			PostgresVersion: pgVersion,
-			EnablePooler:    dc.EnablePooler,
-			Namespace:       dc.Namespace,
-		}
 	}
 
 	return &XTenantDatabase{
@@ -112,7 +66,11 @@ func NewXTenantDatabase(req *CreateProjectRequest) *XTenantDatabase {
 			},
 		},
 		Spec: XTenantDatabaseSpec{
-			Parameters: params,
+			Parameters: XTenantDatabaseParams{
+				Owner:                req.Team,
+				Extensions:           extensions,
+				VaultSecretStoreName: "vault-tenant",
+			},
 		},
 	}
 }

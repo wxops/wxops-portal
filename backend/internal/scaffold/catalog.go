@@ -66,7 +66,7 @@ func GenerateCatalogEntities(req *CreateProjectRequest, giteaURL string) []Catal
 
 	// Database → Resource
 	if req.DatabaseSecrets {
-		dbName := ResolveDbName(req.AppName, req.DbName)
+		dbName := ResolveDbName(req.AppName, "")
 		resName := dbName
 		dependsOn = append(dependsOn, fmt.Sprintf("resource:default/%s", resName))
 
@@ -150,11 +150,24 @@ func GenerateCatalogEntities(req *CreateProjectRequest, giteaURL string) []Catal
 			Name:        req.AppName,
 			Title:       req.AppName,
 			Description: req.Description,
-			Annotations: map[string]string{
-				"gitea/source-location":    req.Team + "/" + req.AppName,
-				"wxops.cloud/template-id":  req.TemplateID,
-				"wxops.cloud/scaffold-date": time.Now().UTC().Format(time.RFC3339),
-			},
+			Annotations: func() map[string]string {
+				a := map[string]string{
+					"gitea/source-location":    req.Team + "/" + req.AppName,
+					"wxops.cloud/template-id":  req.TemplateID,
+					"wxops.cloud/scaffold-date": time.Now().UTC().Format(time.RFC3339),
+				}
+				if req.IngressEnabled {
+					a["wxops.cloud/ingress"] = "true"
+				}
+				if req.CertManager {
+					a["wxops.cloud/cert-manager"] = "true"
+				}
+				if req.DatabaseSecrets {
+					dbName := ResolveDbName(req.AppName, "")
+					a["wxops.cloud/database-name"] = dbName
+				}
+				return a
+			}(),
 			Links: []catalog.EntityLink{
 				{
 					URL:   repoURL,

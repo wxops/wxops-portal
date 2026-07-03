@@ -327,6 +327,19 @@ func (c *Client) getFileSHA(ctx context.Context, owner, repo, filePath, ref stri
 	return meta.SHA, nil
 }
 
+// FileExistsOnMain returns true if the given path exists on the main branch
+// of the repo. Returns false (not an error) on 404.
+func (c *Client) FileExistsOnMain(ctx context.Context, owner, repo, filePath string) (bool, error) {
+	_, err := c.getFileSHA(ctx, owner, repo, filePath, "main")
+	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // EnsureLabel creates a label in a repo if it doesn't already exist and
 // returns its ID. Safe to call repeatedly — idempotent.
 func (c *Client) EnsureLabel(ctx context.Context, owner, repo, name, color string) (int64, error) {
@@ -596,6 +609,38 @@ func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo string, limit
 		return nil, fmt.Errorf("gitea: decode workflow runs: %w", err)
 	}
 	return result.WorkflowRuns, nil
+}
+
+// Tag represents a git tag with its creation timestamp.
+type Tag struct {
+	Name   string `json:"name"`
+	Commit struct {
+		SHA     string `json:"sha"`
+		Created string `json:"created"`
+	} `json:"commit"`
+}
+
+// ListRepoTags returns the most recent tags for a repo, newest first.
+func (c *Client) ListRepoTags(ctx context.Context, owner, repo string, limit int) ([]Tag, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/tags?limit=%d",
+		c.baseURL, owner, repo, limit)
+
+	body, err := c.doRaw(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("gitea: list tags: %w", err)
+	}
+
+	var tags []Tag
+	if err := json.Unmarshal(body, &tags); err != nil {
+		return nil, fmt.Errorf("gitea: decode tags: %w", err)
+	}
+	return tags, nil
 }
 
 // ListReleases returns releases for a repo.

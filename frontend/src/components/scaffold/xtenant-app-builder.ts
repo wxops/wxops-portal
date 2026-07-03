@@ -44,12 +44,9 @@ export function buildToggles(s: WizardState): Record<string, unknown> {
 
   if (s.ingressEnabled || s.certManager || s.ssoAuth) {
     const ing: Record<string, unknown> = { enabled: true };
-    if (s.ingressHost) ing.host = s.ingressHost;
     if (s.certManager) {
-      ing.tls = cleanUndefined({
-        enabled: true,
-        clusterIssuer: s.certClusterIssuer || undefined,
-      });
+      // clusterIssuer is set per-environment in the Promote flow — not in base.
+      ing.tls = { enabled: true };
     }
     if (s.ssoAuth) ing.auth = { enabled: true };
     out.ingress = ing;
@@ -60,21 +57,6 @@ export function buildToggles(s: WizardState): Record<string, unknown> {
 
 export function buildAdvanced(s: WizardState): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-
-  const hasResources =
-    s.resourcesCpuReq || s.resourcesCpuLim || s.resourcesMemReq || s.resourcesMemLim;
-  if (hasResources) {
-    out.resources = cleanUndefined({
-      requests:
-        s.resourcesCpuReq || s.resourcesMemReq
-          ? cleanUndefined({ cpu: s.resourcesCpuReq || undefined, memory: s.resourcesMemReq || undefined })
-          : undefined,
-      limits:
-        s.resourcesCpuLim || s.resourcesMemLim
-          ? cleanUndefined({ cpu: s.resourcesCpuLim || undefined, memory: s.resourcesMemLim || undefined })
-          : undefined,
-    });
-  }
 
   if (s.livenessPath || s.readinessPath) {
     out.probes = cleanUndefined({
@@ -133,7 +115,6 @@ export function buildXTenantAppObject(s: WizardState): Record<string, unknown> {
         imagePullSecrets: ["regcred"],
         appFlavor: s.appFlavor || undefined,
         templateId: s.templateId || undefined,
-        replicas: s.replicas || undefined,
         containerPort: s.containerPort || undefined,
         ...buildToggles(s),
         ...buildAdvanced(s),
@@ -147,43 +128,23 @@ export function buildXTenantAppYAML(s: WizardState): string {
 }
 
 export function buildXTenantDatabaseYAML(s: WizardState): string {
-  const dbName = s.dbName || `${s.appName}-db`;
+  // Base stub — only project-level fields (extensions, owner, vault store).
+  // Per-env fields (dbName, tier, environment, clusterRef) are patched
+  // via JSON 6902 in each overlay through the Promote flow.
+  const defaultDbName = `${s.appName}-db`;
   const extensions = s.dbExtensions.length > 0 ? s.dbExtensions : ["uuid-ossp", "pgcrypto"];
-  const tier = s.dbTier || "shared";
 
   const params: Record<string, unknown> = {
-    tier,
-    environment: s.dbEnvironment || "dev",
+    owner: s.team || undefined,
+    extensions: extensions.length > 0 ? extensions : undefined,
+    vaultSecretStoreName: "vault-tenant",
   };
-
-  if (tier === "shared") {
-    if (s.dbClusterRef) params.clusterRef = s.dbClusterRef;
-    if (s.dbClusterNamespace) params.clusterNamespace = s.dbClusterNamespace;
-  }
-
-  if (tier === "dedicated") {
-    params.dedicatedCluster = cleanUndefined({
-      instances: s.dbDedicatedInstances || 1,
-      storageSize: s.dbDedicatedStorageSize || "1Gi",
-      postgresVersion: s.dbDedicatedPostgresVersion || 16,
-      enablePooler: s.dbDedicatedEnablePooler,
-      namespace: s.dbDedicatedNamespace || undefined,
-    });
-  }
-
-  params.dbName = dbName;
-  params.owner = s.team || undefined;
-  params.extensions = extensions.length > 0 ? extensions : undefined;
-  if (s.dbReclaimPolicy && s.dbReclaimPolicy !== "retain") {
-    params.databaseReclaimPolicy = s.dbReclaimPolicy;
-  }
-  params.vaultSecretStoreName = "vault-tenant";
 
   return toYAML({
     apiVersion: "platform.wxops.cloud/v1alpha1",
     kind: "XTenantDatabase",
     metadata: {
-      name: `${s.team}-${dbName}`,
+      name: `${s.team}-${defaultDbName}`,
       labels: {
         "app.kubernetes.io/managed-by": "wxops-portal",
         "wxops.cloud/team": s.team,
@@ -213,8 +174,8 @@ export function buildEnvExternalSecretYAML(s: WizardState): string {
 
 export function buildDbExternalSecretYAML(s: WizardState): string {
   const ns = defaultNamespace(s.team);
-  const dbName = s.dbName || `${s.appName}-db`;
-  const secretName = dbSecretTarget(s.appName, s.dbName);
+  const dbName = `${s.appName}-db`;
+  const secretName = dbSecretTarget(s.appName, "");
   return toYAML({
     apiVersion: "external-secrets.io/v1",
     kind: "ExternalSecret",

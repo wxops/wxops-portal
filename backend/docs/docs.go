@@ -71,7 +71,7 @@ const docTemplate = `{
                         "CookieAuth": []
                     }
                 ],
-                "description": "Returns all catalog entities. Use ?kind= to filter by entity kind (case-insensitive).",
+                "description": "Returns all catalog entities. Use ?kind= to filter by entity kind (case-insensitive). Use ?search= for full-text search across name, title, description, and tags. Use ?owner= to filter by owning team (strips \"group:\" prefix).",
                 "produces": [
                     "application/json"
                 ],
@@ -84,6 +84,18 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Filter by kind (Component, API, System, Group, Resource, User, Doc)",
                         "name": "kind",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Full-text search across name, title, description, and tags",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by owner team (e.g. rocket-team or group:rocket-team)",
+                        "name": "owner",
                         "in": "query"
                     }
                 ],
@@ -451,6 +463,42 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/catalog/entities/{kind}/{name}/deprecate": {
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Deprecate an entity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/v1/catalog/entities/{kind}/{name}/packages": {
             "get": {
                 "security": [
@@ -466,6 +514,47 @@ const docTemplate = `{
                     "catalog"
                 ],
                 "summary": "Get package dependencies",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/catalog/entities/{kind}/{name}/promostatus": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Get promotion status",
                 "parameters": [
                     {
                         "type": "string",
@@ -616,6 +705,48 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/catalog/entities/{kind}/{name}/versions": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Returns the latest tag for each environment (dev/staging/production) from the entity's source repo.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Get per-environment versions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -1371,9 +1502,6 @@ const docTemplate = `{
                     "description": "Step 1: Repository",
                     "type": "string"
                 },
-                "certClusterIssuer": {
-                    "type": "string"
-                },
                 "certManager": {
                     "type": "boolean"
                 },
@@ -1383,33 +1511,12 @@ const docTemplate = `{
                 "databaseSecrets": {
                     "type": "boolean"
                 },
-                "dbClusterNamespace": {
-                    "type": "string"
-                },
-                "dbClusterRef": {
-                    "type": "string"
-                },
-                "dbEnvironment": {
-                    "type": "string"
-                },
                 "dbExtensions": {
+                    "description": "Database (XTenantDatabase) — only extensions are project-level.\nName, tier, environment, and cluster details are configured per-env via the Promote flow.",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
-                },
-                "dbName": {
-                    "description": "Database (XTenantDatabase)",
-                    "type": "string"
-                },
-                "dbReclaimPolicy": {
-                    "type": "string"
-                },
-                "dbTier": {
-                    "type": "string"
-                },
-                "dedicatedCluster": {
-                    "$ref": "#/definitions/scaffold.DedicatedClusterRequest"
                 },
                 "description": {
                     "type": "string"
@@ -1434,11 +1541,8 @@ const docTemplate = `{
                     }
                 },
                 "ingressEnabled": {
-                    "description": "Advanced",
+                    "description": "Base config — env-agnostic settings that live in base/xtenant-app.yaml.",
                     "type": "boolean"
-                },
-                "ingressHost": {
-                    "type": "string"
                 },
                 "livenessPath": {
                     "type": "string"
@@ -1471,23 +1575,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "reloader": {
-                    "description": "Platform toggles",
+                    "description": "Platform feature toggles — these declare WHAT is enabled project-wide.\nHOW each feature is configured per environment is handled via the Promote flow.",
                     "type": "boolean"
-                },
-                "replicas": {
-                    "type": "integer"
-                },
-                "resourcesCpuLim": {
-                    "type": "string"
-                },
-                "resourcesCpuReq": {
-                    "type": "string"
-                },
-                "resourcesMemLim": {
-                    "type": "string"
-                },
-                "resourcesMemReq": {
-                    "type": "string"
                 },
                 "rolloutType": {
                     "type": "string"
@@ -1497,6 +1586,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ssoAuth": {
+                    "description": "CertIssuer intentionally absent — ClusterIssuer is set per-env in the Promote flow.",
                     "type": "boolean"
                 },
                 "systemName": {
@@ -1509,13 +1599,6 @@ const docTemplate = `{
                 "templateId": {
                     "description": "Step 2: Template",
                     "type": "string"
-                },
-                "vaultEnvVars": {
-                    "description": "Vault env vars (parsed from .env upload or manual entry)",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/scaffold.KeyValue"
-                    }
                 },
                 "vaultSecrets": {
                     "type": "boolean"
@@ -1535,26 +1618,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "team": {
-                    "type": "string"
-                }
-            }
-        },
-        "scaffold.DedicatedClusterRequest": {
-            "type": "object",
-            "properties": {
-                "enablePooler": {
-                    "type": "boolean"
-                },
-                "instances": {
-                    "type": "integer"
-                },
-                "namespace": {
-                    "type": "string"
-                },
-                "postgresVersion": {
-                    "type": "integer"
-                },
-                "storageSize": {
                     "type": "string"
                 }
             }
@@ -1807,9 +1870,6 @@ const docTemplate = `{
                 "appFlavor": {
                     "type": "string"
                 },
-                "certClusterIssuer": {
-                    "type": "string"
-                },
                 "certManager": {
                     "type": "boolean"
                 },
@@ -1837,9 +1897,6 @@ const docTemplate = `{
                 "ingressEnabled": {
                     "type": "boolean"
                 },
-                "ingressHost": {
-                    "type": "string"
-                },
                 "livenessPath": {
                     "type": "string"
                 },
@@ -1858,25 +1915,11 @@ const docTemplate = `{
                 "reloader": {
                     "type": "boolean"
                 },
-                "replicas": {
-                    "type": "integer"
-                },
-                "resourcesCpuLim": {
-                    "type": "string"
-                },
-                "resourcesCpuReq": {
-                    "type": "string"
-                },
-                "resourcesMemLim": {
-                    "type": "string"
-                },
-                "resourcesMemReq": {
-                    "type": "string"
-                },
                 "rolloutType": {
                     "type": "string"
                 },
                 "ssoAuth": {
+                    "description": "CertIssuer intentionally absent — ClusterIssuer is set per-env in the Promote flow.",
                     "type": "boolean"
                 },
                 "templateId": {

@@ -20,9 +20,17 @@ type OverlayKustomization struct {
 	Patches        []PatchRef `yaml:"patches,omitempty"`
 }
 
-// PatchRef points to a strategic merge patch file in the overlay directory.
+// PatchRef points to a patch file or contains an inline JSON 6902 patch with a target selector.
 type PatchRef struct {
-	Path string `yaml:"path"`
+	Path   string       `yaml:"path,omitempty"`
+	Patch  string       `yaml:"patch,omitempty"`
+	Target *PatchTarget `yaml:"target,omitempty"`
+}
+
+// PatchTarget selects the resource an inline patch applies to.
+type PatchTarget struct {
+	Kind string `yaml:"kind,omitempty"`
+	Name string `yaml:"name,omitempty"`
 }
 
 // imageTransformerConfig is the content of image-transformer.yaml.

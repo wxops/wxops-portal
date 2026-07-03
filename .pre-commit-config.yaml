@@ -32,8 +32,8 @@ repos:
         exclude: |
           (?x)^(
             backend/docs/|
-            CHANGELOG\.md|
-          )$
+            CHANGELOG\.md
+          )
       - id: check-yaml
       - id: check-json
       - id: check-merge-conflict

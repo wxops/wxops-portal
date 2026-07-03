@@ -170,9 +170,10 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 
 	// ── Webhook routes (token-authenticated, no session required) ───────────
-	// ArgoCD notifications call this to promote lifecycle after successful sync.
+	// Gitea push webhooks on gitops-infra call /webhooks/catalog/refresh to
+	// flush the in-memory cache immediately instead of waiting for the 5-min TTL.
 	if catalogH != nil {
-		router.POST("/api/v1/webhooks/promote/:kind/:name", catalogH.PromoteLifecycle)
+		router.POST("/api/v1/webhooks/catalog/refresh", catalogH.RefreshCatalog)
 	}
 
 	// ── Protected API routes ─────────────────────────────────────────────────
@@ -203,7 +204,11 @@ func New(cfg *config.Config) (*Server, error) {
 			cat.GET("/entities/:kind/:name/ci", catalogH.GetEntityCI)
 			cat.GET("/entities/:kind/:name/releases", catalogH.GetEntityReleases)
 			cat.GET("/entities/:kind/:name/packages", catalogH.GetEntityPackages)
+			cat.GET("/entities/:kind/:name/versions", catalogH.GetEntityVersions)
+			cat.GET("/entities/:kind/:name/promostatus", catalogH.GetPromoStatus)
+			cat.GET("/entities/:kind/:name/overlay/:env", catalogH.GetOverlayConfig)
 			cat.POST("/entities/:kind/:name/promote", catalogH.PromoteLifecycle)
+			cat.POST("/entities/:kind/:name/deprecate", catalogH.DeprecateEntity)
 			cat.GET("/entities/:kind/:name", catalogH.GetEntity)
 			cat.POST("/entities", catalogH.CreateEntity)
 			cat.PUT("/entities/:kind/:name", catalogH.UpdateEntity)

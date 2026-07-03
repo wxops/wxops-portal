@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { addNotification } from "@/lib/notifications";
 import {
   ArrowLeft,
   ArrowRight,
@@ -45,7 +46,10 @@ export function ImportWizard({ groups, username }: ImportWizardProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [team, setTeam] = useState("");
   const [repos, setRepos] = useState<Repo[]>([]);
+  const [reposPage, setReposPage] = useState(1);
+  const [reposTotal, setReposTotal] = useState(0);
   const [loadingRepos, setLoadingRepos] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
 
   // Step 2 fields
@@ -68,25 +72,49 @@ export function ImportWizard({ groups, username }: ImportWizardProps) {
   const fetchRepos = useCallback(async (owner: string) => {
     if (!owner) return;
     setLoadingRepos(true);
+    setReposPage(1);
     try {
-      const res = await fetch(`/api/scaffold/repos?owner=${encodeURIComponent(owner)}`, {
+      const res = await fetch(`/api/scaffold/repos?owner=${encodeURIComponent(owner)}&page=1&limit=50`, {
         credentials: "include",
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         toast.error(data?.error ?? "Failed to load repos");
         setRepos([]);
+        setReposTotal(0);
         return;
       }
       const data = await res.json();
       setRepos(data.repos ?? []);
+      setReposTotal(data.total ?? 0);
     } catch {
       toast.error("Failed to load repos");
       setRepos([]);
+      setReposTotal(0);
     } finally {
       setLoadingRepos(false);
     }
   }, []);
+
+  const handleLoadMoreRepos = async () => {
+    if (!team) return;
+    const nextPage = reposPage + 1;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/scaffold/repos?owner=${encodeURIComponent(team)}&page=${nextPage}&limit=50`, {
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRepos((prev) => [...prev, ...(data.repos ?? [])]);
+      setReposPage(nextPage);
+      setReposTotal(data.total ?? 0);
+    } catch {
+      toast.error("Failed to load more repos");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleTeamChange = (newTeam: string) => {
     setTeam(newTeam);
@@ -159,6 +187,11 @@ export function ImportWizard({ groups, username }: ImportWizardProps) {
 
       setSuccess({ kind: "Component", name });
       toast.success("Project imported to catalog");
+      addNotification({
+        type: "project_imported",
+        title: "Project imported",
+        body: name,
+      });
     } catch (err) {
       toast.error(String(err));
     } finally {
@@ -255,6 +288,10 @@ export function ImportWizard({ groups, username }: ImportWizardProps) {
           )}
 
           {!loadingRepos && repos.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Showing {repos.length} of {reposTotal} repositories
+              </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {repos.map((repo) => (
                 <button
@@ -274,6 +311,21 @@ export function ImportWizard({ groups, username }: ImportWizardProps) {
                   )}
                 </button>
               ))}
+            </div>
+              {repos.length < reposTotal && (
+                <button
+                  type="button"
+                  onClick={handleLoadMoreRepos}
+                  disabled={loadingMore}
+                  className="w-full rounded-lg border border-dashed border-border py-2.5 text-sm text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loadingMore ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Loading…</>
+                  ) : (
+                    `Load more (${reposTotal - repos.length} remaining)`
+                  )}
+                </button>
+              )}
             </div>
           )}
         </div>

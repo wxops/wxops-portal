@@ -18,7 +18,7 @@ security constraints, and conventions that are NOT obvious from the code alone.
 
 | Doc | Why |
 |-----|-----|
-| `docs/ROADMAP.md` | What shipped (v0.1.0–v0.2.0), what's pending, what's next (v0.3.0+), architecture decisions |
+| `ROADMAP.md` | What shipped (v0.1.0–v0.3.0), what's pending, what's next (v0.4.0+), architecture decisions |
 | `docs/architecture.md` | Auth model (Pinniped), hub-spoke topology, security boundaries |
 | `docs/platform-engineering-rationale.md` | Why Crossplane + Portal, tradeoffs, business case, proving the model |
 
@@ -27,10 +27,10 @@ security constraints, and conventions that are NOT obvious from the code alone.
 | Area | Doc |
 |------|-----|
 | Scaffold / project creation | `docs/golden-path-git-flow.md` |
-| Lifecycle webhook / CI | `docs/lifecycle-webhook.md` |
+| Lifecycle promotion / cache webhook | `docs/lifecycle-webhook.md` |
 | Catalog entities | `docs/service-catalog.md`, `docs/catalog-user-guide.md` |
 | RFC, ADR, Runbook | `docs/documentation-strategy.md` |
-| Environment promotion | `docs/cross-environment-promotion.md` |
+| Environment promotion (overlay model) | `docs/cross-environment-promotion.md` |
 | Deployment / infra | `docs/deployment.md`, `docs/environment-variables.md` |
 | Cluster features | `docs/cluster-registry.md` |
 
@@ -102,24 +102,24 @@ those fields are absent from the patch and inherit from base.
 
 ## ArgoCD Image Updater CR
 
-Location: `tenants/{team}/{appName}.yaml` (NOT inside `tenants-apps/`)
-`metadata.name`: `{appName}` only (no team prefix, no `-image-updater` suffix)
+Location: `tenants/{team}/{appName}-image-updater.yaml` (NOT inside `tenants-apps/`)
+`metadata.name`: `{team}-{appName}` (unique across teams in the shared `argocd` namespace)
+ApplicationRef NamePatterns: `{team}-{appName}-dev`, `{team}-{appName}-staging`, `{team}-{appName}-production`
 
 Tag conventions:
 - `dev-{YYYY-MM-DD_HH-MM-SS}-{sha7}` — CI build on develop branch
 - `vX.Y.Z-rcN` — crane re-tag on staging merge
 - `vX.Y.Z` — crane re-tag on production release
 
-## Lifecycle Webhook
+## Lifecycle Promotion (v0.3.0+)
 
-The lifecycle sync CI workflow lives in `gitops-infra`, NOT in the scaffolded
-project repo. It fires on push to main when
-`tenants-apps/**/overlays/dev/kustomization.yaml` changes (Image Updater
-commit = new dev deploy = promote to `development`).
+`POST /api/v1/webhooks/promote/:kind/:name` was removed in v0.3.0. Lifecycle
+promotion is now UI-driven via the Promotion panel on each Component detail page —
+two steps: create-overlay PR → confirm after merge.
 
-The webhook uses `PORTAL_URL` from Gitea repo secrets on `gitops-infra`.
-The portal backend uses `WEBHOOK_TOKEN`. Never use `PORTAL_EXTERNAL_URL`
-(removed in v0.2.0).
+`WEBHOOK_TOKEN` is still used for `POST /api/v1/webhooks/catalog/refresh`
+(cache invalidation). Wire this to a Gitea push webhook on `gitops-infra`.
+Never use `PORTAL_EXTERNAL_URL` (removed in v0.2.0).
 
 ## Code Conventions
 

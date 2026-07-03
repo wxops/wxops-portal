@@ -18,12 +18,19 @@ import (
 	"github.com/wxops/wxops-portal-v2/internal/catalog"
 	"github.com/wxops/wxops-portal-v2/internal/config"
 	"github.com/wxops/wxops-portal-v2/internal/gitea"
+	"github.com/wxops/wxops-portal-v2/internal/scaffold"
 	"gopkg.in/yaml.v3"
 )
 
 // isAbsoluteURL returns true when s begins with http:// or https://.
 func isAbsoluteURL(s string) bool {
 	return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://")
+}
+
+// EnvVersion holds the latest image tag and its creation date for one environment.
+type EnvVersion struct {
+	Tag  string `json:"tag"`
+	Date string `json:"date"`
 }
 
 // SpecFetcher retrieves a raw OpenAPI/AsyncAPI spec from a remote URL.
@@ -77,13 +84,15 @@ func (h *CatalogHandler) ensurePortalLabel(ctx context.Context) int64 {
 	return h.portalLabelID
 }
 
-// ListEntities returns all catalog entities, optionally filtered by kind.
+// ListEntities returns all catalog entities, optionally filtered by kind, search query, or owner.
 //
 // @Summary      List catalog entities
-// @Description  Returns all catalog entities. Use ?kind= to filter by entity kind (case-insensitive).
+// @Description  Returns all catalog entities. Use ?kind= to filter by entity kind (case-insensitive). Use ?search= for full-text search across name, title, description, and tags. Use ?owner= to filter by owning team (strips "group:" prefix).
 // @Tags         catalog
 // @Produce      json
-// @Param        kind  query   string  false  "Filter by kind (Component, API, System, Group, Resource, User, Doc)"
+// @Param        kind    query   string  false  "Filter by kind (Component, API, System, Group, Resource, User, Doc)"
+// @Param        search  query   string  false  "Full-text search across name, title, description, and tags"
+// @Param        owner   query   string  false  "Filter by owner team (e.g. rocket-team or group:rocket-team)"
 // @Success      200   {object}  map[string]interface{}  "entities array"
 // @Failure      502   {object}  map[string]string
 // @Security     CookieAuth
@@ -105,7 +114,44 @@ func (h *CatalogHandler) ListEntities(c *gin.Context) {
 		return
 	}
 
-	// Filter draft docs — only visible to owner team members.
+	// Full-text search: case-insensitive substring across name, title, description, tags.
+	if search := c.Query("search"); search != "" {
+		lq := strings.ToLower(search)
+		var filtered []catalog.Entity
+		for _, e := range entities {
+			if entityMatchesSearch(e, lq) {
+				filtered = append(filtered, e)
+			}
+		}
+		entities = filtered
+	}
+
+	// Owner filter: match spec.owner, stripping the "group:" prefix.
+	if owner := c.Query("owner"); owner != "" {
+		want := strings.ToLower(strings.TrimPrefix(owner, "group:"))
+		var filtered []catalog.Entity
+		for _, e := range entities {
+			o := strings.ToLower(strings.TrimPrefix(e.Spec.Owner, "group:"))
+			if o == want {
+				filtered = append(filtered, e)
+			}
+		}
+		entities = filtered
+	}
+
+	// Lifecycle filter.
+	if lifecycle := c.Query("lifecycle"); lifecycle != "" {
+		lq := strings.ToLower(lifecycle)
+		var filtered []catalog.Entity
+		for _, e := range entities {
+			if strings.ToLower(e.Spec.Lifecycle) == lq {
+				filtered = append(filtered, e)
+			}
+		}
+		entities = filtered
+	}
+
+	// Filter draft docs — only visible to the author or platform-team.
 	session := auth.GetSession(c)
 	var visible []catalog.Entity
 	for _, e := range entities {
@@ -113,9 +159,11 @@ func (h *CatalogHandler) ListEntities(c *gin.Context) {
 			if session == nil {
 				continue
 			}
-			team := auth.OwnerTeam(e.Spec.Owner)
-			if team != "" && !auth.MemberOfTeam(session.Groups, team) {
-				continue
+			if !auth.IsPlatformTeam(session.Groups) {
+				authorName := strings.TrimPrefix(e.Spec.Author, "user:")
+				if !strings.EqualFold(session.Username, authorName) {
+					continue
+				}
 			}
 		}
 		visible = append(visible, e)
@@ -147,6 +195,26 @@ func (h *CatalogHandler) ListEntities(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"entities": visible, "total": total, "page": page, "limit": limit})
 }
 
+// entityMatchesSearch reports whether entity e contains lq (lowercased query)
+// in its name, title, description, or any tag.
+func entityMatchesSearch(e catalog.Entity, lq string) bool {
+	if strings.Contains(strings.ToLower(e.Metadata.Name), lq) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(e.Metadata.Title), lq) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(e.Metadata.Description), lq) {
+		return true
+	}
+	for _, tag := range e.Metadata.Tags {
+		if strings.Contains(strings.ToLower(tag), lq) {
+			return true
+		}
+	}
+	return false
+}
+
 // GetEntity returns a single entity by kind and name.
 //
 // @Summary      Get catalog entity
@@ -169,13 +237,19 @@ func (h *CatalogHandler) GetEntity(c *gin.Context) {
 		return
 	}
 
-	// Draft docs are only visible to owner team members.
+	// Draft docs are only visible to the author or platform-team.
 	if entity.Kind == "Doc" && entity.Spec.Draft != nil && *entity.Spec.Draft {
 		session := auth.GetSession(c)
-		team := auth.OwnerTeam(entity.Spec.Owner)
-		if session == nil || (team != "" && !auth.MemberOfTeam(session.Groups, team)) {
+		if session == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "entity Doc/" + name + " not found"})
 			return
+		}
+		if !auth.IsPlatformTeam(session.Groups) {
+			authorName := strings.TrimPrefix(entity.Spec.Author, "user:")
+			if !strings.EqualFold(session.Username, authorName) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "entity Doc/" + name + " not found"})
+				return
+			}
 		}
 	}
 
@@ -365,6 +439,23 @@ func (h *CatalogHandler) CreateEntity(c *gin.Context) {
 	gitopsOwner := h.cfg.GiteaCatalogOwner
 	gitopsRepo := h.cfg.GiteaCatalogRepo
 	catalogPath := h.cfg.GiteaCatalogPath
+	relPath := entityRelPath(entity.Kind, entity.Spec.Owner, entity.Metadata.Name)
+	filePath := catalogPath + "/" + relPath
+	commitMsg := fmt.Sprintf("feat(catalog): register %s %s", entity.Kind, entity.Metadata.Name)
+
+	// Doc entities are committed directly to main — no review gate.
+	if strings.EqualFold(entity.Kind, "Doc") {
+		if _, err := h.giteaClient.CreateOrUpdateFile(ctx, gitopsOwner, gitopsRepo, filePath, entityYAML, commitMsg, "main"); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "commit: " + err.Error()})
+			return
+		}
+		h.store.InvalidateCache()
+		c.JSON(http.StatusCreated, gin.H{
+			"entity": entity,
+			"status": "Document published to catalog",
+		})
+		return
+	}
 
 	branchName := fmt.Sprintf("register/%s/%s-%d",
 		strings.ToLower(entity.Kind), entity.Metadata.Name, time.Now().Unix())
@@ -373,9 +464,6 @@ func (h *CatalogHandler) CreateEntity(c *gin.Context) {
 		return
 	}
 
-	relPath := entityRelPath(entity.Kind, entity.Spec.Owner, entity.Metadata.Name)
-	filePath := catalogPath + "/" + relPath
-	commitMsg := fmt.Sprintf("feat(catalog): register %s %s", entity.Kind, entity.Metadata.Name)
 	if _, err := h.giteaClient.CreateOrUpdateFile(ctx, gitopsOwner, gitopsRepo, filePath, entityYAML, commitMsg, branchName); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "commit: " + err.Error()})
 		return
@@ -484,6 +572,23 @@ func (h *CatalogHandler) UpdateEntity(c *gin.Context) {
 	gitopsOwner := h.cfg.GiteaCatalogOwner
 	gitopsRepo := h.cfg.GiteaCatalogRepo
 	catalogPath := h.cfg.GiteaCatalogPath
+	relPath := entityRelPath(entity.Kind, entity.Spec.Owner, entity.Metadata.Name)
+	filePath := catalogPath + "/" + relPath
+	commitMsg := fmt.Sprintf("chore(catalog): update %s %s", kind, name)
+
+	// Doc entities are committed directly to main — no review gate.
+	if strings.EqualFold(kind, "Doc") {
+		if _, err := h.giteaClient.CreateOrUpdateFile(ctx, gitopsOwner, gitopsRepo, filePath, entityYAML, commitMsg, "main"); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "commit: " + err.Error()})
+			return
+		}
+		h.store.InvalidateCache()
+		c.JSON(http.StatusOK, gin.H{
+			"entity": entity,
+			"status": "Document updated",
+		})
+		return
+	}
 
 	branchName := fmt.Sprintf("edit/%s/%s-%d", strings.ToLower(kind), name, time.Now().Unix())
 	if err := h.giteaClient.CreateBranch(ctx, gitopsOwner, gitopsRepo, branchName, "main"); err != nil {
@@ -491,9 +596,6 @@ func (h *CatalogHandler) UpdateEntity(c *gin.Context) {
 		return
 	}
 
-	relPath := entityRelPath(entity.Kind, entity.Spec.Owner, entity.Metadata.Name)
-	filePath := catalogPath + "/" + relPath
-	commitMsg := fmt.Sprintf("chore(catalog): update %s %s", kind, name)
 	if _, err := h.giteaClient.CreateOrUpdateFile(ctx, gitopsOwner, gitopsRepo, filePath, entityYAML, commitMsg, branchName); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "commit: " + err.Error()})
 		return
@@ -1005,6 +1107,116 @@ func (h *CatalogHandler) GetEntityReleases(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"releases": releases, "images": images})
 }
 
+// GetEntityVersions returns the latest deployed version per environment for an entity.
+// Versions are derived from git tag naming conventions:
+//
+//	dev-{date}-{sha}    → dev environment (Image Updater CI builds on develop)
+//	vX.Y.Z-rcN          → staging environment (crane re-tag on staging merge)
+//	vX.Y.Z              → production environment (crane re-tag on production release)
+//
+// @Summary      Get per-environment versions
+// @Description  Returns the latest tag for each environment (dev/staging/production) from the entity's source repo.
+// @Tags         catalog
+// @Produce      json
+// @Param        kind  path  string  true  "Entity kind"
+// @Param        name  path  string  true  "Entity name"
+// @Success      200  {object}  map[string]any
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities/{kind}/{name}/versions [get]
+func (h *CatalogHandler) GetEntityVersions(c *gin.Context) {
+	owner, repo, _, err := h.resolveEntityRepo(c)
+	if err != nil {
+		return
+	}
+	if h.giteaClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Gitea not configured"})
+		return
+	}
+
+	tags, err := h.giteaClient.ListRepoTags(c.Request.Context(), owner, repo, 50)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	var (
+		devTag     *EnvVersion
+		stagingTag *EnvVersion
+		prodTag    *EnvVersion
+	)
+
+	for _, t := range tags {
+		n := t.Name
+		date := t.Commit.Created
+		switch {
+		case devTag == nil && strings.HasPrefix(n, "dev-"):
+			devTag = &EnvVersion{Tag: n, Date: date}
+		case stagingTag == nil && strings.HasPrefix(n, "v") && strings.Contains(n, "-rc"):
+			stagingTag = &EnvVersion{Tag: n, Date: date}
+		case prodTag == nil && strings.HasPrefix(n, "v") && !strings.Contains(n, "-rc"):
+			prodTag = &EnvVersion{Tag: n, Date: date}
+		}
+		if devTag != nil && stagingTag != nil && prodTag != nil {
+			break
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"dev":        devTag,
+		"staging":    stagingTag,
+		"production": prodTag,
+	})
+}
+
+// parseArgoCDSourceTag extracts the image tag from an ArgoCD Image Updater writeback file.
+//
+// File format:
+//
+//	kustomize:
+//	  images:
+//	  - registry/org/repo=registry/org/repo:tag
+//
+// Returns the tag string, or "" if the file cannot be parsed.
+func parseArgoCDSourceTag(data []byte) string {
+	var src struct {
+		Kustomize struct {
+			Images []string `yaml:"images"`
+		} `yaml:"kustomize"`
+	}
+	if err := yaml.Unmarshal(data, &src); err != nil || len(src.Kustomize.Images) == 0 {
+		return ""
+	}
+	// Each entry: "{image}={image}:{tag}" — take everything after "=" then after last ":"
+	entry := src.Kustomize.Images[0]
+	eqIdx := strings.Index(entry, "=")
+	if eqIdx < 0 {
+		return ""
+	}
+	ref := entry[eqIdx+1:] // "registry/org/repo:tag"
+	if colonIdx := strings.LastIndex(ref, ":"); colonIdx >= 0 {
+		return ref[colonIdx+1:]
+	}
+	return ""
+}
+
+// extractDateFromDevTag parses the timestamp embedded in a dev tag of the form
+// dev-2026-07-02_06-29-42-sha7 and returns an RFC3339 string.
+// Returns "" for release tags (vX.Y.Z, vX.Y.Z-rcN) which carry no timestamp.
+func extractDateFromDevTag(tag string) string {
+	if !strings.HasPrefix(tag, "dev-") {
+		return ""
+	}
+	rest := tag[4:] // "2026-07-02_06-29-42-sha7"
+	if len(rest) < 19 {
+		return ""
+	}
+	t, err := time.Parse("2006-01-02_15-04-05", rest[:19])
+	if err != nil {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 // GetEntityPackages returns parsed dependency manifests from the entity's source repo.
 //
 // @Summary      Get package dependencies
@@ -1096,24 +1308,324 @@ func (h *CatalogHandler) GetDocContent(c *gin.Context) {
 	c.Data(http.StatusOK, "text/markdown; charset=utf-8", data)
 }
 
-// PromoteLifecycle transitions an entity's lifecycle field and commits the
-// updated YAML directly to main. Intended to be called by ArgoCD notifications
-// (post-sync webhook) or manually by platform-team.
+// GetPromoStatus returns promotion readiness for a Component entity:
+// which environment overlays exist in gitops-infra, which image tags are
+// present in the source repo, and any open overlay PRs.
 //
-// Body: { "lifecycle": "development" }
+// @Summary      Get promotion status
+// @Tags         catalog
+// @Produce      json
+// @Param        kind  path  string  true  "Entity kind"
+// @Param        name  path  string  true  "Entity name"
+// @Success      200  {object}  map[string]any
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities/{kind}/{name}/promostatus [get]
+func (h *CatalogHandler) GetPromoStatus(c *gin.Context) {
+	kind := c.Param("kind")
+	name := c.Param("name")
+
+	entity, err := h.store.Get(c.Request.Context(), kind, name)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	loc := entity.Metadata.Annotations["gitea/source-location"]
+	if loc == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "entity has no gitea/source-location annotation"})
+		return
+	}
+	parts := strings.SplitN(loc, "/", 2)
+	if len(parts) != 2 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid gitea/source-location"})
+		return
+	}
+	srcTeam, srcApp := parts[0], parts[1]
+
+	locked := entity.Metadata.Annotations["wxops.cloud/deprecated"] == "true"
+
+	type overlayStatus struct {
+		Exists bool `json:"exists"`
+		OpenPR *int `json:"openPR,omitempty"`
+	}
+	type promoStatus struct {
+		Lifecycle string `json:"lifecycle"`
+		Locked    bool   `json:"locked"`
+		BaseReady bool   `json:"baseReady"` // false = scaffold PR not yet merged
+		// Feature flags parsed from the base xtenant-app.yaml — authoritative even after
+		// edit-config, which updates the manifest but not the catalog entity annotations.
+		IngressEnabled  bool `json:"ingressEnabled"`
+		CertEnabled     bool `json:"certEnabled"`
+		VaultEnabled    bool `json:"vaultEnabled"`
+		DatabaseEnabled bool `json:"databaseEnabled"`
+		Tags            struct {
+			Dev        *EnvVersion `json:"dev"`
+			Staging    *EnvVersion `json:"staging"`
+			Production *EnvVersion `json:"production"`
+		} `json:"tags"`
+		Overlays struct {
+			Dev        overlayStatus `json:"dev"`
+			Staging    overlayStatus `json:"staging"`
+			Production overlayStatus `json:"production"`
+		} `json:"overlays"`
+	}
+
+	status := promoStatus{
+		Lifecycle: entity.Spec.Lifecycle,
+		Locked:    locked,
+	}
+
+	// Overlay existence + tags — both read from gitops-infra.
+	if h.giteaClient != nil && h.cfg != nil {
+		gitopsOwner := h.cfg.GiteaCatalogOwner
+		gitopsRepo := h.cfg.GiteaCatalogRepo
+
+		// Tags — read the image tag ArgoCD Image Updater writes back to each overlay's
+		// .argocd-source-{argoAppName}.yaml after every successful image update.
+		for _, env := range []string{"dev", "staging", "production"} {
+			argoAppName := fmt.Sprintf("%s-%s-%s", srcTeam, srcApp, env)
+			filePath := fmt.Sprintf("tenants-apps/%s/%s/overlays/%s/.argocd-source-%s.yaml",
+				srcTeam, srcApp, env, argoAppName)
+			content, ferr := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, filePath)
+			if ferr != nil {
+				continue
+			}
+			tag := parseArgoCDSourceTag(content)
+			if tag == "" {
+				continue
+			}
+			ev := &EnvVersion{Tag: tag, Date: extractDateFromDevTag(tag)}
+			switch env {
+			case "dev":
+				status.Tags.Dev = ev
+			case "staging":
+				status.Tags.Staging = ev
+			case "production":
+				status.Tags.Production = ev
+			}
+		}
+
+		basePath := fmt.Sprintf("tenants-apps/%s/%s/base/kustomization.yaml", srcTeam, srcApp)
+		status.BaseReady, _ = h.giteaClient.FileExistsOnMain(c.Request.Context(), gitopsOwner, gitopsRepo, basePath)
+
+		// Parse base xtenant-app.yaml for feature flags — these are authoritative because
+		// edit-config updates the manifest directly without touching catalog entity annotations.
+		if status.BaseReady {
+			baseAppPath := fmt.Sprintf("tenants-apps/%s/%s/base/xtenant-app.yaml", srcTeam, srcApp)
+			if appYAML, ferr := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, baseAppPath); ferr == nil {
+				var baseApp scaffold.XTenantApp
+				if yaml.Unmarshal(appYAML, &baseApp) == nil {
+					if baseApp.Spec.Parameters.Ingress != nil {
+						status.IngressEnabled = baseApp.Spec.Parameters.Ingress.Enabled
+						if baseApp.Spec.Parameters.Ingress.TLS != nil {
+							status.CertEnabled = baseApp.Spec.Parameters.Ingress.TLS.Enabled
+						}
+					}
+					if sf := baseApp.Spec.Parameters.SecretsFrom; sf != nil {
+						if sf.App != nil {
+							status.VaultEnabled = sf.App.Enabled
+						}
+					}
+				}
+			}
+			// DatabaseEnabled: xtenant-database.yaml existence is the authoritative indicator.
+			dbBasePath := fmt.Sprintf("tenants-apps/%s/%s/base/xtenant-database.yaml", srcTeam, srcApp)
+			status.DatabaseEnabled, _ = h.giteaClient.FileExistsOnMain(c.Request.Context(), gitopsOwner, gitopsRepo, dbBasePath)
+		}
+
+		for _, env := range []string{"dev", "staging", "production"} {
+			path := fmt.Sprintf("tenants-apps/%s/%s/overlays/%s/kustomization.yaml", srcTeam, srcApp, env)
+			exists, _ := h.giteaClient.FileExistsOnMain(c.Request.Context(), gitopsOwner, gitopsRepo, path)
+			switch env {
+			case "dev":
+				status.Overlays.Dev.Exists = exists
+			case "staging":
+				status.Overlays.Staging.Exists = exists
+			case "production":
+				status.Overlays.Production.Exists = exists
+			}
+		}
+
+		// Open overlay PRs — search by title prefix.
+		prs, _, _ := h.giteaClient.ListPullRequests(c.Request.Context(), gitopsOwner, gitopsRepo, "open", 1, 50, h.ensurePortalLabel(c.Request.Context()))
+		prefix := fmt.Sprintf("[Promote] %s/%s", srcTeam, srcApp)
+		for i := range prs {
+			pr := &prs[i]
+			if !strings.HasPrefix(pr.Title, prefix) {
+				continue
+			}
+			num := pr.Number
+			if strings.Contains(pr.Title, "→ development") {
+				status.Overlays.Dev.OpenPR = &num
+			} else if strings.Contains(pr.Title, "→ staging") {
+				status.Overlays.Staging.OpenPR = &num
+			} else if strings.Contains(pr.Title, "→ production") {
+				status.Overlays.Production.OpenPR = &num
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, status)
+}
+
+// overlayValidationContext carries entity-level capability flags derived from
+// catalog annotations so validateOverlayRequest can enforce XR field constraints.
+type overlayValidationContext struct {
+	ingressEnabled bool
+	certEnabled    bool
+	databaseEnabled bool
+}
+
+// validateOverlayRequest enforces the field constraints described in the XTenantApp XR.
+// Returns a slice of human-readable errors; empty means the request is valid.
+func validateOverlayRequest(req struct {
+	IngressHost     string
+	CertIssuer      string
+	Replicas        *int32
+	ResourcesCPUReq string
+	ResourcesCPULim string
+	ResourcesMemReq string
+	ResourcesMemLim string
+	DatabaseEnabled bool
+	DbTier          string
+	DbName          string
+	DbInstances     int32
+	DbStorageSize   string
+	DbPostgresVersion int
+}, ctx overlayValidationContext) []string {
+	var errs []string
+
+	// ── Ingress ───────────────────────────────────────────────────────────
+	// host is required when the base XTenantApp has ingress.enabled: true.
+	if ctx.ingressEnabled && req.IngressHost == "" {
+		errs = append(errs, "ingress host is required — the base manifest enables ingress but no host was provided")
+	}
+	if req.IngressHost != "" && !isValidOverlayHostname(req.IngressHost) {
+		errs = append(errs, fmt.Sprintf("ingress host %q is not a valid hostname", req.IngressHost))
+	}
+	// A cert issuer is only meaningful alongside a host.
+	if req.CertIssuer != "" && req.IngressHost == "" {
+		errs = append(errs, "certIssuer requires an ingress host — set the ingress host first")
+	}
+
+	// ── Replicas ──────────────────────────────────────────────────────────
+	if req.Replicas != nil && *req.Replicas < 1 {
+		errs = append(errs, "replicas must be ≥ 1")
+	}
+
+	// ── Resource quantities ───────────────────────────────────────────────
+	for field, val := range map[string]string{
+		"resourcesCpuReq": req.ResourcesCPUReq,
+		"resourcesCpuLim": req.ResourcesCPULim,
+		"resourcesMemReq": req.ResourcesMemReq,
+		"resourcesMemLim": req.ResourcesMemLim,
+	} {
+		if val != "" && !isValidK8sQuantity(val) {
+			errs = append(errs, fmt.Sprintf("%s %q is not a valid Kubernetes resource quantity (e.g. 100m, 512Mi)", field, val))
+		}
+	}
+
+	// ── Database ──────────────────────────────────────────────────────────
+	if req.DatabaseEnabled {
+		if req.DbTier != "" && req.DbTier != "shared" && req.DbTier != "dedicated" {
+			errs = append(errs, "dbTier must be 'shared' or 'dedicated'")
+		}
+		if req.DbName != "" && !isValidK8sName(req.DbName) {
+			errs = append(errs, fmt.Sprintf("dbName %q must be lowercase alphanumeric and hyphens only", req.DbName))
+		}
+		if req.DbTier == "dedicated" {
+			if req.DbInstances < 1 {
+				errs = append(errs, "dbInstances must be ≥ 1 for a dedicated-tier database")
+			}
+			if req.DbStorageSize != "" && !isValidK8sQuantity(req.DbStorageSize) {
+				errs = append(errs, fmt.Sprintf("dbStorageSize %q is not a valid Kubernetes resource quantity (e.g. 10Gi)", req.DbStorageSize))
+			}
+			if req.DbPostgresVersion != 0 && (req.DbPostgresVersion < 14 || req.DbPostgresVersion > 17) {
+				errs = append(errs, fmt.Sprintf("dbPostgresVersion %d is out of range — supported: 14–17", req.DbPostgresVersion))
+			}
+		}
+	}
+
+	return errs
+}
+
+// isValidOverlayHostname returns true for well-formed RFC 1123 hostnames.
+func isValidOverlayHostname(h string) bool {
+	if len(h) == 0 || len(h) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(h, ".") {
+		if len(label) == 0 || len(label) > 63 {
+			return false
+		}
+		for i, c := range label {
+			switch {
+			case c >= 'a' && c <= 'z':
+			case c >= 'A' && c <= 'Z':
+			case c >= '0' && c <= '9':
+			case c == '-' && i > 0 && i < len(label)-1:
+			default:
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isValidK8sQuantity checks the common Kubernetes resource quantity formats:
+//   - plain integer: "100"
+//   - decimal: "0.5"
+//   - SI suffix (CPU millicore): "100m"
+//   - binary suffix (memory): "128Mi", "1Gi"
+//   - decimal SI suffix: "100M", "10G"
+func isValidK8sQuantity(s string) bool {
+	suffixes := []string{"Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "m", "k", "K", "M", "G", "T", "P", "E"}
+	for _, sfx := range suffixes {
+		if strings.HasSuffix(s, sfx) {
+			s = s[:len(s)-len(sfx)]
+			break
+		}
+	}
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && c != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// isValidK8sName checks that a name is a valid Kubernetes DNS label (RFC 1123):
+// lowercase alphanumeric and hyphens, no leading/trailing hyphens.
+func isValidK8sName(name string) bool {
+	if len(name) == 0 || len(name) > 63 {
+		return false
+	}
+	if name[0] == '-' || name[len(name)-1] == '-' {
+		return false
+	}
+	for _, c := range name {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// PromoteLifecycle handles two promotion actions for a Component entity:
 //
-// Authentication: two paths.
+//   - "create-overlay": generates the Kustomize overlay for the target environment
+//     and opens a PR in gitops-infra. A developer triggers this; platform-team
+//     approves/merges.
+//   - "confirm": updates the entity lifecycle in the catalog once the developer
+//     has verified the PR is merged and the image tag exists. Acts as ground truth
+//     confirmation, not a command.
 //
-//  1. Webhook token — Authorization: Bearer <WEBHOOK_TOKEN>
-//     Used by ArgoCD notifications for automatic experimental → development.
-//  2. User session — normal portal cookie auth.
-//     Used by platform-team for manual promotions to staging/production.
-//
-// Rules:
-//   - experimental → development: webhook token OR platform-team session
-//   - development → staging: platform-team session only
-//   - staging → production: platform-team session only
-//   - any demotion: platform-team session only
+// Permission matrix:
+//   - → development: any team member, platform-team, or Managers
+//   - → staging / production: platform-team or Managers only
 //
 // @Summary      Promote entity lifecycle
 // @Tags         catalog
@@ -1128,10 +1640,40 @@ func (h *CatalogHandler) PromoteLifecycle(c *gin.Context) {
 	name := c.Param("name")
 
 	var req struct {
-		Lifecycle string `json:"lifecycle" binding:"required"`
+		Action          string  `json:"action" binding:"required"`
+		TargetLifecycle string  `json:"targetLifecycle" binding:"required"`
+		Replicas        *int32  `json:"replicas,omitempty"`
+		IngressHost     string  `json:"ingressHost,omitempty"`
+		ResourcesCPUReq string  `json:"resourcesCpuReq,omitempty"`
+		ResourcesCPULim string  `json:"resourcesCpuLim,omitempty"`
+		ResourcesMemReq string  `json:"resourcesMemReq,omitempty"`
+		ResourcesMemLim string  `json:"resourcesMemLim,omitempty"`
+		// Database env-specific config
+		DatabaseEnabled    bool   `json:"databaseEnabled,omitempty"`
+		DbName             string `json:"dbName,omitempty"`
+		DbTier             string `json:"dbTier,omitempty"`
+		DbEnvironment      string `json:"dbEnvironment,omitempty"`
+		DbClusterRef       string `json:"dbClusterRef,omitempty"`
+		DbClusterNamespace string `json:"dbClusterNamespace,omitempty"`
+		// Dedicated-tier cluster parameters
+		DbInstances       int32  `json:"dbInstances,omitempty"`
+		DbStorageSize     string `json:"dbStorageSize,omitempty"`
+		DbPostgresVersion int    `json:"dbPostgresVersion,omitempty"`
+		DbEnablePooler    bool   `json:"dbEnablePooler,omitempty"`
+		DbNamespace       string `json:"dbNamespace,omitempty"`
+		// Cert-TLS per-env issuer override
+		CertIssuer string `json:"certIssuer,omitempty"`
+		// VaultWritten must be true when the entity has a vault dependency and
+		// action == "create-overlay". The frontend sets this after a successful
+		// PUT /api/scaffold/secrets call so we know the ExternalSecret will sync.
+		VaultWritten bool `json:"vaultWritten,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Action != "create-overlay" && req.Action != "update-overlay" && req.Action != "confirm" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "action must be create-overlay, update-overlay, or confirm"})
 		return
 	}
 
@@ -1141,38 +1683,321 @@ func (h *CatalogHandler) PromoteLifecycle(c *gin.Context) {
 		return
 	}
 
+	if entity.Metadata.Annotations["wxops.cloud/deprecated"] == "true" {
+		c.JSON(http.StatusConflict, gin.H{"error": "entity is deprecated and cannot be promoted"})
+		return
+	}
+
+	// Permission check.
+	session := auth.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+	isPlatform := auth.IsPlatformTeam(session.Groups)
+	isManager := auth.IsTeamManager(session.Groups, entity.Spec.Owner)
+	isMember := auth.MemberOfTeam(session.Groups, entity.Spec.Owner)
+	canElevate := isPlatform || isManager
+
+	switch req.TargetLifecycle {
+	case "development":
+		if !isMember && !canElevate {
+			c.JSON(http.StatusForbidden, gin.H{"error": "must be a team member to promote to development"})
+			return
+		}
+	case "staging", "production":
+		if !canElevate {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only platform-team or team Managers can promote to " + req.TargetLifecycle})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "targetLifecycle must be development, staging, or production"})
+		return
+	}
+
+	loc := entity.Metadata.Annotations["gitea/source-location"]
+	parts := strings.SplitN(loc, "/", 2)
+	if len(parts) != 2 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "entity has no valid gitea/source-location annotation"})
+		return
+	}
+	srcTeam, srcApp := parts[0], parts[1]
+
+	// Overlay dirs use "dev", not "development". Lifecycle label stays as-is.
+	envName := req.TargetLifecycle
+	if envName == "development" {
+		envName = "dev"
+	}
+
+	if req.Action == "create-overlay" || req.Action == "update-overlay" {
+		if h.giteaClient == nil || h.cfg == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Gitea not configured"})
+			return
+		}
+
+		gitopsOwner := h.cfg.GiteaCatalogOwner
+		gitopsRepo := h.cfg.GiteaCatalogRepo
+
+		// Guard: base manifests must be on main before an overlay can reference ../../base.
+		basePath := fmt.Sprintf("tenants-apps/%s/%s/base/kustomization.yaml", srcTeam, srcApp)
+		if exists, _ := h.giteaClient.FileExistsOnMain(c.Request.Context(), gitopsOwner, gitopsRepo, basePath); !exists {
+			c.JSON(http.StatusConflict, gin.H{"error": "scaffold PR has not been merged yet — merge the base manifests before creating an overlay"})
+			return
+		}
+
+		overlayPath := fmt.Sprintf("tenants-apps/%s/%s/overlays/%s/kustomization.yaml", srcTeam, srcApp, envName)
+		overlayExists, _ := h.giteaClient.FileExistsOnMain(c.Request.Context(), gitopsOwner, gitopsRepo, overlayPath)
+
+		if req.Action == "create-overlay" && overlayExists {
+			c.JSON(http.StatusConflict, gin.H{"error": "overlay already exists on main — use confirm to update lifecycle"})
+			return
+		}
+		if req.Action == "update-overlay" && !overlayExists {
+			c.JSON(http.StatusConflict, gin.H{"error": "overlay does not exist yet — use create-overlay first"})
+			return
+		}
+
+		// Vault verification — only enforced on create-overlay.
+		// On update-overlay the secrets already exist in Vault from the initial creation;
+		// the user may update them optionally but is not required to re-enter them.
+		hasVault := false
+		for _, dep := range entity.Spec.DependsOn {
+			depName := dep[strings.LastIndex(dep, "/")+1:]
+			if strings.HasSuffix(depName, "-vault") {
+				hasVault = true
+				break
+			}
+		}
+		if hasVault && !req.VaultWritten && req.Action == "create-overlay" {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "vault secrets must be written before committing the overlay — add at least one secret in the Vault secrets section"})
+			return
+		}
+
+		// Field-level validation against the XTenantApp XR constraints.
+		// Read feature flags from the base manifest — more reliable than catalog annotations
+		// because edit-config updates xtenant-app.yaml without touching the catalog entity.
+		ingressEnabled := entity.Metadata.Annotations["wxops.cloud/ingress"] == "true"
+		certEnabled := entity.Metadata.Annotations["wxops.cloud/cert-manager"] == "true"
+		{
+			baseAppPath := fmt.Sprintf("tenants-apps/%s/%s/base/xtenant-app.yaml", srcTeam, srcApp)
+			if appYAML, ferr := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, baseAppPath); ferr == nil {
+				var baseApp scaffold.XTenantApp
+				if yaml.Unmarshal(appYAML, &baseApp) == nil && baseApp.Spec.Parameters.Ingress != nil {
+					ingressEnabled = ingressEnabled || baseApp.Spec.Parameters.Ingress.Enabled
+					if baseApp.Spec.Parameters.Ingress.TLS != nil {
+						certEnabled = certEnabled || baseApp.Spec.Parameters.Ingress.TLS.Enabled
+					}
+				}
+			}
+		}
+		vctx := overlayValidationContext{
+			ingressEnabled:  ingressEnabled || certEnabled, // cert-manager always requires ingress
+			certEnabled:     certEnabled,
+			databaseEnabled: req.DatabaseEnabled,
+		}
+		if errs := validateOverlayRequest(struct {
+			IngressHost       string
+			CertIssuer        string
+			Replicas          *int32
+			ResourcesCPUReq   string
+			ResourcesCPULim   string
+			ResourcesMemReq   string
+			ResourcesMemLim   string
+			DatabaseEnabled   bool
+			DbTier            string
+			DbName            string
+			DbInstances       int32
+			DbStorageSize     string
+			DbPostgresVersion int
+		}{
+			IngressHost:       req.IngressHost,
+			CertIssuer:        req.CertIssuer,
+			Replicas:          req.Replicas,
+			ResourcesCPUReq:   req.ResourcesCPUReq,
+			ResourcesCPULim:   req.ResourcesCPULim,
+			ResourcesMemReq:   req.ResourcesMemReq,
+			ResourcesMemLim:   req.ResourcesMemLim,
+			DatabaseEnabled:   req.DatabaseEnabled,
+			DbTier:            req.DbTier,
+			DbName:            req.DbName,
+			DbInstances:       req.DbInstances,
+			DbStorageSize:     req.DbStorageSize,
+			DbPostgresVersion: req.DbPostgresVersion,
+		}, vctx); len(errs) > 0 {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": strings.Join(errs, "; ")})
+			return
+		}
+
+		var resources *scaffold.ResourceSpec
+		if req.ResourcesCPUReq != "" || req.ResourcesCPULim != "" || req.ResourcesMemReq != "" || req.ResourcesMemLim != "" {
+			resources = &scaffold.ResourceSpec{
+				Requests: &scaffold.ResourceValues{CPU: req.ResourcesCPUReq, Memory: req.ResourcesMemReq},
+				Limits:   &scaffold.ResourceValues{CPU: req.ResourcesCPULim, Memory: req.ResourcesMemLim},
+			}
+		}
+
+		overlayReq := &scaffold.OverlayRequest{
+			Team:               srcTeam,
+			AppName:            srcApp,
+			EnvName:            envName,
+			Replicas:           req.Replicas,
+			IngressHost:        req.IngressHost,
+			Resources:          resources,
+			DatabaseEnabled:    req.DatabaseEnabled,
+			DbName:             req.DbName,
+			DbTier:             req.DbTier,
+			DbEnvironment:      req.DbEnvironment,
+			DbClusterRef:       req.DbClusterRef,
+			DbClusterNamespace: req.DbClusterNamespace,
+			DbInstances:        req.DbInstances,
+			DbStorageSize:      req.DbStorageSize,
+			DbPostgresVersion:  req.DbPostgresVersion,
+			DbEnablePooler:     req.DbEnablePooler,
+			DbNamespace:        req.DbNamespace,
+			CertIssuer:         req.CertIssuer,
+		}
+		overlayFiles, err := scaffold.GenerateOverlayFiles(overlayReq)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "generate overlay: " + err.Error()})
+			return
+		}
+
+		isEdit := req.Action == "update-overlay"
+
+		overlayDir := fmt.Sprintf("tenants-apps/%s/%s/overlays/%s", srcTeam, srcApp, envName)
+		commitFiles := make(map[string][]byte, len(overlayFiles))
+		for fname, data := range overlayFiles {
+			commitFiles[overlayDir+"/"+fname] = data
+		}
+
+		var commitMsg string
+		if isEdit {
+			commitMsg = fmt.Sprintf("feat(overlay): update %s overlay for %s/%s", envName, srcTeam, srcApp)
+		} else {
+			commitMsg = fmt.Sprintf("feat(promote): add %s overlay for %s/%s", envName, srcTeam, srcApp)
+		}
+
+		// Dev: commit directly to main and immediately update lifecycle (no PR review, no confirm step).
+		if envName == "dev" {
+			if err := h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, "main", commitMsg, commitFiles); err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "commit overlay: " + err.Error()})
+				return
+			}
+
+			newLC := req.TargetLifecycle // "development"
+			oldLC := entity.Spec.Lifecycle
+			if oldLC != newLC {
+				entity.Spec.Lifecycle = newLC
+				entityYAML, err := yaml.Marshal(entity)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "marshal entity: " + err.Error()})
+					return
+				}
+				if err := h.commitEntityUpdate(c, kind, name, entityYAML, fmt.Sprintf("chore(catalog): confirm %s/%s lifecycle %s → %s", kind, name, oldLC, newLC)); err != nil {
+					return
+				}
+				owner := entity.Spec.Owner
+				for _, dep := range entity.Spec.DependsOn {
+					if !strings.HasPrefix(dep, "resource:") {
+						continue
+					}
+					relName := dep[strings.LastIndex(dep, "/")+1:]
+					if err := h.cascadeLifecycle(c.Request.Context(), "Resource", relName, owner, newLC, session.Username); err != nil {
+						log.Printf("[catalog] cascade lifecycle warn: Resource/%s: %v", relName, err)
+					}
+				}
+				for _, apiRef := range entity.Spec.ProvidesApis {
+					if !strings.HasPrefix(apiRef, "api:") {
+						continue
+					}
+					relName := apiRef[strings.LastIndex(apiRef, "/")+1:]
+					if err := h.cascadeLifecycle(c.Request.Context(), "API", relName, owner, newLC, session.Username); err != nil {
+						log.Printf("[catalog] cascade lifecycle warn: API/%s: %v", relName, err)
+					}
+				}
+			}
+
+			log.Printf("[catalog] dev overlay committed to main: %s/%s by %s (action=%s)", srcTeam, srcApp, session.Username, req.Action)
+			c.JSON(http.StatusOK, gin.H{
+				"action":    req.Action,
+				"committed": true,
+				"lifecycle": newLC,
+			})
+			return
+		}
+
+		// Staging / Production: open a PR for platform-team review.
+		branchPrefix := "promote"
+		if isEdit {
+			branchPrefix = "overlay-update"
+		}
+		branch := fmt.Sprintf("%s/%s/%s-%s-%d", branchPrefix, srcTeam, srcApp, envName, time.Now().Unix())
+		if err := h.giteaClient.CreateBranch(c.Request.Context(), gitopsOwner, gitopsRepo, branch, "main"); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "create branch: " + err.Error()})
+			return
+		}
+
+		var prTitle, prBody string
+		if isEdit {
+			prTitle = fmt.Sprintf("[Overlay Update] %s/%s %s", srcTeam, srcApp, req.TargetLifecycle)
+			prBody = fmt.Sprintf("## Overlay Update: %s/%s %s\n\nUpdates the `overlays/%s/` configuration (replicas, resources, ingress, DB, TLS).\n\n"+
+				"---\n*Created via WxOps Portal by %s*", srcTeam, srcApp, req.TargetLifecycle, envName, session.Username)
+		} else {
+			prTitle = fmt.Sprintf("[Promote] %s/%s → %s", srcTeam, srcApp, req.TargetLifecycle)
+			prBody = fmt.Sprintf("## Promotion: %s/%s → %s\n\nAdds the `overlays/%s/` directory so ArgoCD can deploy to the %s environment.\n\n"+
+				"Once merged, return to the portal and click **Confirm** to update the lifecycle.\n\n"+
+				"---\n*Created via WxOps Portal by %s*", srcTeam, srcApp, req.TargetLifecycle, envName, envName, session.Username)
+		}
+
+		if err := h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, branch, commitMsg, commitFiles); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "commit overlay: " + err.Error()})
+			return
+		}
+
+		labelID := h.ensurePortalLabel(c.Request.Context())
+		var pr *gitea.PullRequestInfo
+		if labelID > 0 {
+			pr, err = h.giteaClient.CreatePullRequest(c.Request.Context(), gitopsOwner, gitopsRepo, prTitle, prBody, branch, "main", labelID)
+		} else {
+			pr, err = h.giteaClient.CreatePullRequest(c.Request.Context(), gitopsOwner, gitopsRepo, prTitle, prBody, branch, "main")
+		}
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "create PR: " + err.Error()})
+			return
+		}
+
+		log.Printf("[catalog] overlay PR opened: %s/%s %s by %s (PR #%d, action=%s)", srcTeam, srcApp, req.TargetLifecycle, session.Username, pr.Number, req.Action)
+		c.JSON(http.StatusOK, gin.H{
+			"action":   req.Action,
+			"prTitle":  pr.Title,
+			"prState":  pr.State,
+			"prNumber": pr.Number,
+		})
+		return
+	}
+
+	// action == "confirm": verify overlay exists then update lifecycle.
+	if h.giteaClient != nil && h.cfg != nil {
+		overlayPath := fmt.Sprintf("tenants-apps/%s/%s/overlays/%s/kustomization.yaml", srcTeam, srcApp, envName)
+		exists, err := h.giteaClient.FileExistsOnMain(c.Request.Context(), h.cfg.GiteaCatalogOwner, h.cfg.GiteaCatalogRepo, overlayPath)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "check overlay: " + err.Error()})
+			return
+		}
+		if !exists {
+			c.JSON(http.StatusConflict, gin.H{"error": "overlay not found on main — merge the PR first"})
+			return
+		}
+	}
+
 	oldLC := entity.Spec.Lifecycle
-	newLC := req.Lifecycle
+	newLC := req.TargetLifecycle
 
 	if oldLC == newLC {
 		c.JSON(http.StatusOK, gin.H{"lifecycle": newLC, "changed": false})
 		return
 	}
 
-	// Check authentication: webhook token or user session.
-	isWebhook := h.isValidWebhookToken(c)
-	session := auth.GetSession(c)
-	isPlatform := session != nil && auth.IsPlatformTeam(session.Groups)
-	isManager := session != nil && auth.IsTeamManager(session.Groups, entity.Spec.Owner)
-	canPromote := isPlatform || isManager
-
-	autoPromotion := oldLC == "experimental" && newLC == "development"
-
-	if autoPromotion {
-		// CI pipeline (on staging push) or ArgoCD notification calls this after the
-		// infra PR is merged. The merge itself is the approval — no overlay check needed.
-		if !isWebhook && !canPromote {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "valid webhook token, platform-team, or team Managers session required"})
-			return
-		}
-	} else {
-		if !canPromote {
-			c.JSON(http.StatusForbidden, gin.H{"error": "only platform-team or team Managers can promote to " + newLC})
-			return
-		}
-	}
-
-	// Update the entity YAML and commit directly to main.
 	entity.Spec.Lifecycle = newLC
 	entityYAML, err := yaml.Marshal(entity)
 	if err != nil {
@@ -1180,28 +2005,222 @@ func (h *CatalogHandler) PromoteLifecycle(c *gin.Context) {
 		return
 	}
 
+	if err := h.commitEntityUpdate(c, kind, name, entityYAML, fmt.Sprintf("chore(catalog): confirm %s/%s lifecycle %s → %s", kind, name, oldLC, newLC)); err != nil {
+		return
+	}
+
+	// Cascade lifecycle to owned Resource and API entities so the catalog stays consistent.
+	// Best-effort — failures are logged but do not affect the main response.
+	owner := entity.Spec.Owner
+	for _, dep := range entity.Spec.DependsOn {
+		// dep format: "resource:default/{name}" — only cascade to Resource refs
+		if !strings.HasPrefix(dep, "resource:") {
+			continue
+		}
+		relName := dep[strings.LastIndex(dep, "/")+1:]
+		if err := h.cascadeLifecycle(c.Request.Context(), "Resource", relName, owner, newLC, session.Username); err != nil {
+			log.Printf("[catalog] cascade lifecycle warn: Resource/%s: %v", relName, err)
+		}
+	}
+	for _, apiRef := range entity.Spec.ProvidesApis {
+		// apiRef format: "api:default/{name}"
+		if !strings.HasPrefix(apiRef, "api:") {
+			continue
+		}
+		relName := apiRef[strings.LastIndex(apiRef, "/")+1:]
+		if err := h.cascadeLifecycle(c.Request.Context(), "API", relName, owner, newLC, session.Username); err != nil {
+			log.Printf("[catalog] cascade lifecycle warn: API/%s: %v", relName, err)
+		}
+	}
+
+	log.Printf("[catalog] lifecycle confirmed: %s/%s %s → %s by %s", kind, name, oldLC, newLC, session.Username)
+	c.JSON(http.StatusOK, gin.H{
+		"lifecycle": newLC,
+		"previous":  oldLC,
+		"changed":   true,
+	})
+}
+
+// cascadeLifecycle updates the lifecycle of a related entity (Resource or API)
+// to match the owning Component. Only updates entities with the same owner to
+// avoid touching cross-team entities. Best-effort — caller logs and continues on error.
+func (h *CatalogHandler) cascadeLifecycle(ctx context.Context, kind, name, owner, lifecycle, username string) error {
+	related, err := h.store.Get(ctx, kind, name)
+	if err != nil {
+		return nil // not found — skip silently
+	}
+	if related.Spec.Owner != owner {
+		return nil // different owner — don't touch it
+	}
+	if related.Spec.Lifecycle == lifecycle {
+		return nil // already correct
+	}
+	related.Spec.Lifecycle = lifecycle
+	entityYAML, err := yaml.Marshal(related)
+	if err != nil {
+		return err
+	}
+	commitMsg := fmt.Sprintf("chore(catalog): cascade lifecycle %s/%s → %s (from %s)", kind, name, lifecycle, username)
+	if h.giteaClient != nil && h.cfg != nil {
+		relPath := h.store.EntityRelPath(kind, name)
+		if relPath == "" {
+			return nil
+		}
+		filePath := h.cfg.GiteaCatalogPath + "/" + relPath
+		_, err = h.giteaClient.CreateOrUpdateFile(ctx, h.cfg.GiteaCatalogOwner, h.cfg.GiteaCatalogRepo, filePath, entityYAML, commitMsg, "main")
+		if err == nil {
+			h.store.InvalidateCache()
+		}
+		return err
+	}
 	if h.cfg != nil && h.cfg.CatalogLocalDir != "" {
-		// Local dev mode — write to disk.
+		relPath := h.store.EntityRelPath(kind, name)
+		if relPath == "" {
+			return nil
+		}
+		if err := os.WriteFile(filepath.Join(h.cfg.CatalogLocalDir, relPath), entityYAML, 0o644); err != nil {
+			return err
+		}
+		h.store.InvalidateCache()
+	}
+	return nil
+}
+
+// DeprecateEntity marks a Component entity as deprecated, writes the reason and
+// metadata as annotations, updates lifecycle to "deprecated", and opens a gitops-infra
+// PR to trigger overlay removal review.
+//
+// @Summary      Deprecate an entity
+// @Tags         catalog
+// @Accept       json
+// @Produce      json
+// @Param        kind  path  string  true  "Entity kind"
+// @Param        name  path  string  true  "Entity name"
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities/{kind}/{name}/deprecate [post]
+func (h *CatalogHandler) DeprecateEntity(c *gin.Context) {
+	kind := c.Param("kind")
+	name := c.Param("name")
+
+	var req struct {
+		Reason string `json:"reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	entity, err := h.store.Get(c.Request.Context(), kind, name)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	if entity.Metadata.Annotations["wxops.cloud/deprecated"] == "true" {
+		c.JSON(http.StatusConflict, gin.H{"error": "entity is already deprecated"})
+		return
+	}
+
+	session := auth.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+	isPlatform := auth.IsPlatformTeam(session.Groups)
+	isManager := auth.IsTeamManager(session.Groups, entity.Spec.Owner)
+	if !isPlatform && !isManager {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only platform-team or team Managers can deprecate an entity"})
+		return
+	}
+
+	if entity.Metadata.Annotations == nil {
+		entity.Metadata.Annotations = map[string]string{}
+	}
+	entity.Metadata.Annotations["wxops.cloud/deprecated"] = "true"
+	entity.Metadata.Annotations["wxops.cloud/deprecated-reason"] = req.Reason
+	entity.Metadata.Annotations["wxops.cloud/deprecated-by"] = session.Username
+	entity.Metadata.Annotations["wxops.cloud/deprecated-at"] = time.Now().UTC().Format(time.RFC3339)
+	entity.Spec.Lifecycle = "deprecated"
+
+	entityYAML, err := yaml.Marshal(entity)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "marshal entity: " + err.Error()})
+		return
+	}
+
+	if err := h.commitEntityUpdate(c, kind, name, entityYAML, fmt.Sprintf("chore(catalog): deprecate %s/%s", kind, name)); err != nil {
+		return
+	}
+
+	// Open a removal PR in gitops-infra if Gitea is configured.
+	var prNumber int
+	if h.giteaClient != nil && h.cfg != nil {
+		loc := entity.Metadata.Annotations["gitea/source-location"]
+		parts := strings.SplitN(loc, "/", 2)
+		if len(parts) == 2 {
+			srcTeam, srcApp := parts[0], parts[1]
+			gitopsOwner := h.cfg.GiteaCatalogOwner
+			gitopsRepo := h.cfg.GiteaCatalogRepo
+
+			branch := fmt.Sprintf("deprecate/%s/%s-%d", srcTeam, srcApp, time.Now().Unix())
+			if err := h.giteaClient.CreateBranch(c.Request.Context(), gitopsOwner, gitopsRepo, branch, "main"); err == nil {
+				deprecatedMD := fmt.Sprintf("# DEPRECATED\n\n**Reason:** %s\n**By:** %s\n**At:** %s\n\nThis directory is pending removal. Merge this PR to confirm decommission.\n",
+					req.Reason, session.Username, time.Now().UTC().Format("2006-01-02"))
+				markerPath := fmt.Sprintf("tenants-apps/%s/%s/DEPRECATED.md", srcTeam, srcApp)
+				_ = h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, branch, fmt.Sprintf("chore(deprecate): mark %s/%s for removal", srcTeam, srcApp), map[string][]byte{
+					markerPath: []byte(deprecatedMD),
+				})
+
+				labelID := h.ensurePortalLabel(c.Request.Context())
+				prTitle := fmt.Sprintf("[Deprecate] %s/%s: %s", srcTeam, srcApp, req.Reason)
+				prBody := fmt.Sprintf("## Deprecation: %s/%s\n\n**Reason:** %s\n**Requested by:** %s\n\n"+
+					"Merging this PR confirms decommission. Remove the `overlays/` directory contents once all traffic has been drained.\n\n"+
+					"---\n*Created via WxOps Portal*", srcTeam, srcApp, req.Reason, session.Username)
+
+				var pr *gitea.PullRequestInfo
+				if labelID > 0 {
+					pr, _ = h.giteaClient.CreatePullRequest(c.Request.Context(), gitopsOwner, gitopsRepo, prTitle, prBody, branch, "main", labelID)
+				} else {
+					pr, _ = h.giteaClient.CreatePullRequest(c.Request.Context(), gitopsOwner, gitopsRepo, prTitle, prBody, branch, "main")
+				}
+				if pr != nil {
+					prNumber = pr.Number
+				}
+			}
+		}
+	}
+
+	log.Printf("[catalog] entity deprecated: %s/%s by %s reason=%q", kind, name, session.Username, req.Reason)
+	resp := gin.H{"deprecated": true, "lifecycle": "deprecated"}
+	if prNumber > 0 {
+		resp["removalPRNumber"] = prNumber
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// commitEntityUpdate writes entity YAML to the catalog (local-dev or Gitea).
+func (h *CatalogHandler) commitEntityUpdate(c *gin.Context, kind, name string, entityYAML []byte, commitMsg string) error {
+	if h.cfg != nil && h.cfg.CatalogLocalDir != "" {
 		relPath := h.store.EntityRelPath(kind, name)
 		if relPath == "" {
 			c.JSON(http.StatusNotFound, gin.H{"error": "entity file path not found"})
-			return
+			return fmt.Errorf("not found")
 		}
 		fullPath := filepath.Join(h.cfg.CatalogLocalDir, relPath)
 		if err := os.WriteFile(fullPath, entityYAML, 0o644); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "write: " + err.Error()})
-			return
+			return err
 		}
 		h.store.InvalidateCache()
-	} else if h.giteaClient != nil && h.cfg != nil {
-		// Gitea mode — commit directly to main (lifecycle is metadata, not infra).
+		return nil
+	}
+	if h.giteaClient != nil && h.cfg != nil {
 		relPath := h.store.EntityRelPath(kind, name)
 		if relPath == "" {
 			c.JSON(http.StatusNotFound, gin.H{"error": "entity file path not found"})
-			return
+			return fmt.Errorf("not found")
 		}
 		filePath := h.cfg.GiteaCatalogPath + "/" + relPath
-		commitMsg := fmt.Sprintf("chore(catalog): promote %s/%s lifecycle %s → %s", kind, name, oldLC, newLC)
 		if _, err := h.giteaClient.CreateOrUpdateFile(
 			c.Request.Context(),
 			h.cfg.GiteaCatalogOwner,
@@ -1212,17 +2231,79 @@ func (h *CatalogHandler) PromoteLifecycle(c *gin.Context) {
 			"main",
 		); err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "commit: " + err.Error()})
-			return
+			return err
 		}
-	} else {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no write path configured"})
+		h.store.InvalidateCache()
+		return nil
+	}
+	c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no write path configured"})
+	return fmt.Errorf("no write path")
+}
+
+// RefreshCatalog invalidates the in-memory catalog cache immediately.
+// Auth: Bearer <WEBHOOK_TOKEN> (same token as PromoteLifecycle).
+// Wire a Gitea push webhook on gitops-infra to this endpoint so the cache is
+// flushed on every catalog commit instead of waiting for the 5-minute TTL.
+func (h *CatalogHandler) RefreshCatalog(c *gin.Context) {
+	if !h.isValidWebhookToken(c) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "valid webhook token required"})
+		return
+	}
+	h.store.InvalidateCache()
+	log.Printf("[catalog] cache invalidated via webhook")
+	c.JSON(http.StatusOK, gin.H{"status": "cache invalidated"})
+}
+
+// GetOverlayConfig reads the existing overlay files for an environment and returns
+// the parsed config so the frontend can pre-fill the edit wizard.
+// GET /api/v1/catalog/entities/:kind/:name/overlay/:env
+func (h *CatalogHandler) GetOverlayConfig(c *gin.Context) {
+	kind := c.Param("kind")
+	name := c.Param("name")
+	envParam := c.Param("env") // "development" | "staging" | "production"
+
+	envName := envParam
+	if envParam == "development" {
+		envName = "dev"
+	}
+
+	entity, err := h.store.Get(c.Request.Context(), kind, name)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("%s/%s not found", kind, name)})
 		return
 	}
 
-	log.Printf("[catalog] lifecycle promoted: %s/%s %s → %s", kind, name, oldLC, newLC)
-	c.JSON(http.StatusOK, gin.H{
-		"lifecycle": newLC,
-		"previous":  oldLC,
-		"changed":   true,
-	})
+	if h.giteaClient == nil || h.cfg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Gitea not configured"})
+		return
+	}
+
+	loc := entity.Metadata.Annotations["gitea/source-location"]
+	parts := strings.SplitN(loc, "/", 2)
+	if len(parts) != 2 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "entity has no valid gitea/source-location annotation"})
+		return
+	}
+	srcTeam, srcApp := parts[0], parts[1]
+
+	gitopsOwner := h.cfg.GiteaCatalogOwner
+	gitopsRepo := h.cfg.GiteaCatalogRepo
+	overlayDir := fmt.Sprintf("tenants-apps/%s/%s/overlays/%s", srcTeam, srcApp, envName)
+
+	kustData, err := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, overlayDir+"/kustomization.yaml")
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "overlay not found"})
+		return
+	}
+
+	// patch-xtenant-app.yaml may be minimal if no replicas/resources were set.
+	patchData, _ := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, overlayDir+"/patch-xtenant-app.yaml")
+
+	cfg, err := scaffold.ParseOverlayConfig(kustData, patchData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "parse overlay: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, cfg)
 }

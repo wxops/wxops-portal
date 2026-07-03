@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/session";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/topbar";
+import { CommandPalette } from "@/components/layout/command-palette";
 
 export default async function DashboardLayout({
   children,
@@ -16,6 +17,8 @@ export default async function DashboardLayout({
         <TopBar user={session} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      {/* Global Ctrl/Cmd+K command palette — renders null when closed */}
+      <CommandPalette />
     </div>
   );
 }

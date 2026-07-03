@@ -73,7 +73,6 @@ function buildXTenantApp(s: WizardState): string {
         repository: s.team && s.appName
           ? { url: `<gitea-url>/${s.team}/${s.appName}` }
           : undefined,
-        replicas: s.replicas || undefined,
         containerPort: s.containerPort || undefined,
         ...buildToggles(s),
         ...buildAdvanced(s),
@@ -89,7 +88,7 @@ function buildCatalogComponent(s: WizardState): string {
   const providesApis: string[] = [];
 
   if (s.vaultSecrets) dependsOn.push(`resource:default/${s.appName}-vault`);
-  if (s.databaseSecrets) dependsOn.push(`resource:default/${s.dbName || s.appName + "-db"}`);
+  if (s.databaseSecrets) dependsOn.push(`resource:default/${s.appName}-db`);
   if (s.apiEnabled) providesApis.push(`api:default/${s.appName}-api`);
 
   const obj: Record<string, unknown> = {
@@ -117,45 +116,24 @@ function buildCatalogComponent(s: WizardState): string {
 }
 
 function buildXTenantDatabase(s: WizardState): string {
-  const dbName = s.dbName || `${s.appName}-db`;
+  // Base stub — only project-level fields. Per-env fields (dbName, tier,
+  // environment, clusterRef) are patched via JSON 6902 in the Promote flow.
+  const defaultDbName = `${s.appName}-db`;
   const extensions = s.dbExtensions.length > 0
     ? s.dbExtensions
     : ["uuid-ossp", "pgcrypto"];
-  const tier = s.dbTier || "shared";
 
   const params: Record<string, unknown> = {
-    tier,
-    environment: s.dbEnvironment || "dev",
+    owner: s.team || undefined,
+    extensions: extensions.length > 0 ? extensions : undefined,
+    vaultSecretStoreName: "vault-tenant",
   };
-
-  if (tier === "shared") {
-    if (s.dbClusterRef) params.clusterRef = s.dbClusterRef;
-    if (s.dbClusterNamespace) params.clusterNamespace = s.dbClusterNamespace;
-  }
-
-  if (tier === "dedicated") {
-    params.dedicatedCluster = cleanUndefined({
-      instances: s.dbDedicatedInstances || 1,
-      storageSize: s.dbDedicatedStorageSize || "1Gi",
-      postgresVersion: s.dbDedicatedPostgresVersion || 16,
-      enablePooler: s.dbDedicatedEnablePooler,
-      namespace: s.dbDedicatedNamespace || undefined,
-    });
-  }
-
-  params.dbName = dbName;
-  params.owner = s.team || undefined;
-  params.extensions = extensions.length > 0 ? extensions : undefined;
-  if (s.dbReclaimPolicy && s.dbReclaimPolicy !== "retain") {
-    params.databaseReclaimPolicy = s.dbReclaimPolicy;
-  }
-  params.vaultSecretStoreName = "vault-tenant";
 
   const obj = {
     apiVersion: "platform.wxops.cloud/v1alpha1",
     kind: "XTenantDatabase",
     metadata: {
-      name: `${s.team}-${dbName}`,
+      name: `${s.team}-${defaultDbName}`,
       labels: {
         "app.kubernetes.io/managed-by": "wxops-portal",
         "wxops.cloud/team": s.team || "unknown",
@@ -187,8 +165,8 @@ function buildEnvExternalSecret(s: WizardState): string {
 
 function buildDbExternalSecret(s: WizardState): string {
   const ns = defaultNamespace(s.team);
-  const dbName = s.dbName || `${s.appName}-db`;
-  const secretName = dbSecretTarget(s.appName, s.dbName);
+  const dbName = `${s.appName}-db`;
+  const secretName = dbSecretTarget(s.appName, "");
   const obj = {
     apiVersion: "external-secrets.io/v1",
     kind: "ExternalSecret",
@@ -225,7 +203,7 @@ function buildVaultResource(s: WizardState): string {
 }
 
 function buildDatabaseResource(s: WizardState): string {
-  const dbName = s.dbName || `${s.appName}-db`;
+  const dbName = `${s.appName}-db`;
   const obj = {
     apiVersion: "backstage.io/v1alpha1",
     kind: "Resource",
@@ -285,12 +263,9 @@ function buildToggles(s: WizardState): Record<string, unknown> {
 
   if (s.ingressEnabled || s.certManager || s.ssoAuth) {
     const ing: Record<string, unknown> = { enabled: true };
-    if (s.ingressHost) ing.host = s.ingressHost;
     if (s.certManager) {
-      ing.tls = cleanUndefined({
-        enabled: true,
-        clusterIssuer: s.certClusterIssuer || undefined,
-      });
+      // clusterIssuer is set per-environment in the Promote flow — not in base.
+      ing.tls = { enabled: true };
     }
     if (s.ssoAuth) ing.auth = { enabled: true };
     out.ingress = ing;
@@ -301,21 +276,6 @@ function buildToggles(s: WizardState): Record<string, unknown> {
 
 function buildAdvanced(s: WizardState): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-
-  const hasResources =
-    s.resourcesCpuReq || s.resourcesCpuLim || s.resourcesMemReq || s.resourcesMemLim;
-  if (hasResources) {
-    out.resources = cleanUndefined({
-      requests:
-        s.resourcesCpuReq || s.resourcesMemReq
-          ? cleanUndefined({ cpu: s.resourcesCpuReq || undefined, memory: s.resourcesMemReq || undefined })
-          : undefined,
-      limits:
-        s.resourcesCpuLim || s.resourcesMemLim
-          ? cleanUndefined({ cpu: s.resourcesCpuLim || undefined, memory: s.resourcesMemLim || undefined })
-          : undefined,
-    });
-  }
 
   if (s.livenessPath || s.readinessPath) {
     out.probes = cleanUndefined({

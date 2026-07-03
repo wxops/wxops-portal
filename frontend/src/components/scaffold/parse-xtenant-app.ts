@@ -15,7 +15,6 @@ export function parseXTenantApp(response: any): Partial<WizardState> {
   const meta = config?.metadata ?? {};
 
   const ingress = params.ingress ?? {};
-  const resources = params.resources ?? {};
   const probes = params.probes ?? {};
   const secretsFrom = params.secretsFrom ?? {};
 
@@ -41,19 +40,13 @@ export function parseXTenantApp(response: any): Partial<WizardState> {
     templateId: params.templateId ?? "",
     appFlavor: params.appFlavor ?? "webapp",
     containerPort: params.containerPort ?? null,
-    replicas: params.replicas ?? null,
     reloader: params.reloader?.enabled ?? false,
     vaultSecrets: secretsFrom.app?.enabled ?? false,
     databaseSecrets: hasDatabase,
     ingressEnabled: ingress.enabled ?? false,
-    ingressHost: ingress.host ?? "",
     certManager: ingress.tls?.enabled ?? false,
-    certClusterIssuer: ingress.tls?.clusterIssuer ?? "letsencrypt-prod",
+    // certClusterIssuer intentionally absent — set per-env in the Promote flow.
     ssoAuth: ingress.auth?.enabled ?? false,
-    resourcesCpuReq: resources.requests?.cpu ?? "",
-    resourcesCpuLim: resources.limits?.cpu ?? "",
-    resourcesMemReq: resources.requests?.memory ?? "",
-    resourcesMemLim: resources.limits?.memory ?? "",
     livenessPath: probes.liveness?.path ?? "",
     readinessPath: probes.readiness?.path ?? "",
     rolloutType: params.rolloutStrategy?.type ?? "RollingUpdate",
@@ -61,9 +54,7 @@ export function parseXTenantApp(response: any): Partial<WizardState> {
     envVars: envVars.length > 0 ? envVars : [],
     podAnnotations: podAnnotations.length > 0 ? podAnnotations : [],
     extraLabels: extraLabels.length > 0 ? extraLabels : [],
-    // Database fields — from XTenantDatabase if available
-    dbName: dbParams.dbName ?? "",
+    // Database — only extensions are project-level; name/tier/cluster go in the Promote flow.
     dbExtensions: dbParams.extensions ?? (hasDatabase ? ["uuid-ossp", "pgcrypto"] : []),
-    dbTier: dbParams.tier ?? "shared",
   };
 }

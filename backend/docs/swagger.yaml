@@ -197,33 +197,19 @@ definitions:
       appName:
         description: 'Step 1: Repository'
         type: string
-      certClusterIssuer:
-        type: string
       certManager:
         type: boolean
       containerPort:
         type: integer
       databaseSecrets:
         type: boolean
-      dbClusterNamespace:
-        type: string
-      dbClusterRef:
-        type: string
-      dbEnvironment:
-        type: string
       dbExtensions:
+        description: |-
+          Database (XTenantDatabase) — only extensions are project-level.
+          Name, tier, environment, and cluster details are configured per-env via the Promote flow.
         items:
           type: string
         type: array
-      dbName:
-        description: Database (XTenantDatabase)
-        type: string
-      dbReclaimPolicy:
-        type: string
-      dbTier:
-        type: string
-      dedicatedCluster:
-        $ref: '#/definitions/scaffold.DedicatedClusterRequest'
       description:
         type: string
       devSpaceEnabled:
@@ -240,10 +226,8 @@ definitions:
           $ref: '#/definitions/scaffold.KeyValue'
         type: array
       ingressEnabled:
-        description: Advanced
+        description: Base config — env-agnostic settings that live in base/xtenant-app.yaml.
         type: boolean
-      ingressHost:
-        type: string
       livenessPath:
         type: string
       metricsPath:
@@ -266,24 +250,18 @@ definitions:
       readinessPath:
         type: string
       reloader:
-        description: Platform toggles
+        description: |-
+          Platform feature toggles — these declare WHAT is enabled project-wide.
+          HOW each feature is configured per environment is handled via the Promote flow.
         type: boolean
-      replicas:
-        type: integer
-      resourcesCpuLim:
-        type: string
-      resourcesCpuReq:
-        type: string
-      resourcesMemLim:
-        type: string
-      resourcesMemReq:
-        type: string
       rolloutType:
         type: string
       runtimeVersion:
         description: Runtime (from template.yaml runtime section)
         type: string
       ssoAuth:
+        description: CertIssuer intentionally absent — ClusterIssuer is set per-env
+          in the Promote flow.
         type: boolean
       systemName:
         description: Catalog — System is auto-created with name = appName
@@ -293,11 +271,6 @@ definitions:
       templateId:
         description: 'Step 2: Template'
         type: string
-      vaultEnvVars:
-        description: Vault env vars (parsed from .env upload or manual entry)
-        items:
-          $ref: '#/definitions/scaffold.KeyValue'
-        type: array
       vaultSecrets:
         type: boolean
     required:
@@ -314,19 +287,6 @@ definitions:
       status:
         type: string
       team:
-        type: string
-    type: object
-  scaffold.DedicatedClusterRequest:
-    properties:
-      enablePooler:
-        type: boolean
-      instances:
-        type: integer
-      namespace:
-        type: string
-      postgresVersion:
-        type: integer
-      storageSize:
         type: string
     type: object
   scaffold.DevSpaceSpec:
@@ -488,8 +448,6 @@ definitions:
     properties:
       appFlavor:
         type: string
-      certClusterIssuer:
-        type: string
       certManager:
         type: boolean
       containerPort:
@@ -508,8 +466,6 @@ definitions:
         type: array
       ingressEnabled:
         type: boolean
-      ingressHost:
-        type: string
       livenessPath:
         type: string
       namespace:
@@ -522,19 +478,11 @@ definitions:
         type: string
       reloader:
         type: boolean
-      replicas:
-        type: integer
-      resourcesCpuLim:
-        type: string
-      resourcesCpuReq:
-        type: string
-      resourcesMemLim:
-        type: string
-      resourcesMemReq:
-        type: string
       rolloutType:
         type: string
       ssoAuth:
+        description: CertIssuer intentionally absent — ClusterIssuer is set per-env
+          in the Promote flow.
         type: boolean
       templateId:
         type: string
@@ -651,12 +599,22 @@ paths:
   /api/v1/catalog/entities:
     get:
       description: Returns all catalog entities. Use ?kind= to filter by entity kind
-        (case-insensitive).
+        (case-insensitive). Use ?search= for full-text search across name, title,
+        description, and tags. Use ?owner= to filter by owning team (strips "group:"
+        prefix).
       parameters:
       - description: Filter by kind (Component, API, System, Group, Resource, User,
           Doc)
         in: query
         name: kind
+        type: string
+      - description: Full-text search across name, title, description, and tags
+        in: query
+        name: search
+        type: string
+      - description: Filter by owner team (e.g. rocket-team or group:rocket-team)
+        in: query
+        name: owner
         type: string
       produces:
       - application/json
@@ -904,6 +862,29 @@ paths:
       summary: Get document content
       tags:
       - catalog
+  /api/v1/catalog/entities/{kind}/{name}/deprecate:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Entity kind
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: Entity name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - CookieAuth: []
+      summary: Deprecate an entity
+      tags:
+      - catalog
   /api/v1/catalog/entities/{kind}/{name}/packages:
     get:
       description: Reads go.mod, package.json, requirements.txt, pyproject.toml from
@@ -930,6 +911,32 @@ paths:
       security:
       - CookieAuth: []
       summary: Get package dependencies
+      tags:
+      - catalog
+  /api/v1/catalog/entities/{kind}/{name}/promostatus:
+    get:
+      parameters:
+      - description: Entity kind
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: Entity name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Get promotion status
       tags:
       - catalog
   /api/v1/catalog/entities/{kind}/{name}/promote:
@@ -1013,6 +1020,34 @@ paths:
       security:
       - CookieAuth: []
       summary: Get API spec
+      tags:
+      - catalog
+  /api/v1/catalog/entities/{kind}/{name}/versions:
+    get:
+      description: Returns the latest tag for each environment (dev/staging/production)
+        from the entity's source repo.
+      parameters:
+      - description: Entity kind
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: Entity name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Get per-environment versions
       tags:
       - catalog
   /api/v1/scaffold/projects:

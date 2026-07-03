@@ -1,291 +1,132 @@
-# Lifecycle Promotion Webhook
+# Lifecycle Promotion
 
-How the portal automatically transitions entity lifecycle from `experimental`
-to `development` when the gitops-infra overlay for that environment is merged.
-
-**Table of Contents**
-- [Lifecycle Promotion Webhook](#lifecycle-promotion-webhook)
-  - [Trigger Options](#trigger-options)
-  - [Validation Chain](#validation-chain)
-  - [Option A — GitOps CI Pipeline (Recommended Default)](#option-a--gitops-ci-pipeline-recommended-default)
-    - [Required repo secrets](#required-repo-secrets)
-    - [How it flows](#how-it-flows)
-  - [Option B — ArgoCD Notification](#option-b--argocd-notification)
-    - [Trust Chain](#trust-chain)
-    - [ArgoCD Setup](#argocd-setup)
-    - [How it flows](#how-it-flows-1)
-  - [Two Routes, Two Auth Methods](#two-routes-two-auth-methods)
-  - [Token Naming](#token-naming)
-  - [Security Considerations](#security-considerations)
-  - [Manual Promotion (Platform-Team UI)](#manual-promotion-platform-team-ui)
+> **v0.3.0 change:** `POST /api/v1/webhooks/promote/:kind/:name` has been removed.
+> Lifecycle promotion is now fully UI-driven via the Promotion panel on each
+> Component detail page. This document describes the current model.
 
 ---
 
-## Trigger Options
+## How Promotion Works (v0.3.0+)
 
-Two callers are supported — they use the same endpoint and the same token.
-You can use either or both simultaneously; the endpoint is idempotent.
+Lifecycle transitions are a two-step UI flow, not an automated webhook:
 
-| Caller | Where the CI lives | When it fires | Best for |
-|--------|--------------------|--------------|----------|
-| **GitOps CI pipeline** | `gitops-infra` repo | On push to main (after scaffold PR merge) | All teams — set up once, works for every project |
-| **ArgoCD Notification** | ArgoCD notification config | After sync + healthy in the dev cluster | Production-grade: confirms the app is actually running |
+```
+experimental ──(1. overlay PR)──► development ──(2. confirm)──► staging ──► production
+     │                                                                           │
+     └──────────────── deprecated (removal PR, entity locked) ──────────────────┘
+```
 
-**Direct commit, not a PR.** When the promotion succeeds, the portal commits
-`lifecycle: development` directly to the catalog entity YAML in gitops-infra
-main. No PR is created — the approval already happened when the platform team
-merged the scaffold PR that introduced the overlay.
+### Step 1 — Create overlay PR
 
-For higher transitions (`development → staging`, `staging → production`),
-human approval is required via the platform-team UI. Those create overlay PRs
-as part of the [cross-environment promotion](cross-environment-promotion.md) flow.
+The developer opens the **Promotion panel** on the Component entity detail page and
+clicks "Create overlay" for the target environment. The portal:
+
+1. Generates the Kustomize overlay files (`kustomization.yaml`,
+   `image-transformer.yaml`, `patch-xtenant-app.yaml`)
+2. Writes Vault secrets for that environment (if any were provided)
+3. Opens a `[Promote] {team}/{app} → {env}` PR in `gitops-infra`
+4. Platform-team reviews and merges the PR
+
+### Step 2 — Confirm
+
+Once the PR is merged, the Promotion panel shows a **Confirm** button.
+Clicking it:
+
+1. Calls `GET /api/v1/catalog/entities/:kind/:name/promostatus` to verify
+   the overlay file is present on `main` in `gitops-infra`
+2. On confirmation, calls `POST /api/v1/catalog/entities/:kind/:name/promote`
+   with `action: confirm` — updates the catalog entity lifecycle
+3. Panel refreshes immediately; the confirm button clears
+
+If the PR is still open (not yet merged), the panel shows "PR #N pending"
+and the Confirm button is disabled.
 
 ---
 
-## Validation Chain
+## Permission Matrix
 
-```mermaid
-flowchart TD
-    A["Webhook arrives\n(GitOps CI or ArgoCD)"]
-    B{"Token matches\nWEBHOOK_TOKEN?"}
-    C["401 Unauthorized"]
-    D{"Entity exists\nin catalog?"}
-    E["404 Not Found"]
-    F{"Current lifecycle\nis experimental?"}
-    G["200 OK\n{changed: false}\nalready promoted — no-op"]
-    H["Commit lifecycle: development\ndirectly to main\n(metadata only, no PR)"]
-    I["200 OK\n{lifecycle: development, changed: true}"]
-
-    A --> B
-    B -->|no| C
-    B -->|yes| D
-    D -->|no| E
-    D -->|yes| F
-    F -->|no| G
-    F -->|yes| H --> I
-```
+| Transition | Who can trigger |
+|---|---|
+| `experimental` → `development` | Any team member |
+| `development` → `staging` | Platform-team or `{team}:Managers` |
+| `staging` → `production` | Platform-team or `{team}:Managers` |
+| Deprecation | Platform-team or `{team}:Managers` |
 
 ---
 
-## Option A — GitOps CI Pipeline (Recommended Default)
+## Overlay Configuration
 
-The CI step lives in the **gitops-infra** repository, not in each scaffolded
-project repo. Platform team sets it up once; it fires automatically for every
-project when an overlay is merged into main.
+The overlay wizard (accessible from the Promotion panel) exposes per-environment
+configuration committed into the Kustomize overlay:
 
-```yaml
-# gitops-infra/.gitea/workflows/lifecycle-sync.yaml
-name: Sync lifecycle on overlay merge
+| Field | Notes |
+|---|---|
+| Replicas | Per-environment pod count |
+| Ingress host | Per-environment hostname |
+| CPU / memory limits | Per-environment resource requests and limits |
+| Vault secrets | Written to `{team}/{app}/{env}/env` at creation; optional on update |
+| Database | Shared or dedicated CNPG tier, per-environment naming (`{appName}-{env}-db`) |
 
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'tenants-apps/**/overlays/dev/kustomization.yaml'
-
-jobs:
-  promote:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Detect promoted apps and call portal
-        env:
-          PORTAL_URL: ${{ secrets.PORTAL_URL }}
-          PORTAL_WEBHOOK_TOKEN: ${{ secrets.PORTAL_WEBHOOK_TOKEN }}
-        run: |
-          # Extract app names from changed overlay paths
-          git diff-tree --no-commit-id -r --name-only ${{ gitea.sha }} \
-            | grep 'tenants-apps/.*/overlays/dev/kustomization.yaml' \
-            | sed 's|tenants-apps/[^/]*/\([^/]*\)/overlays/.*|\1|' \
-            | sort -u \
-            | while read APP_NAME; do
-                echo "Promoting $APP_NAME to development"
-                STATUS=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
-                  "$PORTAL_URL/api/v1/webhooks/promote/Component/$APP_NAME" \
-                  -H "Authorization: Bearer $PORTAL_WEBHOOK_TOKEN" \
-                  -H "Content-Type: application/json" \
-                  --data '{"lifecycle":"development"}')
-                echo "$APP_NAME → $STATUS"
-              done
-```
-
-### Required repo secrets
-
-Set these once on the **gitops-infra** repository
-(`Settings → Secrets → Actions`):
-
-| Secret | Value |
-|--------|-------|
-| `PORTAL_URL` | Public URL of the portal, e.g. `https://portal.example.com` |
-| `PORTAL_WEBHOOK_TOKEN` | Same value as `WEBHOOK_TOKEN` in the portal environment |
-
-### How it flows
-
-```
-Platform team merges scaffold PR into gitops-infra main
-(PR contains XTenantApp + overlays/dev/kustomization.yaml):
-
-  1. Gitea push event fires on gitops-infra main
-  2. lifecycle-sync.yaml detects overlays/dev/kustomization.yaml in the diff
-  3. CI calls POST /api/v1/webhooks/promote/Component/payment-api
-  4. Portal validates token → commits lifecycle: development to gitops-infra main
-  5. Catalog shows: payment-api — lifecycle: development
-```
+See [cross-environment-promotion.md](./cross-environment-promotion.md) for the
+full overlay structure and permission details.
 
 ---
 
-## Option B — ArgoCD Notification
+## Catalog Cache Refresh Webhook
 
-Fires after ArgoCD confirms sync + healthy — stronger guarantee that the
-app is actually running, not just that the overlay was merged.
+The only remaining webhook is the **catalog cache invalidation** endpoint.
+It flushes the in-memory 5-minute TTL cache so new catalog entities appear
+immediately after a gitops-infra push.
 
-### Trust Chain
-
-```mermaid
-flowchart LR
-    PT["Platform Team"]
-
-    subgraph portal["Portal"]
-        PW["WEBHOOK_TOKEN\n(env var)"]
-    end
-
-    subgraph argocd["ArgoCD"]
-        AW["Same token in\nargocd-notifications-secret"]
-    end
-
-    subgraph gitea["Gitea · gitops-infra"]
-        BP["Branch protection\non main"]
-    end
-
-    PT -->|"configures"| portal
-    PT -->|"configures"| argocd
-    PT -->|"configures"| gitea
-    portal <-->|"same WEBHOOK_TOKEN"| argocd
+```
+POST /api/v1/webhooks/catalog/refresh
+Authorization: Bearer <WEBHOOK_TOKEN>
 ```
 
-| Component | Who configures | What they set |
-|-----------|---------------|---------------|
-| Portal | Platform team | `WEBHOOK_TOKEN` env var |
-| ArgoCD | Platform team | Same token in `argocd-notifications-secret` |
-| Gitea | Platform team | Branch protection on gitops-infra main |
+**Setup** (one-time, platform-team):
+- Repository: `gitops-infra` → Settings → Webhooks → Add
+- URL: `https://<portal-host>/api/v1/webhooks/catalog/refresh`
+- Content type: `application/json`
+- Authorization header: `Bearer <WEBHOOK_TOKEN>`
+- Trigger: Push events (optionally restrict to `catalog/**` paths)
 
-### ArgoCD Setup
+`WEBHOOK_TOKEN` is the same env var used previously for lifecycle promotion —
+no new secret is needed if it was already configured.
+
+---
+
+## Migration from v0.2.x
+
+If you had a CI workflow in `gitops-infra` calling
+`POST /api/v1/webhooks/promote/:kind/:name`, it can be safely removed.
+
+The workflow that watched `tenants-apps/**/overlays/dev/kustomization.yaml`
+on push is no longer needed. Lifecycle updates are now confirmed by the
+developer in the portal UI after the overlay PR merges.
+
+**Existing services** that already have `overlays/dev/` on `main` and are
+currently `experimental` can be reconciled by clicking **Confirm** in the
+Promotion panel — the portal will detect the overlay and update lifecycle
+to `development` in one click.
+
+---
+
+## WEBHOOK_TOKEN Configuration
+
+| Location | Variable | Purpose |
+|---|---|---|
+| Portal backend (env) | `WEBHOOK_TOKEN` | Validates incoming catalog/refresh calls |
+| `gitops-infra` repo secrets | `PORTAL_WEBHOOK_TOKEN` | CI passes it as `Bearer` header to the cache refresh webhook |
 
 ```bash
-# 1. Store the token in ArgoCD's notification secret
-kubectl -n argocd create secret generic argocd-notifications-secret \
-  --from-literal=portal-webhook-token=<WEBHOOK_TOKEN> \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-```yaml
-# 2. argocd-notifications-cm
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-notifications-cm
-  namespace: argocd
-data:
-  trigger.on-sync-succeeded: |
-    - when: app.status.sync.status == 'Synced' && app.status.health.status == 'Healthy'
-      send: [promote-lifecycle]
-
-  template.promote-lifecycle: |
-    webhook:
-      portal:
-        method: POST
-        path: /api/v1/webhooks/promote/Component/{{.app.metadata.annotations.wxops-app-name}}
-        body: |
-          {"lifecycle": "development"}
-
-  service.webhook.portal: |
-    url: https://portal.example.com
-    headers:
-      - name: Authorization
-        value: Bearer $portal-webhook-token
-      - name: Content-Type
-        value: application/json
-```
-
-```yaml
-# 3. ApplicationSet template — annotate with the app name
-spec:
-  template:
-    metadata:
-      annotations:
-        wxops-app-name: "{{path[2]}}"   # extracts from tenants-apps/<team>/<app>/
-```
-
-### How it flows
-
-```
-1. Portal opens scaffold PR → platform team merges
-2. ArgoCD ApplicationSet detects overlays/dev/
-3. ArgoCD syncs → Crossplane provisions → pods start
-4. ArgoCD notification fires (Synced + Healthy)
-   POST /api/v1/webhooks/promote/Component/payment-api
-5. Portal validates → commits lifecycle: development
-6. Catalog shows: payment-api — lifecycle: development
-```
-
----
-
-## Two Routes, Two Auth Methods
-
-| Route | Auth | Who calls it | Allowed transitions |
-|-------|------|-------------|-------------------|
-| `POST /api/v1/webhooks/promote/:kind/:name` | `Authorization: Bearer <WEBHOOK_TOKEN>` | GitOps CI or ArgoCD | `experimental → development` only |
-| `POST /api/v1/catalog/entities/:kind/:name/promote` | Portal session cookie | Platform-team via UI | Any: staging, production, demotion |
-
-The webhook route is **outside** the session middleware — no cookie needed.
-The UI route is **inside** the auth group — requires logged-in platform-team user.
-
----
-
-## Token Naming
-
-Two names, one value:
-
-| Name | Where it lives | Who reads it |
-|------|---------------|-------------|
-| `WEBHOOK_TOKEN` | Portal backend environment | Portal validates incoming calls |
-| `PORTAL_WEBHOOK_TOKEN` | Gitea repo secret on `gitops-infra` | CI workflow passes it as Bearer token |
-
-Platform team sets the same generated value in both places:
-```bash
-# Generate once
+# Generate a token if not already set
 TOKEN=$(openssl rand -hex 32)
 
-# 1. Set in portal environment (Kubernetes Secret / .env)
-# WEBHOOK_TOKEN=$TOKEN
+# Set in portal deployment (same as before)
+kubectl create secret generic wxops-portal-secrets \
+  --from-literal=webhook-token=$TOKEN \
+  --namespace wxops-system
 
-# 2. Set as Gitea repo secret on gitops-infra
+# Set in gitops-infra Gitea repo secrets
 # Settings → Secrets → Actions → PORTAL_WEBHOOK_TOKEN = $TOKEN
 ```
-
----
-
-## Security Considerations
-
-| Concern | How it's addressed |
-|---------|-------------------|
-| Token leakage | Stored in K8s Secret (ArgoCD/portal) or Gitea repo secret. Never in git, never in logs. |
-| Webhook replay | Idempotent — promoting an already-development entity returns `{"changed": false}`. |
-| Unauthorized promotion to staging/prod | Webhook can ONLY do `experimental → development`. All other transitions require platform-team session. |
-| Token rotation | Generate new token → update portal env + gitops-infra repo secret → restart portal. No downtime. |
-| Portal down when webhook fires | CI logs the HTTP status. ArgoCD notifications retry with backoff. |
-
----
-
-## Manual Promotion (Platform-Team UI)
-
-For `development → staging` and `staging → production`, the portal UI
-shows a promote button visible only to platform-team members.
-
-```
-POST /api/v1/catalog/entities/Component/payment-api/promote
-Cookie: wxops_session=<session>
-Body: {"lifecycle": "staging"}
-```
-
-See [cross-environment promotion](cross-environment-promotion.md) for
-the full design including overlay generation and approval flow.

@@ -9,11 +9,15 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
-## [Unreleased]
+## [0.3.0] — 2026-07-03
 
 ### Documentation
 
-- Update generated changelog for correct format and update API Reference ([`c1915cf`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/c1915cfef7176917f76b5ee899163dcaaf21761d))
+- Update generated changelog for correct format and update API Reference ([`51ffb16`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/51ffb168c649d56a171a9d330cd5ed3289274fd1))
+
+### Features
+
+- Integrate search with flexsearch and introduce promotion-system for multi-env handler ([`6324d41`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/6324d41a38025add8c7f9467605c4da6da5495af))
 
 ## [0.2.1] — 2026-06-29
 
@@ -69,6 +73,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+[0.3.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.3.0
 [0.2.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.2.1
 [0.2.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.2.0
 [0.1.4] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.4
@@ -76,5 +81,5 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 [0.1.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.2
 [0.1.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.1
 [0.1.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.0
-[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.2.1...HEAD
+[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.3.0...HEAD
 

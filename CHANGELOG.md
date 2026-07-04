@@ -9,6 +9,12 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+## [0.3.1] — 2026-07-04
+
+### Refactoring
+
+- Update UI with modern visualization and introduce couple of new look for entire portal ([`4932704`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/4932704845f9bd8c4bd68dc95224520ae2f007ca))
+
 ## [0.3.0] — 2026-07-03
 
 ### Documentation
@@ -73,6 +79,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+[0.3.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.3.1
 [0.3.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.3.0
 [0.2.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.2.1
 [0.2.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.2.0
@@ -81,5 +88,5 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 [0.1.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.2
 [0.1.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.1
 [0.1.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.0
-[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.3.0...HEAD
+[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.3.1...HEAD
 

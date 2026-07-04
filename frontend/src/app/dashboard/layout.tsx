@@ -2,6 +2,7 @@ import { requireSession } from "@/lib/session";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/topbar";
 import { CommandPalette } from "@/components/layout/command-palette";
+import { PageTransition } from "@/components/layout/page-transition";
 
 export default async function DashboardLayout({
   children,
@@ -15,7 +16,9 @@ export default async function DashboardLayout({
       <Sidebar groups={session.groups} />
       <div className="flex flex-col flex-1 overflow-hidden">
         <TopBar user={session} />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-6 dot-grid">
+          <PageTransition>{children}</PageTransition>
+        </main>
       </div>
       {/* Global Ctrl/Cmd+K command palette — renders null when closed */}
       <CommandPalette />

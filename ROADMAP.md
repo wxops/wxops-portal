@@ -1,7 +1,7 @@
 # WxOps Portal — Roadmap
 
 > Living document. Updated as features ship.
-> Last updated: 2026-07-03
+> Last updated: 2026-07-04
 
 ---
 
@@ -187,6 +187,34 @@ Find any entity without leaving the keyboard — instant access across the full 
 - Dark mode: Dracula-inspired palette — `#282a36` background, lavender `#bd93f9` accents, `#6272a4` muted text
 - Import wizard pagination: "Load More" for teams with > 50 repos
 - Doc entity: direct commit to main, author-scoped draft visibility, `docStatus` editing, `relatedTo` editing
+
+### v0.3.1 — Portal UI Polish
+
+Entity detail layout redesign, docs-as-drawer, and build-time version stamping.
+
+**Entity detail page restructure:**
+- Two-column layout: operational content (CI/CD, runtime, promotion, releases) on the left; metadata sidebar (relationships, links, annotations, scaffold info) on the right
+- Relationships card redesigned — grouped by type (Depends On, Provides API, Consumes API, Related To, Members, Children) with color-coded dot indicators and linked `kind/name` chips instead of flat label+badge rows
+- Dead code removed: `fetchAllEntities`, `RelatedDocsSection`, `DocsSkeleton`, `RefList` server components replaced by lazy client-side drawer
+
+**Documentation drawer:**
+- "Show Documents" button in the header actions row (same level as Edit / Edit Config)
+- Slide-in panel rendered via `ReactDOM.createPortal` into `document.body` — escapes the `page-enter` CSS animation's transform containing block so the drawer covers the full viewport
+- Grouped by type: RFC (violet), ADR (blue), Doc (purple) with per-group count and color badges
+- Lazy-fetched on first open; subsequent opens use cached result
+- Draft badge, doc status badge, author line per card; empty state with "Create Document" CTA
+
+**Build-time version stamping:**
+- `NEXT_PUBLIC_APP_VERSION` baked into the JS bundle via Dockerfile `ARG`/`ENV` at `docker build` time
+- CI derives version from the git tag (`v0.3.1` → `0.3.1`) and passes it as `--build-arg APP_VERSION=<semver>` — `package.json` is intentionally NOT updated to avoid invalidating the Next.js/Turbopack build cache on local dev restarts
+- Portal version shown in the user dropdown (topbar) as `WxOps Portal vX.Y.Z`
+- Settings page: Runtime section removed (version visible in topbar); Account section footer split into two icons — `Shield` for OIDC identity, `Server` for Kubernetes RBAC via Pinniped
+- Profile menu item removed from topbar dropdown (duplicate of Settings)
+
+**CI workflow:**
+- `ARGOCD_URL` org-level variable documented in workflow header comment
+- `docker/build-push-action` receives `NEXT_PUBLIC_ARGOCD_URL` and `APP_VERSION` as build-args
+- Changelog commit message updated to `chore(release): update changelog for <tag>`
 
 ---
 

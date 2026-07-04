@@ -76,8 +76,10 @@ const lifecycleBadge: Record<string, string> = {
 };
 
 function MemberCard({ user }: { user: Entity }) {
-  const initials = (user.metadata.title ?? user.metadata.name)
-    .split(" ")
+  const displayName = user.metadata.title ?? user.metadata.name;
+  const initials = displayName
+    .split(/[\s._-]+/)
+    .filter(Boolean)
     .map((w) => w[0])
     .slice(0, 2)
     .join("")
@@ -85,21 +87,33 @@ function MemberCard({ user }: { user: Entity }) {
 
   return (
     <Link href={`/dashboard/catalog/users/${user.metadata.name}`} className="block group">
-      <Card className="flex items-center gap-3 p-4 transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-          {initials}
+      <Card className="relative flex flex-col items-center text-center px-4 py-5 overflow-hidden transition-all duration-200 group-hover:bg-muted/30 hover-glow-cyan group-hover:border-wxops-cyan/40">
+
+        {/* Subtle top gradient accent */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-wxops-cyan/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+        {/* Avatar */}
+        <div className="relative mb-3 shrink-0">
+          <div className="absolute inset-0 rounded-full bg-wxops-purple/20 blur-md scale-110" />
+          <div className="relative h-14 w-14 flex items-center justify-center rounded-full bg-gradient-to-br from-wxops-purple to-wxops-indigo text-lg font-bold text-white ring-2 ring-wxops-purple/20">
+            {initials}
+          </div>
         </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium leading-tight truncate">
-            {user.metadata.title ?? user.metadata.name}
+
+        {/* Name */}
+        <p className="text-sm font-semibold leading-tight w-full truncate">{displayName}</p>
+
+        {/* Handle */}
+        <p className="text-[11px] font-mono text-muted-foreground mt-0.5">
+          @{user.metadata.name}
+        </p>
+
+        {/* Optional role / description */}
+        {user.metadata.description && (
+          <p className="text-xs text-muted-foreground line-clamp-2 mt-2 leading-relaxed">
+            {user.metadata.description}
           </p>
-          <p className="text-xs font-mono text-muted-foreground">@{user.metadata.name}</p>
-          {user.metadata.description && (
-            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-              {user.metadata.description}
-            </p>
-          )}
-        </div>
+        )}
       </Card>
     </Link>
   );
@@ -269,7 +283,7 @@ export default async function GroupDetailPage({
             </h2>
             <span className="text-xs text-muted-foreground">({members.length})</span>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
             {members.map((u) => (
               <MemberCard key={u.metadata.name} user={u} />
             ))}

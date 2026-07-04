@@ -1,14 +1,10 @@
 import { requireSession } from "@/lib/session";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Server, Info } from "lucide-react";
+import { Shield, Server } from "lucide-react";
 
 export default async function SettingsPage() {
   const session = await requireSession();
-
-  const portalVersion = process.env.npm_package_version ?? "0.1.x";
-  const backendUrl    = process.env.BACKEND_URL ?? "http://localhost:8080";
-  const catalogDir    = process.env.CATALOG_LOCAL_DIR ?? "—";
 
   return (
     <div className="space-y-8 max-w-2xl">
@@ -68,34 +64,9 @@ export default async function SettingsPage() {
           </div>
           <div className="flex items-center gap-2 pt-1 text-xs text-muted-foreground border-t">
             <Shield className="h-3.5 w-3.5 text-wxops-green" />
-            Identity verified via OIDC · Kubernetes RBAC enforced via Pinniped
-          </div>
-        </div>
-      </section>
-
-      {/* Runtime info */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-          Runtime
-        </h2>
-        <div className="rounded-xl border bg-card p-5 space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground flex items-center gap-1.5">
-              <Info className="h-3.5 w-3.5" /> Portal version
-            </span>
-            <span className="font-mono text-xs">{portalVersion}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground flex items-center gap-1.5">
-              <Server className="h-3.5 w-3.5" /> Backend URL
-            </span>
-            <span className="font-mono text-xs text-muted-foreground">{backendUrl}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Catalog source</span>
-            <span className="font-mono text-xs text-muted-foreground truncate max-w-[260px]">
-              {catalogDir}
-            </span>
+            Identity verified via OIDC
+            <Server className="h-3.5 w-3.5 ml-1" />
+            Kubernetes RBAC enforced via Pinniped
           </div>
         </div>
       </section>

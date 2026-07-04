@@ -14,7 +14,7 @@ An Internal Developer Portal (IDP) for Kubernetes-native platform teams. One OID
 - **CI/CD and release visibility** — per-entity cards showing Gitea Actions runs, git releases, container images (color-coded by environment), package dependencies, and latest image tag per environment (dev/staging/production).
 - **Activity feed** — portal-managed PR history per team, filtered by role; lifecycle status per service. Session notifications for scaffold, import, and catalog update events.
 - **Cluster views** — namespace-scoped pods and deployments derived from Pinniped group membership (no cluster-admin required); WhoAmI identity; reload without page refresh; kubeconfig download.
-- **CLI** *(planned v0.5.0)* — `wxops` binary with the same API, usable in CI/CD pipelines.
+- **CLI** *(planned v0.4.0)* — `wxops` binary: `login`, `scaffold new`, `catalog list/get`, `tunnel`, and `debug` commands. Mirrors the portal wizard from the terminal; usable in CI/CD pipelines without a browser session.
 
 ## Architecture
 
@@ -167,6 +167,7 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | Cross-environment promotion design | [docs/cross-environment-promotion.md](docs/cross-environment-promotion.md) |
 | Cluster registry (K8s Secrets + clusters.json) | [docs/cluster-registry.md](docs/cluster-registry.md) |
 | Documentation strategy (RFC, ADR, Runbook) | [docs/documentation-strategy.md](docs/documentation-strategy.md) |
+| Performance (cache layers, TTLs, polling, scaling) | [docs/performance.md](docs/performance.md) |
 | Local development | [docs/local-development.md](docs/local-development.md) |
 | Container design (nginx, supervisord, Dockerfile) | [docs/container.md](docs/container.md) |
 | API reference | [docs/api-reference.md](docs/api-reference.md) |
@@ -184,6 +185,7 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | v0.2.0 | Golden-path scaffolding, CI/CD visibility, activity feed, cluster UX | `shipped` |
 | v0.2.1 | Scaffolding fixes (Image Updater naming, nginx routing, Vault update) | `shipped` |
 | v0.3.0 | Platform visibility — lifecycle promotion UI, FlexSearch command palette, catalog search, dark theme | `shipped` |
+| v0.3.1 | Portal UI polish — entity detail two-column layout, docs drawer, build-time version stamping | `shipped` |
 | v0.4.0 | CLI (`wxops` binary) + inner-loop tools (DevSpace, Mirrord/Telepresence, feature flags, A/B testing) | `planned` |
 | v0.5.0 | Runtime observability — ArgoCD/Crossplane status via Pinniped, DORA-lite metrics | `planned` |
 

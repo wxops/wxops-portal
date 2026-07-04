@@ -229,6 +229,104 @@
   }
 }
 
+/* ── Page enter animation ────────────────────────────────────────────────── */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes docs-drawer-enter {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0);    }
+}
+
+@layer utilities {
+  .page-enter {
+    animation: page-enter 0.22s ease-out both;
+  }
+  .docs-drawer-enter {
+    animation: docs-drawer-enter 0.24s cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+}
+
+/* ── Registered custom property for border-angle animation ──────────────── */
+@property --grad-angle {
+  syntax: '<angle>';
+  initial-value: 135deg;
+  inherits: false;
+}
+
+@layer utilities {
+  /* Subtle dot grid — main content area background texture */
+  .dot-grid {
+    background-image: radial-gradient(circle, oklch(0.50 0.010 290 / 20%) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .dark .dot-grid {
+    background-image: radial-gradient(circle, oklch(1 0 0 / 5%) 1px, transparent 1px);
+  }
+
+  /* Topbar — gradient bottom edge replacing the flat border */
+  .topbar-gradient-sep::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(0.606 0.259 293 / 45%) 35%,
+      oklch(0.714 0.143 201 / 30%) 65%,
+      transparent 100%
+    );
+  }
+  .dark .topbar-gradient-sep::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(0.73 0.185 293 / 55%) 35%,
+      oklch(0.87 0.100 214 / 38%) 65%,
+      transparent 100%
+    );
+  }
+
+  /* Sidebar active-item left indicator glow */
+  .sidebar-indicator-glow {
+    box-shadow: 0 0 10px 3px oklch(0.606 0.259 293 / 50%);
+  }
+  .dark .sidebar-indicator-glow {
+    box-shadow: 0 0 10px 3px oklch(0.73 0.185 293 / 65%);
+  }
+
+  /* Stat card colored glow on hover */
+  .hover-glow-purple:hover { box-shadow: 0 8px 32px -4px oklch(0.606 0.259 293 / 28%); }
+  .hover-glow-cyan:hover   { box-shadow: 0 8px 32px -4px oklch(0.714 0.143 201 / 28%); }
+  .hover-glow-green:hover  { box-shadow: 0 8px 32px -4px oklch(0.700 0.180 150 / 28%); }
+  .hover-glow-indigo:hover { box-shadow: 0 8px 32px -4px oklch(0.568 0.243 264 / 28%); }
+  .dark .hover-glow-purple:hover { box-shadow: 0 8px 32px -4px oklch(0.73 0.185 293 / 42%); }
+  .dark .hover-glow-cyan:hover   { box-shadow: 0 8px 32px -4px oklch(0.87 0.100 214 / 36%); }
+  .dark .hover-glow-green:hover  { box-shadow: 0 8px 32px -4px oklch(0.82 0.175 150 / 36%); }
+  .dark .hover-glow-indigo:hover { box-shadow: 0 8px 32px -4px oklch(0.65 0.140 265 / 36%); }
+
+  /* Platform card — animated gradient border angle on hover */
+  .card-gradient-border-anim {
+    --grad-angle: 135deg;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      linear-gradient(var(--grad-angle), oklch(0.606 0.259 293 / 35%), oklch(0.714 0.143 201 / 20%)) border-box;
+    border: 1px solid transparent;
+  }
+  .card-gradient-border-anim:hover {
+    --grad-angle: 225deg;
+  }
+  .dark .card-gradient-border-anim {
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      linear-gradient(var(--grad-angle), oklch(0.73 0.185 293 / 38%), oklch(0.87 0.100 214 / 22%)) border-box;
+  }
+}
+
 /* ── Swagger UI dark mode overrides ─────────────────────────────────────────────
    swagger-ui-dist ships a light-only stylesheet. These overrides recolour the
    rendered DOM when the .dark class is active (set by next-themes on <html>).

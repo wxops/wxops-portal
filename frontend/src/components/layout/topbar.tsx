@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, User } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -38,7 +38,7 @@ export function TopBar({ user }: TopBarProps) {
   }
 
   return (
-    <header className="h-14 shrink-0 border-b border-border bg-card/80 backdrop-blur-sm flex items-center justify-between px-6 gap-4 z-10">
+    <header className="relative h-14 shrink-0 bg-background/70 backdrop-blur-md flex items-center justify-between px-6 gap-4 z-10 topbar-gradient-sep">
 
       {/* Left — breadcrumb */}
       <div className="flex-1 min-w-0">
@@ -76,10 +76,6 @@ export function TopBar({ user }: TopBarProps) {
 
             <DropdownMenuGroup>
               <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
-                <User className="mr-2 h-4 w-4" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/dashboard/settings")}>
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
               </DropdownMenuItem>
@@ -97,6 +93,17 @@ export function TopBar({ user }: TopBarProps) {
                 {isPending ? "Signing out…" : "Sign out"}
               </DropdownMenuItem>
             </DropdownMenuGroup>
+
+            {process.env.NEXT_PUBLIC_APP_VERSION && (
+              <>
+                <DropdownMenuSeparator />
+                <div className="px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground/60 font-mono">
+                    WxOps Portal v{process.env.NEXT_PUBLIC_APP_VERSION}
+                  </p>
+                </div>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

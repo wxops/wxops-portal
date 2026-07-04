@@ -3,6 +3,7 @@ import Link from "next/link";
 import { BookOpen, FileText, Layers, Users, Plus, Database, Globe } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { getSession } from "@/lib/session";
 import { CatalogSearchBar } from "@/components/catalog/catalog-search-bar";
 
@@ -73,6 +74,20 @@ function entityHref(kind: string, name: string): string {
   return `/dashboard/catalog/${kind}/${name}`;
 }
 
+function kindGlowClass(kind: string): string {
+  switch (kind) {
+    case "Component":
+    case "API":
+      return "hover-glow-purple group-hover:border-wxops-purple/40";
+    case "Group":
+      return "hover-glow-cyan group-hover:border-wxops-cyan/40";
+    case "Doc":
+      return "hover-glow-green group-hover:border-wxops-green/40";
+    default:
+      return "hover-glow-indigo group-hover:border-wxops-indigo/40";
+  }
+}
+
 function SystemCard({
   sys,
   count,
@@ -86,7 +101,7 @@ function SystemCard({
       href={`/dashboard/catalog/systems/${sys.metadata.name}`}
       className="block group"
     >
-      <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+      <Card className="flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30 hover-glow-indigo group-hover:border-wxops-indigo/40">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -127,7 +142,7 @@ function GroupCard({ group }: { group: Entity }) {
   const memberCount = group.spec.members?.length ?? 0;
   return (
     <Link href={`/dashboard/catalog/groups/${group.metadata.name}`} className="block group">
-      <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+      <Card className="flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30 hover-glow-cyan group-hover:border-wxops-cyan/40">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2 min-w-0">
             <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -177,7 +192,7 @@ function DocCard({ doc }: { doc: Entity }) {
       href={`/dashboard/catalog/Doc/${doc.metadata.name}`}
       className="block group"
     >
-      <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+      <Card className="flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30 hover-glow-green group-hover:border-wxops-green/40">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2">
             <CardTitle className="text-sm font-medium leading-snug">
@@ -216,7 +231,7 @@ function ComponentCard({ c }: { c: Entity }) {
       href={`/dashboard/catalog/Component/${c.metadata.name}`}
       className="block group"
     >
-      <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+      <Card className="flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30 hover-glow-purple group-hover:border-wxops-purple/40">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">
             {c.metadata.title ?? c.metadata.name}
@@ -252,7 +267,7 @@ function ComponentCard({ c }: { c: Entity }) {
 function EntityCard({ entity }: { entity: Entity }) {
   return (
     <Link href={entityHref(entity.kind, entity.metadata.name)} className="block group">
-      <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+      <Card className={cn("flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30", kindGlowClass(entity.kind))}>
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2">
             <CardTitle className="text-base truncate">
@@ -681,7 +696,7 @@ export default async function CatalogPage({
                         href={`/dashboard/catalog/Resource/${r.metadata.name}`}
                         className="block group"
                       >
-                        <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+                        <Card className="flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30 hover-glow-indigo group-hover:border-wxops-indigo/40">
                           <CardHeader className="pb-2">
                             <CardTitle className="text-base">{r.metadata.title ?? r.metadata.name}</CardTitle>
                             <p className="text-xs font-mono text-muted-foreground">{r.metadata.name}</p>
@@ -711,7 +726,7 @@ export default async function CatalogPage({
                         href={`/dashboard/catalog/API/${a.metadata.name}`}
                         className="block group"
                       >
-                        <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
+                        <Card className="flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30 hover-glow-indigo group-hover:border-wxops-indigo/40">
                           <CardHeader className="pb-2">
                             <CardTitle className="text-base">{a.metadata.title ?? a.metadata.name}</CardTitle>
                             <p className="text-xs font-mono text-muted-foreground">{a.metadata.name}</p>

@@ -20,6 +20,16 @@ COPY frontend/ .
 # but BACKEND_URL is still read by SSR page code for direct server→backend calls.
 ARG BACKEND_URL=http://127.0.0.1:8080
 ENV BACKEND_URL=$BACKEND_URL
+
+# ── Build-time public vars (baked into the JS bundle by next build) ��───────
+# CI passes these via --build-arg at release time.
+# NEXT_PUBLIC_ARGOCD_URL: org-level Actions variable ARGOCD_URL
+# APP_VERSION:            stripped git tag (e.g. 0.3.0) set by the stamp step
+ARG NEXT_PUBLIC_ARGOCD_URL=""
+ENV NEXT_PUBLIC_ARGOCD_URL=$NEXT_PUBLIC_ARGOCD_URL
+ARG APP_VERSION="0.0.0"
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
+
 RUN npm run build
 
 # ── Stage 3: Combined runtime image ────────────────────────────────────────

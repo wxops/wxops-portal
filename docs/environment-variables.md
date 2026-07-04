@@ -111,8 +111,55 @@ env:
 
 ## Frontend
 
+Frontend variables fall into two categories with fundamentally different lifecycles.
+
+### Runtime variable (set by supervisord / K8s)
+
 | Variable | Default | Description |
 |---|---|---|
 | `BACKEND_URL` | `http://localhost:8080` | Internal URL of the Go backend for Next.js SSR server-side fetch calls |
 
 `BACKEND_URL` is read at runtime when `node server.js` starts. In the combined Docker image it is set to `http://127.0.0.1:8080` by supervisord — Next.js SSR pages reach the Go backend directly on loopback without going through nginx.
+
+### Build-time public variables (baked into the JS bundle by `next build`)
+
+> **These must be passed as `--build-arg` to `docker build`.** They are evaluated
+> during `next build` inside Stage 2 of the Dockerfile and compiled into the
+> client-side JS bundle. Passing them at container runtime has no effect — the
+> bundle is already sealed.
+
+| Variable | Build-arg name | Default | Description |
+|---|---|---|---|
+| `NEXT_PUBLIC_ARGOCD_URL` | `NEXT_PUBLIC_ARGOCD_URL` | _(empty)_ | Full URL of your ArgoCD instance (e.g. `https://argocd.wxops.cloud`). When set, entity detail pages render a linked ArgoCD button. When empty the button is hidden. Set via the org-level Gitea Actions variable `ARGOCD_URL`. |
+| `NEXT_PUBLIC_APP_VERSION` | `APP_VERSION` | `0.0.0` | Semver string baked into the portal UI (topbar version badge). CI derives it from the git tag (`v0.3.1` → `0.3.1`) and passes it as `APP_VERSION`. **`frontend/package.json` is intentionally NOT updated by CI** — changing the package version invalidates the Next.js/Turbopack build cache and causes a full recompile on the next local dev restart. |
+
+**Dockerfile wiring** (Stage 2):
+
+```dockerfile
+ARG NEXT_PUBLIC_ARGOCD_URL=""
+ENV NEXT_PUBLIC_ARGOCD_URL=$NEXT_PUBLIC_ARGOCD_URL
+
+ARG APP_VERSION="0.0.0"
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
+
+RUN npm run build
+```
+
+**CI wiring** (`.gitea/workflows/ci.yml`):
+
+```yaml
+- name: Set version
+  run: |
+    SEMVER="${{ github.ref_name }}"
+    SEMVER="${SEMVER#v}"
+    echo "APP_VERSION=$SEMVER" >> "$GITHUB_ENV"
+
+- name: Build and push image
+  uses: docker/build-push-action@v6
+  with:
+    build-args: |
+      NEXT_PUBLIC_ARGOCD_URL=${{ vars.ARGOCD_URL }}
+      APP_VERSION=${{ env.APP_VERSION }}
+```
+
+**Local development:** both variables default to empty / `0.0.0` when running `npm run dev`. The ArgoCD button is hidden when `NEXT_PUBLIC_ARGOCD_URL` is empty, and the version badge is simply absent from the topbar dropdown when `NEXT_PUBLIC_APP_VERSION` is unset.

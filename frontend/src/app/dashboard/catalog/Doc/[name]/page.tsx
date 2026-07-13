@@ -4,9 +4,34 @@ import { ArrowLeft, ExternalLink, FileText, GitBranch } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocViewer } from "@/components/catalog/doc-viewer";
+import { slugifyHeading } from "@/lib/doc-utils";
+import { DocToc, type TocItem } from "@/components/catalog/doc-toc";
+import { ScrollToTop } from "@/components/catalog/scroll-to-top";
 import { EntityActions } from "@/components/catalog/entity-actions";
 import { getSession } from "@/lib/session";
 import type { Entity } from "@/lib/types";
+
+function extractToc(md: string): TocItem[] {
+  const lines = md.split("\n");
+  const items: TocItem[] = [];
+  const counts: Record<string, number> = {};
+  let inCode = false;
+
+  for (const line of lines) {
+    if (line.startsWith("```")) { inCode = !inCode; continue; }
+    if (inCode) continue;
+    const m = line.match(/^(#{1,4})\s+(.+)$/);
+    if (!m) continue;
+    const level = m[1].length;
+    // Strip inline markdown from the display text
+    const text = m[2].trim().replace(/[*_`~]/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+    const base = slugifyHeading(text);
+    counts[base] = (counts[base] ?? 0) + 1;
+    const id = counts[base] === 1 ? base : `${base}-${counts[base] - 1}`;
+    items.push({ level, text, id });
+  }
+  return items;
+}
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
@@ -113,6 +138,7 @@ export default async function DocDetailPage({
     getSession(),
   ]);
   const userGroups = userSession?.groups ?? [];
+  const tocItems = content ? extractToc(content) : [];
 
   if (error || !entity) {
     return (
@@ -138,7 +164,7 @@ export default async function DocDetailPage({
   );
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-6">
 
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -240,11 +266,11 @@ export default async function DocDetailPage({
         )}
       </div>
 
-      {/* Sidebar + content layout */}
-      <div className="grid gap-5 lg:grid-cols-[260px_1fr] items-start">
+      {/* Sidebar + content + ToC layout */}
+      <div className="grid gap-6 lg:grid-cols-[240px_1fr] xl:grid-cols-[240px_1fr_220px] items-start">
 
         {/* Sidebar */}
-        <div className="space-y-3 lg:sticky lg:top-4">
+        <div className="space-y-3 lg:sticky lg:top-6">
 
           {/* Gitea link */}
           {(entity.spec.contentUrl || giteaLink) && (
@@ -350,9 +376,9 @@ export default async function DocDetailPage({
         </div>
 
         {/* Markdown content */}
-        <div className="rounded-lg border bg-card min-w-0 min-h-[60vh]">
+        <div className="rounded-lg border bg-card min-w-0 min-h-[70vh]">
           {content ? (
-            <div className="px-8 py-6 lg:px-10 lg:py-8">
+            <div className="px-10 py-8 lg:px-14 lg:py-10">
               <DocViewer content={content} />
             </div>
           ) : (
@@ -384,7 +410,12 @@ export default async function DocDetailPage({
             </div>
           )}
         </div>
+
+        {/* Table of Contents — right column, xl screens only */}
+        <DocToc items={tocItems} />
       </div>
+
+      <ScrollToTop />
     </div>
   );
 }

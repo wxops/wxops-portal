@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/wxops/wxops-portal-v2/internal/auth"
 	"github.com/wxops/wxops-portal-v2/internal/config"
@@ -27,6 +30,13 @@ func NewAuthHandler(oidc *auth.OIDCClient, sm *auth.SessionManager, cfg *config.
 // @Success      302  {string}  string  "Redirect to OIDC provider"
 // @Router       /auth/login [get]
 func (h *AuthHandler) Login(c *gin.Context) {
+	// Optional CLI callback — must be localhost to prevent open redirect.
+	cliRedirectURI := c.Query("redirect_uri")
+	if cliRedirectURI != "" && !isCLIRedirect(cliRedirectURI) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "redirect_uri must target 127.0.0.1"})
+		return
+	}
+
 	if h.cfg.DevBypassAuth {
 		session := &auth.Session{
 			Sub:      "dev-bypass",
@@ -40,11 +50,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		}
 		c.SetSameSite(http.SameSiteLaxMode)
 		c.SetCookie(auth.SessionCookieName, encoded, 8*3600, "/", "", false, true)
+		if cliRedirectURI != "" {
+			c.Redirect(http.StatusFound, cliRedirectURI+"?token="+url.QueryEscape(encoded))
+			return
+		}
 		c.Redirect(http.StatusFound, h.cfg.FrontendURL+"/dashboard")
 		return
 	}
 
-	authURL, err := h.oidc.StartLogin()
+	authURL, err := h.oidc.StartLogin(cliRedirectURI)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initiate login"})
 		return
@@ -71,7 +85,7 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	token, idToken, err := h.oidc.ExchangeCode(c.Request.Context(), code, state)
+	token, idToken, cliRedirectURI, err := h.oidc.ExchangeCode(c.Request.Context(), code, state)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -112,6 +126,12 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 	// Set Secure=true when serving over HTTPS in production.
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(auth.SessionCookieName, encoded, 8*3600, "/", "", false, true)
+
+	// CLI login: redirect back to the local callback server with the encoded session.
+	if cliRedirectURI != "" {
+		c.Redirect(http.StatusFound, cliRedirectURI+"?token="+url.QueryEscape(encoded))
+		return
+	}
 
 	c.Redirect(http.StatusFound, h.cfg.FrontendURL+"/dashboard")
 }
@@ -178,4 +198,15 @@ func userResponse(s *auth.Session) userResponsePayload {
 		Username: s.Username,
 		Groups:   groups,
 	}
+}
+
+// isCLIRedirect returns true only when the redirect_uri targets the loopback
+// interface, preventing open-redirect attacks against arbitrary hosts.
+func isCLIRedirect(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return (u.Scheme == "http") && (host == "127.0.0.1" || host == "localhost") && strings.HasPrefix(u.Path, "/")
 }

@@ -2,30 +2,24 @@
 
 import { useState, useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { FileText, Maximize2, X } from "lucide-react";
+import { FileText, Maximize2, X, Network } from "lucide-react";
 import { useTheme } from "next-themes";
 import { MermaidDiagram, type DocTooltipData } from "./mermaid-diagram";
 
 interface GraphPanelProps {
-  /** Graph without Doc nodes — the default clean view (dark theme). */
   chartBase: string;
-  /** Graph including Doc nodes (dark theme). */
   chartWithDocs?: string;
-  /** Light theme variants. */
   chartBaseLight?: string;
   chartWithDocsLight?: string;
   docTooltips?: Record<string, DocTooltipData>;
   docsCount?: number;
 }
 
-interface DocsToggleProps {
-  hasDocs: boolean;
-  showDocs: boolean;
-  docsCount: number;
-  onToggle: () => void;
-}
-
-function DocsToggle({ hasDocs, showDocs, docsCount, onToggle }: DocsToggleProps) {
+function DocsToggle({
+  hasDocs, showDocs, docsCount, onToggle,
+}: {
+  hasDocs: boolean; showDocs: boolean; docsCount: number; onToggle: () => void;
+}) {
   if (!hasDocs) return null;
   return (
     <button
@@ -47,14 +41,14 @@ function Legend({ isDark }: { isDark: boolean }) {
     ? { svc: "bg-[#1e1347] border-[#8b5cf6]", api: "bg-[#0c3547] border-[#22d3ee]", res: "bg-[#161550] border-[#818cf8]", rfc: "bg-[#1e1347] border-dashed border-[#a78bfa]", adr: "bg-[#0c1f4a] border-[#60a5fa]", doc: "bg-[#082a18] border-[#34d399]" }
     : { svc: "bg-[#ede9fe] border-[#7c3aed]", api: "bg-[#e0f2fe] border-[#0891b2]", res: "bg-[#e0e7ff] border-[#6366f1]", rfc: "bg-[#ede9fe] border-dashed border-[#8b5cf6]", adr: "bg-[#dbeafe] border-[#3b82f6]", doc: "bg-[#d1fae5] border-[#10b981]" };
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1"><span className={`inline-block w-3 h-3 rounded-sm border ${s.svc}`} />Service</span>
-      <span className="inline-flex items-center gap-1"><span className={`inline-block w-3 h-3 rounded-full border ${s.api}`} />API</span>
-      <span className="inline-flex items-center gap-1"><span className={`inline-block w-3 h-3 rounded-sm border ${s.res}`} />Resource</span>
-      <span className="text-muted-foreground/30 mx-0.5">|</span>
-      <span className="inline-flex items-center gap-1"><span className={`inline-block w-3 h-3 rounded-sm border ${s.rfc}`} />RFC</span>
-      <span className="inline-flex items-center gap-1"><span className={`inline-block w-3 h-3 rounded-sm border ${s.adr}`} />ADR</span>
-      <span className="inline-flex items-center gap-1"><span className={`inline-block w-3 h-3 rounded-sm border ${s.doc}`} />Doc</span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5"><span className={`inline-block w-2.5 h-2.5 rounded-sm border ${s.svc}`} />Service</span>
+      <span className="inline-flex items-center gap-1.5"><span className={`inline-block w-2.5 h-2.5 rounded-full border ${s.api}`} />API</span>
+      <span className="inline-flex items-center gap-1.5"><span className={`inline-block w-2.5 h-2.5 rounded-sm border ${s.res}`} />Resource</span>
+      <span className="text-muted-foreground/30">·</span>
+      <span className="inline-flex items-center gap-1.5"><span className={`inline-block w-2.5 h-2.5 rounded-sm border ${s.rfc}`} />RFC</span>
+      <span className="inline-flex items-center gap-1.5"><span className={`inline-block w-2.5 h-2.5 rounded-sm border ${s.adr}`} />ADR</span>
+      <span className="inline-flex items-center gap-1.5"><span className={`inline-block w-2.5 h-2.5 rounded-sm border ${s.doc}`} />Doc</span>
     </div>
   );
 }
@@ -96,8 +90,7 @@ export function GraphPanel({
 
   const activeChart    = hasDocs && showDocs ? full! : base;
   const activeTooltips = showDocs ? docTooltips : undefined;
-  const graphBg = isDark ? "bg-[#0d0b1f] border-[#2d2050]" : "bg-white border-border";
-  const fadeBg  = isDark ? "from-[#0d0b1f]" : "from-white";
+  const graphBg        = isDark ? "bg-[#0d0b1f] border-[#2d2050]" : "bg-slate-50 border-slate-200";
 
   if (!activeChart && !full) return null;
 
@@ -106,23 +99,27 @@ export function GraphPanel({
   const fullscreenOverlay = isMaximized && mounted
     ? createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-[3px]"
           onClick={(e) => { if (e.target === e.currentTarget) setIsMaximized(false); }}
         >
-          <div className="relative flex flex-col w-[90vw] max-w-5xl h-[75vh] bg-background rounded-xl border shadow-2xl overflow-hidden">
+          <div className="relative flex flex-col w-[95vw] max-w-6xl h-[85vh] bg-background rounded-2xl border shadow-2xl overflow-hidden">
+            {/* accent bar */}
+            <div className="h-0.5 shrink-0 bg-gradient-to-r from-violet-500 via-indigo-500 to-cyan-500" />
+
             {/* Toolbar */}
-            <div className="flex items-center justify-between border-b px-4 py-2.5 shrink-0 gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
-                  Decision &amp; Service Graph
-                </h2>
+            <div className="flex items-center justify-between border-b px-5 py-3 shrink-0 gap-3 bg-muted/10">
+              <div className="flex items-center gap-4 min-w-0 flex-wrap">
+                <div className="flex items-center gap-2 shrink-0">
+                  <Network className="h-4 w-4 text-violet-500" />
+                  <h2 className="text-sm font-semibold">Service &amp; Decision Landscape</h2>
+                </div>
                 <Legend isDark={isDark} />
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <DocsToggle hasDocs={hasDocs} showDocs={showDocs} docsCount={docsCount} onToggle={toggleDocs} />
                 <button
                   onClick={() => setIsMaximized(false)}
-                  className="inline-flex items-center justify-center rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                  className="inline-flex items-center justify-center rounded-lg border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
                   title="Close (Esc)"
                 >
                   <X className="h-4 w-4" />
@@ -130,20 +127,20 @@ export function GraphPanel({
               </div>
             </div>
 
-            {/* Diagram */}
-            <div className="flex-1 overflow-hidden p-3">
+            {/* Diagram — full height, pannable */}
+            <div className="flex-1 overflow-hidden p-4">
               <MermaidDiagram
                 chart={activeChart || full!}
                 docTooltips={activeTooltips}
                 mode="pan"
-                className={`h-full rounded-lg border ${graphBg} p-3`}
+                className={`h-full rounded-xl border ${graphBg} p-4`}
               />
             </div>
 
-            <p className="text-xs text-center text-muted-foreground py-2 shrink-0 border-t">
+            <p className="text-xs text-center text-muted-foreground py-2.5 shrink-0 border-t bg-muted/5">
               Drag to pan · scroll to zoom
               {hasDocs && showDocs && " · hover doc nodes for details · click to open"}
-              {" · "}press Esc or click outside to close
+              {" · "}Esc or click outside to close
             </p>
           </div>
         </div>,
@@ -153,44 +150,15 @@ export function GraphPanel({
 
   return (
     <>
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              Decision &amp; Service Graph
-            </h2>
-            {hasDocs && <Legend isDark={isDark} />}
-          </div>
-          <DocsToggle hasDocs={hasDocs} showDocs={showDocs} docsCount={docsCount} onToggle={toggleDocs} />
-        </div>
-
-        {/* Inline preview — click ⊕ to open modal */}
-        <div className={`relative group rounded-lg border ${graphBg}`}>
-          <div className="overflow-hidden max-h-64 p-4">
-            <MermaidDiagram
-              chart={activeChart || full!}
-              docTooltips={activeTooltips}
-            />
-          </div>
-
-          {/* Bottom fade hint */}
-          <div className={`absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t ${fadeBg} to-transparent pointer-events-none rounded-b-lg`} />
-
-          {/* Expand button */}
-          <button
-            onClick={() => setIsMaximized(true)}
-            className={`absolute top-2 right-2 opacity-0 group-hover:opacity-100 inline-flex items-center justify-center rounded-md border backdrop-blur-sm p-1.5 text-muted-foreground hover:text-foreground shadow-sm transition-all ${isDark ? "border-white/10 bg-black/60" : "border-border bg-white/80"}`}
-            title="Expand graph"
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <p className="text-xs text-muted-foreground">
-          Expand to pan and zoom
-          {hasDocs && " · toggle decisions to see RFC/ADR context"}
-        </p>
-      </section>
+      {/* Trigger pill — lives in the hero stats row */}
+      <button
+        onClick={() => setIsMaximized(true)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 dark:border-violet-800/60 bg-violet-50 dark:bg-violet-950/40 px-3 py-1 text-xs font-medium text-violet-700 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900/50 hover:border-violet-300 dark:hover:border-violet-700 transition-colors"
+      >
+        <Network className="h-3 w-3" />
+        View Landscape
+        <Maximize2 className="h-2.5 w-2.5 opacity-60" />
+      </button>
 
       {fullscreenOverlay}
     </>

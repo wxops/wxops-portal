@@ -166,6 +166,9 @@ func GenerateCatalogEntities(req *CreateProjectRequest, giteaURL string) []Catal
 					dbName := ResolveDbName(req.AppName, "")
 					a["wxops.cloud/database-name"] = dbName
 				}
+				if req.ContainerPort != nil {
+					a["wxops.cloud/container-port"] = fmt.Sprintf("%d", *req.ContainerPort)
+				}
 				return a
 			}(),
 			Links: []catalog.EntityLink{

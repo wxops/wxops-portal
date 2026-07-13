@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { X, Loader2, Globe } from "lucide-react";
@@ -63,7 +64,7 @@ export function EditDomainModal({ entity, onClose }: EditDomainModalProps) {
     }
   };
 
-  return (
+  const modal = (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-xl border bg-background shadow-xl p-5 space-y-4">
@@ -142,4 +143,6 @@ export function EditDomainModal({ entity, onClose }: EditDomainModalProps) {
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }

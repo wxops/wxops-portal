@@ -31,8 +31,9 @@ import (
 
 // pkceState holds the PKCE code verifier for a single login attempt.
 type pkceState struct {
-	codeVerifier string
-	createdAt    time.Time
+	codeVerifier    string
+	cliRedirectURI  string // non-empty when login was initiated by the CLI
+	createdAt       time.Time
 }
 
 // OIDCClient wraps the Pinniped Supervisor OIDC provider.
@@ -106,7 +107,9 @@ func (c *OIDCClient) withClient(ctx context.Context) context.Context {
 
 // StartLogin generates a PKCE code verifier, stores the state, and returns the
 // authorization URL to redirect the browser to.
-func (c *OIDCClient) StartLogin() (authURL string, err error) {
+// cliRedirectURI is optional; when non-empty the Callback handler will redirect
+// to it with ?token=<session> after login instead of going to the dashboard.
+func (c *OIDCClient) StartLogin(cliRedirectURI string) (authURL string, err error) {
 	state, err := randomBase64URL(16)
 	if err != nil {
 		return "", fmt.Errorf("generate state: %w", err)
@@ -124,7 +127,7 @@ func (c *OIDCClient) StartLogin() (authURL string, err error) {
 			delete(c.states, k)
 		}
 	}
-	c.states[state] = &pkceState{codeVerifier: verifier, createdAt: time.Now()}
+	c.states[state] = &pkceState{codeVerifier: verifier, cliRedirectURI: cliRedirectURI, createdAt: time.Now()}
 	c.mu.Unlock()
 
 	challenge := pkceS256Challenge(verifier)
@@ -138,10 +141,11 @@ func (c *OIDCClient) StartLogin() (authURL string, err error) {
 
 // ExchangeCode validates the callback state, exchanges the code for tokens,
 // and verifies the returned id_token.
+// The third return value is the cliRedirectURI stored at login time (empty for browser logins).
 func (c *OIDCClient) ExchangeCode(
 	ctx context.Context,
 	code, state string,
-) (*oauth2.Token, *gooidc.IDToken, error) {
+) (*oauth2.Token, *gooidc.IDToken, string, error) {
 	c.mu.Lock()
 	ps, ok := c.states[state]
 	if ok {
@@ -150,8 +154,9 @@ func (c *OIDCClient) ExchangeCode(
 	c.mu.Unlock()
 
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid or expired CSRF state")
+		return nil, nil, "", fmt.Errorf("invalid or expired CSRF state")
 	}
+	cliRedirectURI := ps.cliRedirectURI
 
 	// Re-inject the custom HTTP client so token exchange and id_token
 	// verification use the same TLS settings as OIDC discovery.
@@ -162,20 +167,20 @@ func (c *OIDCClient) ExchangeCode(
 		oauth2.SetAuthURLParam("code_verifier", ps.codeVerifier),
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("token exchange: %w", err)
+		return nil, nil, "", fmt.Errorf("token exchange: %w", err)
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
-		return nil, nil, fmt.Errorf("no id_token in token response")
+		return nil, nil, "", fmt.Errorf("no id_token in token response")
 	}
 
 	idToken, err := c.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		return nil, nil, fmt.Errorf("id_token verification: %w", err)
+		return nil, nil, "", fmt.Errorf("id_token verification: %w", err)
 	}
 
-	return token, idToken, nil
+	return token, idToken, cliRedirectURI, nil
 }
 
 // VerifyIDToken verifies a raw id_token string against the Supervisor.

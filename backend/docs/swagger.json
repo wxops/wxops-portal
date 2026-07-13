@@ -461,6 +461,42 @@
                 }
             }
         },
+        "/api/v1/catalog/entities/{kind}/{name}/darlane": {
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Set up Darlane for an environment overlay",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind (must be Component)",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/api/v1/catalog/entities/{kind}/{name}/deprecate": {
             "post": {
                 "security": [
@@ -1519,9 +1555,6 @@
                 "description": {
                     "type": "string"
                 },
-                "devSpaceEnabled": {
-                    "type": "boolean"
-                },
                 "domain": {
                     "type": "string"
                 },
@@ -1620,7 +1653,7 @@
                 }
             }
         },
-        "scaffold.DevSpaceSpec": {
+        "scaffold.DarlaneSpec": {
             "type": "object",
             "properties": {
                 "command": {
@@ -1629,14 +1662,47 @@
                         "type": "string"
                     }
                 },
+                "containerPort": {
+                    "type": "integer"
+                },
                 "enabled": {
                     "type": "boolean"
+                },
+                "env": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/scaffold.EnvVar"
+                    }
+                },
+                "fileSync": {
+                    "$ref": "#/definitions/scaffold.FileSyncSpec"
+                },
+                "headerRouting": {
+                    "$ref": "#/definitions/scaffold.HeaderRoutingSpec"
                 },
                 "image": {
                     "type": "string"
                 },
+                "productionOverride": {
+                    "type": "boolean"
+                },
                 "replicas": {
                     "type": "integer"
+                },
+                "resources": {
+                    "$ref": "#/definitions/scaffold.ResourceSpec"
+                },
+                "stickySession": {
+                    "$ref": "#/definitions/scaffold.StickySessionSpec"
+                },
+                "telemetryPort": {
+                    "type": "integer"
+                },
+                "trafficWeight": {
+                    "type": "integer"
+                },
+                "ttl": {
+                    "type": "string"
                 }
             }
         },
@@ -1663,6 +1729,35 @@
             "type": "object",
             "properties": {
                 "name": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.FileSyncSpec": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "initFromImage": {
+                    "description": "InitFromImage seeds the writable volume from a container image before sync starts.\nWhen empty the volume starts blank (scratch). Set to false to explicitly opt out.",
+                    "type": "string"
+                },
+                "mountPath": {
+                    "type": "string"
+                }
+            }
+        },
+        "scaffold.HeaderRoutingSpec": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "header": {
                     "type": "string"
                 },
                 "value": {
@@ -1848,6 +1943,23 @@
                 }
             }
         },
+        "scaffold.StickySessionSpec": {
+            "type": "object",
+            "properties": {
+                "cookieName": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "sameSite": {
+                    "type": "string"
+                },
+                "secure": {
+                    "type": "boolean"
+                }
+            }
+        },
         "scaffold.TLSSpec": {
             "type": "object",
             "properties": {
@@ -1875,9 +1987,6 @@
                     "type": "integer"
                 },
                 "databaseSecrets": {
-                    "type": "boolean"
-                },
-                "devSpaceEnabled": {
                     "type": "boolean"
                 },
                 "envVars": {
@@ -1957,8 +2066,8 @@
                 "containerPort": {
                     "type": "integer"
                 },
-                "devSpace": {
-                    "$ref": "#/definitions/scaffold.DevSpaceSpec"
+                "darlane": {
+                    "$ref": "#/definitions/scaffold.DarlaneSpec"
                 },
                 "env": {
                     "type": "array",

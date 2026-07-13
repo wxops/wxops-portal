@@ -45,7 +45,7 @@ type XTenantAppParams struct {
 	SecretsFrom     *SecretsFromSpec `yaml:"secretsFrom,omitempty"     json:"secretsFrom,omitempty"`
 	RolloutStrategy *RolloutStrategy `yaml:"rolloutStrategy,omitempty" json:"rolloutStrategy,omitempty"`
 	Reloader        *ReloaderSpec    `yaml:"reloader,omitempty"        json:"reloader,omitempty"`
-	DevSpace        *DevSpaceSpec    `yaml:"devSpace,omitempty"        json:"devSpace,omitempty"`
+	Darlane         *DarlaneSpec     `yaml:"darlane,omitempty"         json:"darlane,omitempty"`
 	Service         *ServiceSpec     `yaml:"service,omitempty"         json:"service,omitempty"`
 	Probes          *ProbesSpec      `yaml:"probes,omitempty"          json:"probes,omitempty"`
 	Ingress         *IngressSpec     `yaml:"ingress,omitempty"         json:"ingress,omitempty"`
@@ -103,11 +103,42 @@ type ReloaderSpec struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
-type DevSpaceSpec struct {
-	Enabled  bool     `yaml:"enabled"            json:"enabled"`
-	Replicas *int32   `yaml:"replicas,omitempty" json:"replicas,omitempty"`
-	Image    string   `yaml:"image,omitempty"    json:"image,omitempty"`
-	Command  []string `yaml:"command,omitempty"  json:"command,omitempty"`
+type DarlaneSpec struct {
+	Enabled            bool               `yaml:"enabled"                      json:"enabled"`
+	Replicas           *int32             `yaml:"replicas,omitempty"           json:"replicas,omitempty"`
+	Image              string             `yaml:"image,omitempty"              json:"image,omitempty"`
+	Command            []string           `yaml:"command,omitempty"            json:"command,omitempty"`
+	FileSync           *FileSyncSpec      `yaml:"fileSync,omitempty"           json:"fileSync,omitempty"`
+	TrafficWeight      *int32              `yaml:"trafficWeight,omitempty"      json:"trafficWeight,omitempty"`
+	StickySession      *StickySessionSpec  `yaml:"stickySession,omitempty"      json:"stickySession,omitempty"`
+	HeaderRouting      *HeaderRoutingSpec  `yaml:"headerRouting,omitempty"      json:"headerRouting,omitempty"`
+	Env                []EnvVar           `yaml:"env,omitempty"                json:"env,omitempty"`
+	TTL                string             `yaml:"ttl,omitempty"                json:"ttl,omitempty"`
+	Resources          *ResourceSpec      `yaml:"resources,omitempty"          json:"resources,omitempty"`
+	ContainerPort      *int32             `yaml:"containerPort,omitempty"      json:"containerPort,omitempty"`
+	TelemetryPort      *int32             `yaml:"telemetryPort,omitempty"      json:"telemetryPort,omitempty"`
+	ProductionOverride bool               `yaml:"productionOverride,omitempty" json:"productionOverride,omitempty"`
+}
+
+type FileSyncSpec struct {
+	Enabled       bool   `yaml:"enabled"                 json:"enabled"`
+	MountPath     string `yaml:"mountPath,omitempty"     json:"mountPath,omitempty"`
+	// InitFromImage seeds the writable volume from a container image before sync starts.
+	// When empty the volume starts blank (scratch). Set to false to explicitly opt out.
+	InitFromImage string `yaml:"initFromImage,omitempty" json:"initFromImage,omitempty"`
+}
+
+type StickySessionSpec struct {
+	Enabled    bool   `yaml:"enabled"              json:"enabled"`
+	CookieName string `yaml:"cookieName,omitempty" json:"cookieName,omitempty"`
+	Secure     bool   `yaml:"secure,omitempty"     json:"secure,omitempty"`
+	SameSite   string `yaml:"sameSite,omitempty"   json:"sameSite,omitempty"`
+}
+
+type HeaderRoutingSpec struct {
+	Enabled bool   `yaml:"enabled"          json:"enabled"`
+	Header  string `yaml:"header,omitempty" json:"header,omitempty"`
+	Value   string `yaml:"value,omitempty"  json:"value,omitempty"`
 }
 
 type ServiceSpec struct {
@@ -264,10 +295,6 @@ func NewXTenantApp(req *CreateProjectRequest, giteaURL string) *XTenantApp {
 	}
 	if req.RolloutType != "" && req.RolloutType != "RollingUpdate" {
 		app.Spec.Parameters.RolloutStrategy = &RolloutStrategy{Type: req.RolloutType}
-	}
-	if req.DevSpaceEnabled {
-		replicas := int32(0)
-		app.Spec.Parameters.DevSpace = &DevSpaceSpec{Enabled: true, Replicas: &replicas}
 	}
 	// Monitoring → Prometheus pod annotations
 	if req.MonitorEnabled {

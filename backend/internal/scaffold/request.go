@@ -44,7 +44,6 @@ type CreateProjectRequest struct {
 	LivenessPath    string `json:"livenessPath,omitempty"`
 	ReadinessPath   string `json:"readinessPath,omitempty"`
 	RolloutType     string `json:"rolloutType,omitempty"`
-	DevSpaceEnabled bool   `json:"devSpaceEnabled,omitempty"`
 
 	// Database (XTenantDatabase) — only extensions are project-level.
 	// Name, tier, environment, and cluster details are configured per-env via the Promote flow.
@@ -85,7 +84,6 @@ type UpdateConfigRequest struct {
 	LivenessPath    string `json:"livenessPath,omitempty"`
 	ReadinessPath   string `json:"readinessPath,omitempty"`
 	RolloutType     string `json:"rolloutType,omitempty"`
-	DevSpaceEnabled bool   `json:"devSpaceEnabled,omitempty"`
 
 	EnvVars        []KeyValue `json:"envVars,omitempty"`
 	PodAnnotations []KeyValue `json:"podAnnotations,omitempty"`

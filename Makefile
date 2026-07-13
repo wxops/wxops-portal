@@ -1,6 +1,7 @@
 .PHONY: help dev dev-frontend dev-backend up down build \
         backend-build backend-lint backend-tidy \
         frontend-install frontend-build frontend-lint \
+        cli-build cli-install cli-run cli-lint cli-tidy cli-build-all cli-clean \
         hooks \
         openapi-sync \
         changelog changelog-preview release version
@@ -63,6 +64,29 @@ frontend-build: ## Build Next.js for production (standalone output)
 
 frontend-lint: ## Run ESLint on the frontend
 	cd frontend && npm run lint
+
+##@ CLI
+
+cli-build: ## Build wxops CLI for the current platform → cli/bin/wxops
+	$(MAKE) -C cli build
+
+cli-install: ## Build and install wxops CLI to GOPATH/bin
+	$(MAKE) -C cli install
+
+cli-run: ## Run wxops CLI without installing  (usage: make cli-run ARGS="catalog list")
+	$(MAKE) -C cli run ARGS="$(ARGS)"
+
+cli-lint: ## go vet the CLI
+	$(MAKE) -C cli lint
+
+cli-tidy: ## Tidy CLI Go module dependencies
+	$(MAKE) -C cli tidy
+
+cli-build-all: ## Cross-compile wxops for all platforms → cli/dist/
+	$(MAKE) -C cli build-all
+
+cli-clean: ## Remove CLI build artefacts (cli/bin/ and cli/dist/)
+	$(MAKE) -C cli clean
 
 ##@ Git Hooks
 

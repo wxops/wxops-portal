@@ -208,6 +208,7 @@ func New(cfg *config.Config) (*Server, error) {
 			cat.GET("/entities/:kind/:name/promostatus", catalogH.GetPromoStatus)
 			cat.GET("/entities/:kind/:name/overlay/:env", catalogH.GetOverlayConfig)
 			cat.POST("/entities/:kind/:name/promote", catalogH.PromoteLifecycle)
+			cat.POST("/entities/:kind/:name/darlane", catalogH.SetupDarlane)
 			cat.POST("/entities/:kind/:name/deprecate", catalogH.DeprecateEntity)
 			cat.GET("/entities/:kind/:name", catalogH.GetEntity)
 			cat.POST("/entities", catalogH.CreateEntity)

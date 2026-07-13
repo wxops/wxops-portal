@@ -44,7 +44,6 @@ export interface WizardState {
   livenessPath: string;
   readinessPath: string;
   rolloutType: string;
-  devSpaceEnabled: boolean;
   // Database — only extensions are project-level; name/tier/cluster go in the Promote flow.
   dbExtensions: string[];
   // Plain env vars
@@ -92,7 +91,6 @@ const INITIAL_STATE: WizardState = {
   livenessPath: "/healthz",
   readinessPath: "/readyz",
   rolloutType: "RollingUpdate",
-  devSpaceEnabled: false,
   dbExtensions: ["uuid-ossp", "pgcrypto"],
   envVars: [],
   podAnnotations: [],

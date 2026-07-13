@@ -69,8 +69,6 @@ export function buildAdvanced(s: WizardState): Record<string, unknown> {
     out.rolloutStrategy = { type: s.rolloutType };
   }
 
-  if (s.devSpaceEnabled) out.devSpace = { enabled: true, replicas: 0 };
-
   const envEntries = s.envVars?.filter((p) => p.key);
   if (envEntries?.length) {
     out.env = envEntries.map((p) => ({ name: p.key, value: p.value }));

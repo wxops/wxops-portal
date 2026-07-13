@@ -72,3 +72,6 @@ next-env.d.ts
 **/*.db**
 
 # End of https://www.toptal.com/developers/gitignore/api/nextjs,go
+
+# cli build
+**/cli/bin/*

@@ -1,7 +1,7 @@
 # WxOps Portal — Roadmap
 
 > Living document. Updated as features ship.
-> Last updated: 2026-07-04
+> Last updated: 2026-07-13
 
 ---
 
@@ -236,63 +236,75 @@ These are blocked on platform-side work, not portal development.
 
 ---
 
-## Planned — v0.4.0: CLI & Inner-Loop Developer Tools
+## Shipped — v0.4.0: Darlane & `wxops` CLI
 
-Terminal-first developer experience, local-to-cluster tunneling, and the inner-loop
-tooling that makes the golden-path feel fast after a service is scaffolded and running.
+> Full implementation docs: [`docs/darlane.md`](docs/darlane.md), [`docs/cli.md`](docs/cli.md)
 
-The portal's role here is **config generator and session wiring** — it never runs
-local tools or writes to the cluster directly, staying within the read-only security model.
+**Darlane — per-environment parallel debug pods**
+
+| Feature | Status |
+|---------|--------|
+| On-demand, overlay-driven Darlane config (not scaffold-time) | ✓ Shipped |
+| JSON 6902 `op: add` patch to `spec.parameters.darlane` in overlay kustomization | ✓ Shipped |
+| `POST /api/v1/catalog/entities/{kind}/{name}/darlane` handler | ✓ Shipped |
+| Dev env: direct commit to `main`; staging/prod: PR with `portal-managed` label | ✓ Shipped |
+| Permission gate: team member for dev; manager or platform-team for staging/prod | ✓ Shipped |
+| `promostatus` returns `darlaneEnabled` per env (read live from overlay) | ✓ Shipped |
+| Promotion panel: "Enable Darlane" button + 2-step wizard + patch preview | ✓ Shipped |
+| Inline copy-paste kubectl / mirrord debug commands when Darlane is active | ✓ Shipped |
+| XR schema contract defined (see `docs/darlane.md`) | ✓ Shipped |
+| `trafficWeight` / A/B split | Deferred — schema field reserved |
+| TTL enforcement in composition | Deferred — portal writes the hint; composition team implements |
+| `productionOverride` — debug pods in production | Deferred — field reserved, portal never sets it |
 
 **`wxops` CLI binary**
 
-| Feature | Description |
-|---------|-------------|
-| `wxops login` | PKCE flow → `~/.wxops/credentials` |
-| `wxops scaffold new` | Interactive project creation (mirrors portal wizard) |
-| `wxops catalog list/get` | Query catalog from terminal or CI/CD pipelines |
-| `wxops tunnel <project>` | Fetch DevSpace config + invoke tunnel to cluster |
-| `wxops debug <service>` | Generate Mirrord config or Telepresence intercept command pre-filled from catalog annotation (namespace, deployment name, registry) |
-| `WXOPS_TOKEN` env var | Non-interactive CI/CD usage |
-| Cross-platform release | linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 |
+| Feature | Status |
+|---------|--------|
+| `wxops login --portal <url>` — PKCE browser flow | ✓ Shipped |
+| `wxops catalog list [--kind] [--lifecycle]` | ✓ Shipped |
+| `wxops catalog get <kind> <name>` | ✓ Shipped |
+| `wxops debug <service> [--env]` — live Darlane status + kubectl/mirrord commands | ✓ Shipped |
+| `wxops version` | ✓ Shipped |
+| `WXOPS_TOKEN` + `WXOPS_PORTAL_URL` env vars for CI/CD | ✓ Shipped |
+| Cross-platform binaries: linux/darwin/windows × amd64/arm64 | ✓ Shipped |
+| `Makefile` targets for local build/install/cross-compile | ✓ Shipped |
+| `wxops scaffold new` — interactive project creation | Deferred to v0.5.0 |
+| `wxops darlane enable` — write Darlane config from CLI | Deferred to v0.5.0 |
 
-**DevSpace / Mirrord / Telepresence integration**
-
-| Feature | Description |
-|---------|-------------|
-| DevSpace config generation | Portal generates `devspace.yaml` pre-wired to the XTenantApp namespace, image registry, and container port from the catalog annotation. Committed to the project repo via PR, not run by the portal. |
-| Parallel pod debug | DevSpace parallel container mode — developer's local code sync runs alongside the existing pod without replacing it, so other team members are not disrupted. Portal surfaces the "Debug locally" config as a copy-paste panel on the entity detail page. |
-| Mirrord / Telepresence snippet | `wxops debug <service>` resolves namespace and deployment name from `gitea/source-location` annotation, outputs a ready-to-run Mirrord JSON config or Telepresence intercept command. No cluster write from the portal — the local tool handles the intercept. |
-
-**Feature Flags (OpenFeature / Flagd)**
+**Deferred to v0.5.0+**
 
 | Feature | Description |
 |---------|-------------|
-| Flagd `FlagConfiguration` scaffold | Portal generates a `FlagConfiguration` CRD manifest during scaffolding when the "feature flags" feature toggle is enabled. Committed to gitops-infra base alongside XTenantApp. |
-| Flag management UI | Config-edit style panel on entity detail: add/remove flags, set default variant, per-environment override. Changes committed as gitops-infra PR — same pattern as overlay config. |
-
-**A/B Testing (Argo Rollouts)**
-
-| Feature | Description |
-|---------|-------------|
-| Rollout manifest generation | Scaffold generates an `argo Rollout` CR when "A/B testing" is enabled. Portal never touches canary weights at runtime — all changes are PRs. |
-| Promote canary action | "Promote canary to stable" button on entity detail opens a patch PR updating `spec.template.canary.weight`. Platform-team merges; Argo Rollouts handles the traffic shift. |
+| Feature Flags (OpenFeature / Flagd) | `FlagConfiguration` CRD scaffold + flag management UI panel |
+| A/B Testing (Argo Rollouts) | Rollout CR scaffold + "Promote canary" PR button |
+| `wxops scaffold new` | Interactive project creation from CLI (mirrors portal wizard) |
+| `wxops darlane enable` | Write Darlane config and open PR from CLI |
+| Runtime observability | ArgoCD sync/health status + Crossplane XR conditions via Pinniped; Alertmanager active alerts surfaced per service; deep links to Grafana/Loki/Tempo pre-scoped to service labels — no native log/metric/trace viewers (Grafana handles correlation) |
 
 ---
 
 ## Planned — v0.5.0: Runtime Observability
 
-Live environment status from ArgoCD and Crossplane, surfaced through the user's
-existing Pinniped credentials — no new service accounts or integration tokens needed.
+Live environment status from ArgoCD and Crossplane via Pinniped, plus a lightweight
+observability surface that links to the existing LGTM stack rather than duplicating it.
+
+> **Scope decision (2026-07-13):** The portal surfaces context, not dashboards.
+> Native log/metric/trace viewers are explicitly out of scope — Grafana's signal
+> correlation (Explore, exemplars, profiling) cannot be replicated cheaply, and
+> duplicating it would always be inferior. The portal's value is generating
+> pre-scoped deep links from catalog context (service name, namespace, team, env)
+> so developers land on the right Grafana view in one click.
 
 | Feature | Description |
 |---------|-------------|
-| ArgoCD status via Pinniped | Read ArgoCD Application CRs using user's K8s credentials (RBAC-scoped). Application name derived from `gitea/source-location` annotation + env suffix: `{team}-{appName}-{env}`. |
+| ArgoCD status via Pinniped | Read ArgoCD Application CRs using user's K8s credentials (RBAC-scoped). Application name derived from `gitea/source-location` annotation + env suffix: `{team}-{appName}-{env}`. Shows sync status, health, deployed image, last deploy time. |
 | Crossplane XR status | Read XTenantApp/XTenantDatabase `.status.conditions` via same auth — provisioning state, sync status, connection details. |
 | Environment panel | Side-by-side env status card (sync, health, image tag, last deploy time) per overlay. Intended state from git, observed state from cluster — two sources, one view. |
-| K8s workload linkage | Live pod count, image tag, and health from cluster API per environment, scoped to the tenant namespace. |
+| Active alerts | Single Alertmanager API call per service — `GET /api/v2/alerts?filter={app="name"}`. Shows firing alerts with severity, duration, and runbook link. Resolved alerts shown for last 24h. This is the one observability metric worth surfacing natively: "is this service broken right now?" |
+| Grafana / Loki / Tempo deep links | Pre-scoped links built from catalog context: service name + namespace + team + env label selectors. One click → Grafana Explore with the right filter already set. Configured via `LGTM_GRAFANA_URL`, `LGTM_LOKI_URL`, `LGTM_TEMPO_URL` env vars; annotations on entities can override per-service. |
 | Catalog completeness score | Per-entity quality score: description, owner, tags, links, lifecycle, API spec. Scaffolded entities score well by default; most useful for manually registered or legacy entities. |
-| DORA-lite metrics | Deployment frequency (successful prod workflow runs / week) and lead time (PR open → merge → image tag) computed from data the portal already collects. Change failure rate and MTTR deferred — require incident integration (Alertmanager, PagerDuty) not yet in scope. |
+| DORA-lite metrics | Deployment frequency (successful prod workflow runs / week) and lead time (PR open → merge → image tag) computed from data the portal already collects. |
 
 See [docs/cross-environment-promotion.md](docs/cross-environment-promotion.md) for the promotion model that feeds into this observability layer.
 

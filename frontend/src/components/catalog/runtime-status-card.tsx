@@ -41,11 +41,11 @@ interface DeploymentInfo {
   desired: number;
 }
 
-// One matched deployment with its resolved env label + badge classes
+// One matched deployment with its resolved env label + dot color
 interface MatchedDeployment {
   info: DeploymentInfo;
   label: string;
-  envCls: string;
+  dotCls: string;
 }
 
 interface ClusterStatus {
@@ -61,10 +61,10 @@ const ARGOCD_URL = process.env.NEXT_PUBLIC_ARGOCD_URL ?? "";
 
 // Suffixes to probe, in pipeline order (dev → staging → production)
 const ENV_VARIANTS = [
-  { suffix: "-dev",        label: "dev",        cls: "bg-wxops-indigo/10 text-wxops-indigo border-wxops-indigo/25" },
-  { suffix: "",            label: "dev",        cls: "bg-wxops-indigo/10 text-wxops-indigo border-wxops-indigo/25" },
-  { suffix: "-staging",    label: "staging",    cls: "bg-violet-500/10 text-violet-500 border-violet-500/25 dark:text-violet-400" },
-  { suffix: "-production", label: "production", cls: "bg-wxops-green/10 text-wxops-green border-wxops-green/25" },
+  { suffix: "-dev",        label: "dev",        dotCls: "bg-wxops-indigo"  },
+  { suffix: "",            label: "dev",        dotCls: "bg-wxops-indigo"  },
+  { suffix: "-staging",    label: "staging",    dotCls: "bg-violet-500"    },
+  { suffix: "-production", label: "production", dotCls: "bg-wxops-green"   },
 ] as const;
 
 // Display order: dev first, then staging, then production
@@ -83,7 +83,7 @@ function resolveMatches(deployments: DeploymentInfo[], appName: string): Matched
     const dep = deployments.find((d) => d.name === targetName);
     if (dep && !seen.has(dep.name)) {
       seen.add(dep.name);
-      results.push({ info: dep, label: v.label, envCls: v.cls });
+      results.push({ info: dep, label: v.label, dotCls: v.dotCls });
     }
   }
 
@@ -118,41 +118,26 @@ const aggDotCls: Record<string, string> = {
   none:     "bg-muted-foreground/30",
 };
 
-// ── Replica dots ──────────────────────────────────────────────────────────────
-function ReplicaDots({ ready, desired }: { ready: number; desired: number }) {
-  const cap = Math.min(desired, 8);
-  const overflow = desired > 8 ? desired - 8 : 0;
-  return (
-    <div className="flex items-center gap-0.5">
-      {Array.from({ length: cap }).map((_, i) => (
-        <div
-          key={i}
-          className={cn(
-            "h-2 w-2 rounded-full transition-colors duration-300",
-            i < ready ? "bg-wxops-green" : "bg-muted-foreground/25",
-          )}
-        />
-      ))}
-      {overflow > 0 && (
-        <span className="text-[10px] text-muted-foreground ml-0.5">+{overflow}</span>
-      )}
-    </div>
-  );
-}
-
 // ── Status chip ───────────────────────────────────────────────────────────────
-function StatusChip({ health, ready, desired }: { health: Health; ready?: number; desired?: number }) {
+const HEALTH_LABEL: Record<Health, string> = {
+  healthy:  "Healthy",
+  degraded: "Degraded",
+  down:     "Down",
+  error:    "Error",
+};
+
+function StatusChip({ health }: { health: Health }) {
   const configs = {
-    healthy:  { cls: "border-wxops-green/20 bg-wxops-green/10 text-wxops-green",                     dot: "bg-wxops-green animate-status" },
-    degraded: { cls: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",       dot: "bg-amber-500" },
-    down:     { cls: "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400",               dot: "bg-red-500" },
-    error:    { cls: "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400",               dot: "bg-red-500" },
+    healthy:  { cls: "border-wxops-green/20 bg-wxops-green/10 text-wxops-green",               dot: "bg-wxops-green animate-status" },
+    degraded: { cls: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400", dot: "bg-amber-500" },
+    down:     { cls: "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400",         dot: "bg-red-500" },
+    error:    { cls: "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400",         dot: "bg-red-500" },
   };
   const c = configs[health];
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium", c.cls)}>
       <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", c.dot)} />
-      {health === "error" ? "error" : `${ready}/${desired}`}
+      {HEALTH_LABEL[health]}
     </span>
   );
 }
@@ -314,25 +299,20 @@ export function RuntimeStatusCard({ appName, team }: RuntimeStatusCardProps) {
                         rowBg[health],
                       )}
                     >
-                      {/* Env badge */}
-                      <span className={cn(
-                        "inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-medium leading-4 shrink-0",
-                        m.envCls,
-                      )}>
-                        {m.label}
+                      {/* Env indicator — dot + label */}
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <span className={cn("h-2 w-2 rounded-full shrink-0", m.dotCls)} />
+                        <span className="text-sm font-medium text-foreground">
+                          {m.label.charAt(0).toUpperCase() + m.label.slice(1)}
+                        </span>
                       </span>
 
-                      {/* Replica dots + pod count */}
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <ReplicaDots ready={m.info.ready} desired={m.info.desired} />
-                        <span className="text-[10px] font-mono text-muted-foreground">
+                      {/* Status chip · pod count · ArgoCD link */}
+                      <div className="flex items-center gap-2 shrink-0 ml-auto">
+                        <StatusChip health={health} />
+                        <span className="text-[10px] font-mono text-muted-foreground whitespace-nowrap">
                           {m.info.ready}/{m.info.desired} pods
                         </span>
-                      </div>
-
-                      {/* Status chip + ArgoCD link */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        <StatusChip health={health} ready={m.info.ready} desired={m.info.desired} />
                         {ARGOCD_URL && (
                           <ArgoCDLink
                             href={`${ARGOCD_URL}/applications/${team}-${appName}-${m.label}`}

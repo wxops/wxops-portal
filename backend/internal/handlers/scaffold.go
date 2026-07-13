@@ -841,7 +841,6 @@ func (h *ScaffoldHandler) UpdateProjectConfig(c *gin.Context) {
 		LivenessPath:    req.LivenessPath,
 		ReadinessPath:   req.ReadinessPath,
 		RolloutType:     req.RolloutType,
-		DevSpaceEnabled: req.DevSpaceEnabled,
 		EnvVars:         req.EnvVars,
 		PodAnnotations:  req.PodAnnotations,
 		ExtraLabels:     req.ExtraLabels,

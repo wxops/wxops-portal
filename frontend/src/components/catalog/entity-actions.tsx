@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -8,7 +9,7 @@ import { Pencil, LinkIcon, Eye, Loader2, GitBranch, Plus, FileText, Database, Gl
 import type { Entity } from "@/lib/types";
 import { EntityEditPanel } from "./entity-edit-panel";
 import { AddLinkModal } from "./add-link-modal";
-import { DocEditGuideModal } from "./doc-edit-guide-modal";
+import { DocContentEditorModal } from "./doc-content-editor-modal";
 import { EditDomainModal } from "./edit-domain-modal";
 
 const PLATFORM_TEAM = "platform-team";
@@ -29,9 +30,11 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
+  const [contentEditorOpen, setContentEditorOpen] = useState(false);
   const [domainOpen, setDomainOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerPos, setRegisterPos] = useState<{ top: number; right: number } | null>(null);
+  const registerBtnRef = useRef<HTMLButtonElement>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -151,7 +154,7 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
         {entity.kind === "Doc" && (
           <button
             type="button"
-            onClick={() => setGuideOpen(true)}
+            onClick={() => setContentEditorOpen(true)}
             className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50"
           >
             <GitBranch className="h-3.5 w-3.5" />
@@ -168,38 +171,47 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
           </Link>
         )}
         {canRegister && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setRegisterOpen(!registerOpen)}
-              className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50"
+          <button
+            ref={registerBtnRef}
+            type="button"
+            onClick={() => {
+              if (!registerOpen && registerBtnRef.current) {
+                const rect = registerBtnRef.current.getBoundingClientRect();
+                setRegisterPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+              }
+              setRegisterOpen((v) => !v);
+            }}
+            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Register
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        )}
+        {registerOpen && registerPos && createPortal(
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setRegisterOpen(false)} />
+            <div
+              className="fixed z-40 w-56 rounded-lg border border-border bg-background shadow-lg py-1"
+              style={{ top: registerPos.top, right: registerPos.right }}
             >
-              <Plus className="h-3.5 w-3.5" />
-              Register
-              <ChevronDown className="h-3 w-3" />
-            </button>
-            {registerOpen && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setRegisterOpen(false)} />
-                <div className="absolute right-0 top-full z-40 mt-1 w-56 rounded-lg border border-border bg-background shadow-lg py-1">
-                  {registerOptions.map((opt) => (
-                    <Link
-                      key={opt.kind}
-                      href={`/dashboard/catalog/register?kind=${opt.kind}&relatedTo=${entityRef}`}
-                      onClick={() => setRegisterOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-                    >
-                      <opt.icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div>
-                        <p className="font-medium text-xs">{opt.label}</p>
-                        <p className="text-[10px] text-muted-foreground">{opt.description}</p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+              {registerOptions.map((opt) => (
+                <Link
+                  key={opt.kind}
+                  href={`/dashboard/catalog/register?kind=${opt.kind}&relatedTo=${entityRef}`}
+                  onClick={() => setRegisterOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                >
+                  <opt.icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="font-medium text-xs">{opt.label}</p>
+                    <p className="text-[10px] text-muted-foreground">{opt.description}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </>,
+          document.body,
         )}
         <button
           type="button"
@@ -230,7 +242,7 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
       </div>
 
       {/* Delete confirmation */}
-      {deleteConfirm && (
+      {deleteConfirm && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteConfirm(false)} />
           <div className="relative w-full max-w-sm rounded-xl border bg-background shadow-xl p-5 space-y-4">
@@ -270,7 +282,8 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {editOpen && (
@@ -283,8 +296,8 @@ export function EntityActions({ entity, userGroups }: EntityActionsProps) {
       {linkOpen && (
         <AddLinkModal entity={entity} onClose={() => setLinkOpen(false)} />
       )}
-      {guideOpen && (
-        <DocEditGuideModal entity={entity} onClose={() => setGuideOpen(false)} />
+      {contentEditorOpen && (
+        <DocContentEditorModal entity={entity} onClose={() => setContentEditorOpen(false)} />
       )}
       {domainOpen && (
         <EditDomainModal entity={entity} onClose={() => setDomainOpen(false)} />

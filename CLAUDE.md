@@ -27,6 +27,8 @@ security constraints, and conventions that are NOT obvious from the code alone.
 | Area | Doc |
 |------|-----|
 | Scaffold / project creation | `docs/golden-path-git-flow.md` |
+| Darlane (per-env debug pods, XR schema) | `docs/darlane.md` |
+| `wxops` CLI (commands, auth, local build) | `docs/cli.md` |
 | Lifecycle promotion / cache webhook | `docs/lifecycle-webhook.md` |
 | Catalog entities | `docs/service-catalog.md`, `docs/catalog-user-guide.md` |
 | RFC, ADR, Runbook | `docs/documentation-strategy.md` |

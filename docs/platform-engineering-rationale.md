@@ -68,6 +68,189 @@ flowchart LR
 
 ---
 
+## The Abstraction in Practice: XTenantApp
+
+The XTenantApp XR is the concrete artifact that separates the developer's intent
+from the infrastructure that realises it. A developer writes a small, readable CR.
+The Crossplane Composition expands it into every managed resource the cluster
+needs — Deployment, Service, Ingress, ExternalSecret, NetworkPolicy,
+ServiceMonitor, and more — without the developer knowing or caring about any of
+them.
+
+This is the full schema as used in production. Fields shown as comments are
+optional; the portal wizard and overlay patches write them on-demand.
+
+```yaml
+apiVersion: platform.wxops.cloud/v1alpha1
+kind: XTenantApp
+metadata:
+  name: rocket-team-payment-api
+spec:
+  parameters:
+    appName: payment-api
+    namespace: rocket-team-production
+    # environment: dev          # dev | staging | production
+    # appFlavor: webapp         # webapp | ai | ai-webapp | geo-webapp | search-webapp
+    #                           # metadata label for platform automation
+    # templateId: nodejs-service
+    # repository:
+    #   url: https://gitea.example.com/rocket-team/payment-api
+
+    image: ghcr.io/rocket-team/payment-api:1.4.0
+    # imagePullSecrets:
+    #   - my-registry-creds
+
+    # serviceAccount:
+    #   create: true
+    #   annotations:
+    #     eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/payment-api
+
+    securityContext: {}
+    # securityContext:
+    #   runAsNonRoot: true
+    #   runAsUser: 1000
+    #   readOnlyRootFilesystem: true
+    #   allowPrivilegeEscalation: false
+    #   capabilities:
+    #     drop: ["ALL"]
+
+    # terminationGracePeriodSeconds: 60
+
+    # ── Everything below is optional ────────────────────────────────────
+
+    # replicas: 2
+    # containerPort: 8080
+    # resources:
+    #   requests: { cpu: "100m", memory: "128Mi" }
+    #   limits:   { cpu: "500m", memory: "512Mi" }
+
+    # env:
+    #   - name: LOG_LEVEL
+    #     value: "info"
+    # envFrom:
+    #   - secretRef:    { name: payment-api-extra-secret }
+    #   - configMapRef: { name: payment-api-config }
+
+    # podAnnotations:
+    #   prometheus.io/scrape: "true"
+    #   prometheus.io/port: "8080"
+
+    # secretsFrom:
+    #   app:      { enabled: true }   # mounts "{appName}-env" secret as envFrom
+    #   database: { enabled: true }   # mounts "{appName}-db-creds" secret as envFrom
+    # Secrets are provisioned by the platform (ExternalSecret / XTenantDatabase).
+    # This XR only adds the envFrom.secretRef entries by name.
+
+    # rolloutStrategy:
+    #   type: RollingUpdate   # RollingUpdate | Recreate
+    #   rollingUpdate: { maxSurge: "25%", maxUnavailable: "25%" }
+
+    # reloader: { enabled: true }
+
+    # ── Darlane: on-demand parallel debug pod ───────────────────────────
+    # Enabled per-environment via overlay patch (never in base).
+    # Portal Promotion panel writes this block; composition provisions
+    # a separate debug Deployment alongside the production workload.
+    #
+    # darlane:
+    #   enabled: true
+    #   replicas: 0                        # 0 = scale up on-demand; 1 = always-on
+    #   # image: ghcr.io/rocket-team/payment-api:debug
+    #
+    #   # ── Tier 1: usable pod ──────────────────────────────────────────
+    #   command: ["uvicorn", "main:app", "--reload"]
+    #   env:
+    #     - name: LOG_LEVEL
+    #       value: debug
+    #     - name: FEATURE_NEW_RANKING     # overrides main app env on collision
+    #       value: "true"
+    #   resources:
+    #     requests: { cpu: "100m", memory: "256Mi" }
+    #     limits:   { memory: "1Gi" }
+    #   securityContext:
+    #     runAsNonRoot: true
+    #
+    #   fileSync:                          # writable volume for mutagen / VS Code Remote
+    #     enabled: true
+    #     mountPath: /app
+    #
+    #   tunneling:                         # Mirrord traffic mirroring — safe copy
+    #     mode: mirrord
+    #     mirrord:
+    #       mode: mirror                   # mirror = safe copy | steal = full intercept
+    #       # filter: "x-debug-user: alice"
+    #
+    #   # trafficWeight: 20               # 0 = debug only | 1-99 = A/B | 100 = full canary
+    #   #                                 # requires ingress.enabled + Traefik TraefikService
+    #
+    #   # ── Tier 2: safety + access ─────────────────────────────────────
+    #   # productionOverride: true         # required when environment: production
+    #   # ttl: "4h"                        # Kyverno auto-scale-down annotation
+    #   rbac:
+    #     enabled: true
+    #     subjects:
+    #       - kind: Group
+    #         name: rocket-team-developers
+    #         apiGroup: rbac.authorization.k8s.io
+
+    # ── Ingress and TLS ──────────────────────────────────────────────────
+    # service:
+    #   enabled: true
+    #   type: ClusterIP
+    #   port: 80
+
+    # probes:
+    #   liveness:  { enabled: true,  path: /healthz }
+    #   readiness: { enabled: true,  path: /readyz  }
+    #   startup:   { enabled: false, path: /healthz, periodSeconds: 10, failureThreshold: 30 }
+
+    # ingress:
+    #   enabled: true
+    #   className: traefik
+    #   host: payment-api.rocket-team.example.com
+    #   tls:
+    #     enabled: true
+    #     clusterIssuer: letsencrypt-prod
+    #   auth:
+    #     enabled: true                   # SSO via platform oauth2-proxy ForwardAuth
+```
+
+### What This Means in Practice
+
+A developer — or an AI agent — fills in five fields to get a running service:
+`appName`, `namespace`, `image`, and optionally `containerPort` and `replicas`.
+The portal wizard asks for these in plain language. The rest is either defaulted
+by the Composition or added later via overlay patches.
+
+**What the developer writes (minimum viable service):**
+
+```yaml
+appName: payment-api
+namespace: rocket-team-production
+image: ghcr.io/rocket-team/payment-api:1.4.0
+```
+
+**What the Composition provisions automatically:**
+
+- `Deployment` with rolling-update strategy, readiness/liveness probes on `/healthz`
+  and `/readyz`, resource defaults, pod disruption budget
+- `Service` of type ClusterIP on port 80
+- `ServiceAccount` (optional, if IRSA/Workload Identity needed)
+- `ExternalSecret` for app secrets from Vault (if `secretsFrom.app.enabled`)
+- `NetworkPolicy` allowing ingress from the platform ingress controller
+- `ServiceMonitor` for Prometheus scraping (if `podAnnotations` include
+  `prometheus.io/scrape`)
+- `Ingress` with TLS and cert-manager `Certificate` (if `ingress.enabled`)
+- `ForwardAuth` middleware for SSO (if `ingress.auth.enabled`)
+- Debug `Deployment` for the developer's inner loop (if `darlane.enabled`)
+
+The developer never writes any of those resources. When the platform team updates
+the Composition — to change the probe defaults, add a new NetworkPolicy rule,
+or bump the Prometheus operator version — every service picks up the change on
+the next reconciliation. No PRs to application repos, no developer action needed.
+
+---
+
 ## Tradeoff Analysis
 
 ### Complexity
@@ -172,6 +355,38 @@ Crossplane is not free. Honest downsides:
 ---
 
 ## Why Golden Path Is the Survival Strategy
+
+### The Real Business Problem: AI Delivery Speed Without Platform Discipline
+
+AI coding agents ship code fast. That is not the problem.
+
+The problem is that **fast delivery without a platform creates chaos faster than
+slow delivery without a platform.** A team writing code manually takes six months
+to hit the scaling wall. A team using AI agents hits it in six weeks — and they
+hit it harder, because they have more services, more undocumented decisions, and
+more "it worked in the agent's context" assumptions baked into the code.
+
+Here is what an AI-assisted team without a platform looks like at month three:
+
+- Ten services running in a namespace nobody owns
+- Every service has its own CI/CD copy-pasted from a different repo
+- Secrets are wherever the AI agent put them — some in env vars, some in
+  configmaps, some in Vault paths nobody documented
+- "Staging" means a different thing on each service — some have it, some don't
+- A new developer joins and spends two weeks asking in Slack before shipping anything
+- The platform team (if it exists) is full-time firefighting instead of building
+
+**The AI agent wrote the business logic. Nobody wrote the platform.**
+
+WxOps exists for exactly this team. Not for the team that already has a platform
+engineer and a mature GitOps setup — they can evolve what they have. For the
+team that is using AI to move fast and needs the platform to be as opinionated
+and automatic as the code generation is.
+
+The proposition is simple: **your AI delivers features, WxOps delivers the
+platform that makes those features reproducible, auditable, and safe to scale.**
+
+---
 
 ### The AI-Era Argument
 
@@ -387,6 +602,71 @@ fiftieth is free. The hundredth is impossible without it.
 The differentiator is **integration density**. Each component is standard
 and replaceable, but they're wired together through the portal so the
 developer sees one coherent experience, not seven tools.
+
+---
+
+## What Ships Today and What Comes Next
+
+This section is deliberately short and honest. It describes only what is built
+and working, and only what has a clear implementation path.
+
+### What the Portal Delivers Today (v0.4.0)
+
+**Scaffold and golden path**
+A developer opens the portal, fills in the wizard, and a PR is created in
+gitops-infra with a complete Kustomize base layout: `XTenantApp`, `XTenantDatabase`
+(if enabled), `ExternalSecret` for Vault, catalog entity YAMLs, and an
+ArgoCD Image Updater CR. The developer merges the PR. ArgoCD syncs. The service
+is running with CI/CD, secrets wiring, and catalog registration — all from a
+single form.
+
+**Service catalog**
+Every scaffolded service has a Backstage-compatible catalog entry in gitops-infra.
+The portal renders it with ownership, lifecycle, dependencies, source links, docs,
+and OpenAPI specs. No catalog server required — git is the database.
+
+**Multi-environment lifecycle promotion**
+The Promotion panel on each Component shows per-environment overlay status
+(`dev`, `staging`, `production`), open PRs, deployed image tags, and lifecycle
+state. Creating an overlay, confirming after merge, and advancing lifecycle are
+all UI operations that write to gitops-infra as PRs (staging/prod) or direct
+commits (dev).
+
+**Darlane overlay configuration**
+The Promotion panel writes a JSON 6902 patch to the overlay `kustomization.yaml`
+that sets `spec.parameters.darlane` on the XTenantApp XR. Dev commits directly;
+staging and production open a PR for platform-team review. The portal shows
+per-environment Darlane status and inline `kubectl` / `mirrord` copy-paste
+commands when Darlane is active.
+
+The debug pod itself is provisioned by the XTenantApp Composition — developed
+and shipped separately by the platform team. The portal manages configuration
+and governance; the composition manages infrastructure. When the composition
+ships the `darlane` implementation, portal users get working debug pods with
+no portal changes required.
+
+**`wxops` CLI**
+`wxops login`, `wxops catalog list/get`, and `wxops debug` are live. The debug
+command resolves entity → namespace → ready-to-run kubectl and mirrord commands,
+and shows per-environment Darlane status from the live promostatus API.
+
+### What Comes Next
+
+| Feature | Who builds it | Status |
+|---|---|---|
+| Darlane debug pod — actual pod in cluster | XTenantApp composition team | Composition update pending |
+| TTL enforcement (`ttl: "4h"` auto scale-down) | Composition team (Kyverno or custom controller) | Pending |
+| `trafficWeight` — A/B traffic split via Traefik TraefikService | Composition team + Traefik setup | Deferred |
+| `productionOverride` — debug pods in production | Platform team policy decision | Deferred |
+| Feature flags — `FlagConfiguration` CRD scaffold + flag management UI | Portal + composition team | v0.5.0 |
+| Runtime observability — ArgoCD sync status, Crossplane XR health via Pinniped; Alertmanager active alerts; Grafana/Loki/Tempo pre-scoped deep links. No native log/metric viewers — Grafana handles signal correlation. | Portal (v0.5.0) | Planned |
+| `wxops scaffold new` + `wxops darlane enable` | CLI | v0.5.0 |
+
+The split is intentional. The portal is the developer-facing governance layer.
+The composition is the infrastructure execution layer. They evolve independently
+and are deployed independently. A composition update ships new cluster behaviour
+to all existing services without any portal release. A portal release ships new
+developer experience without changing what runs in the cluster.
 
 ---
 

@@ -2,6 +2,7 @@ package scaffold
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -342,6 +343,30 @@ type OverlayConfig struct {
 	Replicas    *int32        `json:"replicas,omitempty"`
 	IngressHost string        `json:"ingressHost,omitempty"`
 	Resources   *ResourceSpec `json:"resources,omitempty"`
+	// Darlane — top-level flag + full sub-config for pre-filling the reconfigure wizard.
+	DarlaneEnabled          bool     `json:"darlaneEnabled,omitempty"`
+	DarlaneReplicas         *int32   `json:"darlaneReplicas,omitempty"`
+	DarlaneTTL              string   `json:"darlaneTTL,omitempty"`
+	DarlaneCommand          []string `json:"darlaneCommand,omitempty"`
+	DarlaneFileSync         bool     `json:"darlaneFileSync,omitempty"`
+	DarlaneMountPath        string   `json:"darlaneMountPath,omitempty"`
+	DarlaneInitFromImage    string   `json:"darlaneInitFromImage,omitempty"`
+	DarlaneCpuReq           string   `json:"darlaneCpuReq,omitempty"`
+	DarlaneCpuLim           string   `json:"darlaneCpuLim,omitempty"`
+	DarlaneMemReq           string   `json:"darlaneMemReq,omitempty"`
+	DarlaneMemLim           string   `json:"darlaneMemLim,omitempty"`
+	DarlaneEnvVars          []EnvVar `json:"darlaneEnvVars,omitempty"`
+	DarlaneTrafficWeight    *int32   `json:"darlaneTrafficWeight,omitempty"`
+	DarlaneStickySession    bool     `json:"darlaneStickySession,omitempty"`
+	DarlaneCookieName       string   `json:"darlaneCookieName,omitempty"`
+	DarlaneSameSite         string   `json:"darlaneSameSite,omitempty"`
+	DarlaneSecure           bool     `json:"darlaneSecure,omitempty"`
+	DarlaneHeaderRoutingEnabled bool   `json:"darlaneHeaderRoutingEnabled,omitempty"`
+	DarlaneHeaderRoutingHeader  string `json:"darlaneHeaderRoutingHeader,omitempty"`
+	DarlaneHeaderRoutingValue   string `json:"darlaneHeaderRoutingValue,omitempty"`
+	DarlaneContainerPort        *int32 `json:"darlaneContainerPort,omitempty"`
+	DarlaneTelemetryPort        *int32 `json:"darlaneTelemetryPort,omitempty"`
+	DarlaneProductionOverride   bool   `json:"darlaneProductionOverride,omitempty"`
 	// Database
 	DbName             string `json:"dbName,omitempty"`
 	DbTier             string `json:"dbTier,omitempty"`
@@ -416,6 +441,11 @@ func ParseOverlayConfig(kustYAML, patchYAML []byte) (*OverlayConfig, error) {
 					out.IngressHost = fmt.Sprintf("%v", op.Value)
 				case "/spec/parameters/ingress/tls/clusterIssuer":
 					out.CertIssuer = fmt.Sprintf("%v", op.Value)
+				case "/spec/parameters/darlane":
+					out.DarlaneEnabled = true
+					if m, ok := op.Value.(map[string]interface{}); ok {
+						parseDarlaneIntoConfig(out, m)
+					}
 				}
 			case "XTenantDatabase":
 				switch op.Path {
@@ -461,4 +491,271 @@ func ParseOverlayConfig(kustYAML, patchYAML []byte) (*OverlayConfig, error) {
 	}
 
 	return out, nil
+}
+
+// parseDarlaneIntoConfig extracts Darlane sub-fields from a parsed YAML value
+// map and writes them into cfg for pre-filling the reconfigure wizard.
+func parseDarlaneIntoConfig(cfg *OverlayConfig, m map[string]interface{}) {
+	if v, ok := m["replicas"]; ok {
+		if n, ok := v.(int); ok {
+			n32 := int32(n)
+			cfg.DarlaneReplicas = &n32
+		}
+	}
+	if v, ok := m["ttl"]; ok {
+		cfg.DarlaneTTL = fmt.Sprintf("%v", v)
+	}
+	if v, ok := m["command"]; ok {
+		if cmds, ok := v.([]interface{}); ok {
+			for _, c := range cmds {
+				cfg.DarlaneCommand = append(cfg.DarlaneCommand, fmt.Sprintf("%v", c))
+			}
+		}
+	}
+	if v, ok := m["fileSync"]; ok {
+		if fs, ok := v.(map[string]interface{}); ok {
+			if enabled, ok := fs["enabled"].(bool); ok && enabled {
+				cfg.DarlaneFileSync = true
+				if mp, ok := fs["mountPath"]; ok {
+					cfg.DarlaneMountPath = fmt.Sprintf("%v", mp)
+				}
+				if img, ok := fs["initFromImage"]; ok {
+					cfg.DarlaneInitFromImage = fmt.Sprintf("%v", img)
+				}
+			}
+		}
+	}
+	if v, ok := m["resources"]; ok {
+		if res, ok := v.(map[string]interface{}); ok {
+			if reqs, ok := res["requests"].(map[string]interface{}); ok {
+				if cpu, ok := reqs["cpu"]; ok {
+					cfg.DarlaneCpuReq = fmt.Sprintf("%v", cpu)
+				}
+				if mem, ok := reqs["memory"]; ok {
+					cfg.DarlaneMemReq = fmt.Sprintf("%v", mem)
+				}
+			}
+			if lims, ok := res["limits"].(map[string]interface{}); ok {
+				if cpu, ok := lims["cpu"]; ok {
+					cfg.DarlaneCpuLim = fmt.Sprintf("%v", cpu)
+				}
+				if mem, ok := lims["memory"]; ok {
+					cfg.DarlaneMemLim = fmt.Sprintf("%v", mem)
+				}
+			}
+		}
+	}
+	if v, ok := m["env"]; ok {
+		if envList, ok := v.([]interface{}); ok {
+			for _, item := range envList {
+				if entry, ok := item.(map[string]interface{}); ok {
+					ev := EnvVar{}
+					if n, ok := entry["name"]; ok {
+						ev.Name = fmt.Sprintf("%v", n)
+					}
+					if val, ok := entry["value"]; ok {
+						ev.Value = fmt.Sprintf("%v", val)
+					}
+					if ev.Name != "" {
+						cfg.DarlaneEnvVars = append(cfg.DarlaneEnvVars, ev)
+					}
+				}
+			}
+		}
+	}
+	if v, ok := m["trafficWeight"]; ok {
+		if n, ok := v.(int); ok {
+			n32 := int32(n)
+			cfg.DarlaneTrafficWeight = &n32
+		}
+	}
+	if v, ok := m["stickySession"]; ok {
+		if ss, ok := v.(map[string]interface{}); ok {
+			if enabled, ok := ss["enabled"].(bool); ok && enabled {
+				cfg.DarlaneStickySession = true
+				if cn, ok := ss["cookieName"]; ok {
+					cfg.DarlaneCookieName = fmt.Sprintf("%v", cn)
+				}
+				if sec, ok := ss["secure"].(bool); ok {
+					cfg.DarlaneSecure = sec
+				}
+				if sms, ok := ss["sameSite"]; ok {
+					cfg.DarlaneSameSite = fmt.Sprintf("%v", sms)
+				}
+			}
+		}
+	}
+	if v, ok := m["headerRouting"]; ok {
+		if hr, ok := v.(map[string]interface{}); ok {
+			if enabled, ok := hr["enabled"].(bool); ok && enabled {
+				cfg.DarlaneHeaderRoutingEnabled = true
+				if h, ok := hr["header"]; ok {
+					cfg.DarlaneHeaderRoutingHeader = fmt.Sprintf("%v", h)
+				}
+				if val, ok := hr["value"]; ok {
+					cfg.DarlaneHeaderRoutingValue = fmt.Sprintf("%v", val)
+				}
+			}
+		}
+	}
+	if v, ok := m["containerPort"]; ok {
+		if n, ok := v.(int); ok {
+			n32 := int32(n)
+			cfg.DarlaneContainerPort = &n32
+		}
+	}
+	if v, ok := m["telemetryPort"]; ok {
+		if n, ok := v.(int); ok {
+			n32 := int32(n)
+			cfg.DarlaneTelemetryPort = &n32
+		}
+	}
+	if v, ok := m["productionOverride"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.DarlaneProductionOverride = b
+		}
+	}
+}
+
+// BuildDarlanePatch returns an inline JSON 6902 patch string that adds the
+// darlane block at /spec/parameters/darlane on the named XTenantApp XR.
+func BuildDarlanePatch(ds *DarlaneSpec, xrName string) string {
+	var lines []string
+	lines = append(lines, "    enabled: true")
+	if ds.Replicas != nil {
+		lines = append(lines, fmt.Sprintf("    replicas: %d", *ds.Replicas))
+	}
+	if ds.TTL != "" {
+		lines = append(lines, fmt.Sprintf("    ttl: %s", ds.TTL))
+	}
+	if len(ds.Command) > 0 {
+		lines = append(lines, "    command:")
+		for _, token := range ds.Command {
+			// Bare integers (e.g. port numbers) are parsed as int by YAML but K8s
+			// container command arrays require []string — single-quote them.
+			if _, err := strconv.Atoi(token); err == nil {
+				lines = append(lines, fmt.Sprintf("    - '%s'", token))
+			} else {
+				lines = append(lines, fmt.Sprintf("    - %s", token))
+			}
+		}
+	}
+	if ds.FileSync != nil && ds.FileSync.Enabled {
+		lines = append(lines, "    fileSync:")
+		lines = append(lines, "      enabled: true")
+		if ds.FileSync.MountPath != "" {
+			lines = append(lines, fmt.Sprintf("      mountPath: %s", ds.FileSync.MountPath))
+		}
+		if ds.FileSync.InitFromImage != "" {
+			lines = append(lines, fmt.Sprintf("      initFromImage: %s", ds.FileSync.InitFromImage))
+		} else {
+			lines = append(lines, "      initFromImage: false")
+		}
+	}
+	if ds.Resources != nil {
+		lines = append(lines, "    resources:")
+		if ds.Resources.Requests != nil && (ds.Resources.Requests.CPU != "" || ds.Resources.Requests.Memory != "") {
+			lines = append(lines, "      requests:")
+			if ds.Resources.Requests.CPU != "" {
+				lines = append(lines, fmt.Sprintf("        cpu: %s", ds.Resources.Requests.CPU))
+			}
+			if ds.Resources.Requests.Memory != "" {
+				lines = append(lines, fmt.Sprintf("        memory: %s", ds.Resources.Requests.Memory))
+			}
+		}
+		if ds.Resources.Limits != nil && (ds.Resources.Limits.CPU != "" || ds.Resources.Limits.Memory != "") {
+			lines = append(lines, "      limits:")
+			if ds.Resources.Limits.CPU != "" {
+				lines = append(lines, fmt.Sprintf("        cpu: %s", ds.Resources.Limits.CPU))
+			}
+			if ds.Resources.Limits.Memory != "" {
+				lines = append(lines, fmt.Sprintf("        memory: %s", ds.Resources.Limits.Memory))
+			}
+		}
+	}
+	if len(ds.Env) > 0 {
+		lines = append(lines, "    env:")
+		for _, e := range ds.Env {
+			lines = append(lines, fmt.Sprintf("    - name: %s", e.Name))
+			lines = append(lines, fmt.Sprintf("      value: %q", e.Value))
+		}
+	}
+	if ds.TrafficWeight != nil {
+		lines = append(lines, fmt.Sprintf("    trafficWeight: %d", *ds.TrafficWeight))
+	}
+	if ds.StickySession != nil && ds.StickySession.Enabled {
+		lines = append(lines, "    stickySession:")
+		lines = append(lines, "      enabled: true")
+		if ds.StickySession.CookieName != "" {
+			lines = append(lines, fmt.Sprintf("      cookieName: %s", ds.StickySession.CookieName))
+		}
+		if ds.StickySession.Secure {
+			lines = append(lines, "      secure: true")
+		}
+		if ds.StickySession.SameSite != "" {
+			lines = append(lines, fmt.Sprintf("      sameSite: %s", ds.StickySession.SameSite))
+		}
+	}
+	if ds.HeaderRouting != nil && ds.HeaderRouting.Enabled {
+		lines = append(lines, "    headerRouting:")
+		lines = append(lines, "      enabled: true")
+		if ds.HeaderRouting.Header != "" {
+			lines = append(lines, fmt.Sprintf("      header: %s", ds.HeaderRouting.Header))
+		}
+		if ds.HeaderRouting.Value != "" {
+			lines = append(lines, fmt.Sprintf("      value: %s", ds.HeaderRouting.Value))
+		}
+	}
+	if ds.ContainerPort != nil {
+		lines = append(lines, fmt.Sprintf("    containerPort: %d", *ds.ContainerPort))
+	}
+	if ds.TelemetryPort != nil {
+		lines = append(lines, fmt.Sprintf("    telemetryPort: %d", *ds.TelemetryPort))
+	}
+	if ds.ProductionOverride {
+		lines = append(lines, "    productionOverride: true")
+	}
+	_ = xrName // xrName is used by the caller in the PatchRef target, not in the patch body
+	return fmt.Sprintf("- op: add\n  path: /spec/parameters/darlane\n  value:\n%s",
+		strings.Join(lines, "\n"))
+}
+
+// InjectDarlanePatch reads an existing overlay kustomization.yaml, removes any
+// previous darlane patch targeting XTenantApp, and appends the new one.
+func InjectDarlanePatch(kustYAML []byte, darlanePatch string, xrName string) ([]byte, error) {
+	var kust OverlayKustomization
+	if err := yaml.Unmarshal(kustYAML, &kust); err != nil {
+		return nil, fmt.Errorf("parse kustomization: %w", err)
+	}
+	// Drop any existing darlane patch on XTenantApp to avoid duplicates on reconfigure.
+	out := kust.Patches[:0]
+	for _, p := range kust.Patches {
+		if p.Target != nil && p.Target.Kind == "XTenantApp" && strings.Contains(p.Patch, "/spec/parameters/darlane") {
+			continue
+		}
+		out = append(out, p)
+	}
+	out = append(out, PatchRef{
+		Patch:  darlanePatch,
+		Target: &PatchTarget{Kind: "XTenantApp", Name: xrName},
+	})
+	kust.Patches = out
+	return yaml.Marshal(&kust)
+}
+
+// RemoveDarlanePatch strips the darlane patch from an overlay kustomization.yaml.
+func RemoveDarlanePatch(kustYAML []byte) ([]byte, error) {
+	var kust OverlayKustomization
+	if err := yaml.Unmarshal(kustYAML, &kust); err != nil {
+		return nil, fmt.Errorf("parse kustomization: %w", err)
+	}
+	out := kust.Patches[:0]
+	for _, p := range kust.Patches {
+		if p.Target != nil && p.Target.Kind == "XTenantApp" && strings.Contains(p.Patch, "/spec/parameters/darlane") {
+			continue
+		}
+		out = append(out, p)
+	}
+	kust.Patches = out
+	return yaml.Marshal(&kust)
 }

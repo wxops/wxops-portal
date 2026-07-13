@@ -15,6 +15,8 @@ import {
   Rocket,
   Activity,
   Lightbulb,
+  Terminal,
+  Download,
 } from "lucide-react";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
@@ -399,6 +401,44 @@ export default async function DashboardPage() {
                 <p className="text-sm text-muted-foreground">No groups assigned</p>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* ── CLI download card ─────────────────────────────────── */}
+        <div className="rounded-xl border bg-card overflow-hidden">
+          <div className="flex items-center gap-2.5 px-4 py-3 border-b bg-wxops-indigo/[0.04]">
+            <div className="inline-flex rounded-md p-1.5 bg-wxops-indigo/10 shrink-0">
+              <Terminal className="h-3.5 w-3.5 text-wxops-indigo" />
+            </div>
+            <span className="text-xs font-semibold flex-1">wxops CLI</span>
+            <span className="text-[10px] font-mono font-semibold text-wxops-indigo bg-wxops-indigo/10 border border-wxops-indigo/20 rounded-full px-1.5 py-0.5">
+              v0.4.0
+            </span>
+          </div>
+
+          <div className="px-4 py-3 space-y-2">
+            {[
+              { label: "Linux amd64",  href: "#" },
+              { label: "Linux arm64",  href: "#" },
+              { label: "macOS arm64",  href: "#" },
+              { label: "macOS amd64",  href: "#" },
+            ].map((p) => (
+              <a
+                key={p.label}
+                href={p.href}
+                className="flex items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs transition-colors hover:bg-muted/50 hover:border-wxops-indigo/30"
+              >
+                <Download className="h-3 w-3 text-wxops-indigo shrink-0" />
+                <span className="font-medium">{p.label}</span>
+              </a>
+            ))}
+          </div>
+
+          <div className="px-4 pb-3 flex items-center justify-between text-[11px] text-muted-foreground border-t pt-2.5">
+            <code className="bg-muted px-1.5 py-0.5 rounded font-mono">make cli-install</code>
+            <a href="#" className="text-primary hover:underline flex items-center gap-0.5">
+              Docs <ArrowRight className="h-2.5 w-2.5" />
+            </a>
           </div>
         </div>
       </div>

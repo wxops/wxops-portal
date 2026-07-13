@@ -127,8 +127,13 @@ function SystemCard({
             </p>
           )}
           <div className="mt-auto flex items-center justify-between text-xs text-muted-foreground">
-            {sys.spec.owner && <span>{sys.spec.owner}</span>}
-            <span className="ml-auto">
+            {sys.spec.owner && (
+              <span className="flex items-center gap-1 min-w-0">
+                <Users className="h-3 w-3 shrink-0" />
+                <span className="font-mono truncate">{sys.spec.owner}</span>
+              </span>
+            )}
+            <span className="ml-auto shrink-0">
               {count} service{count !== 1 ? "s" : ""}
             </span>
           </div>
@@ -368,10 +373,12 @@ export default async function CatalogPage({
   // Lifecycle tab counts come from the full (unfiltered by lifecycle) result,
   // so the tab bar always shows accurate totals regardless of which tab is active.
   const lifecycleCounts: Record<string, number> = {};
+  const kindCounts: Record<string, number> = {};
   for (const e of entities) {
     if (e.spec.lifecycle) {
       lifecycleCounts[e.spec.lifecycle] = (lifecycleCounts[e.spec.lifecycle] ?? 0) + 1;
     }
+    kindCounts[e.kind] = (kindCounts[e.kind] ?? 0) + 1;
   }
   const totalWithLifecycle = Object.values(lifecycleCounts).reduce((a, b) => a + b, 0);
 
@@ -484,17 +491,23 @@ export default async function CatalogPage({
       <div className="flex items-center gap-1 flex-wrap">
         {KIND_FILTERS.map((kf) => {
           const active = selectedKind === kf.value;
+          const count = kf.value === "" ? entities.length : (kindCounts[kf.value] ?? 0);
           return (
             <Link
               key={kf.value || "all"}
               href={`/dashboard/catalog${buildParams({ kind: kf.value || undefined, page: undefined })}`}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 active
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
               }`}
             >
               {kf.label}
+              {count > 0 && (
+                <span className={`tabular-nums ${active ? "text-primary-foreground/70" : "text-muted-foreground/60"}`}>
+                  {count}
+                </span>
+              )}
             </Link>
           );
         })}
@@ -691,24 +704,7 @@ export default async function CatalogPage({
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {ungroupedResources.map((r) => (
-                      <Link
-                        key={r.metadata.name}
-                        href={`/dashboard/catalog/Resource/${r.metadata.name}`}
-                        className="block group"
-                      >
-                        <Card className="flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30 hover-glow-indigo group-hover:border-wxops-indigo/40">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-base">{r.metadata.title ?? r.metadata.name}</CardTitle>
-                            <p className="text-xs font-mono text-muted-foreground">{r.metadata.name}</p>
-                          </CardHeader>
-                          <CardContent className="space-y-2">
-                            {r.metadata.description && (
-                              <p className="text-sm text-muted-foreground line-clamp-2">{r.metadata.description}</p>
-                            )}
-                            {r.spec.type && <Badge variant="secondary" className="text-xs">{r.spec.type}</Badge>}
-                          </CardContent>
-                        </Card>
-                      </Link>
+                      <EntityCard key={`Resource/${r.metadata.name}`} entity={r} />
                     ))}
                   </div>
                 </div>
@@ -721,24 +717,7 @@ export default async function CatalogPage({
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {ungroupedApis.map((a) => (
-                      <Link
-                        key={a.metadata.name}
-                        href={`/dashboard/catalog/API/${a.metadata.name}`}
-                        className="block group"
-                      >
-                        <Card className="flex flex-col h-full transition-all duration-200 group-hover:bg-muted/30 hover-glow-indigo group-hover:border-wxops-indigo/40">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-base">{a.metadata.title ?? a.metadata.name}</CardTitle>
-                            <p className="text-xs font-mono text-muted-foreground">{a.metadata.name}</p>
-                          </CardHeader>
-                          <CardContent className="space-y-2">
-                            {a.metadata.description && (
-                              <p className="text-sm text-muted-foreground line-clamp-2">{a.metadata.description}</p>
-                            )}
-                            {a.spec.type && <Badge variant="secondary" className="text-xs">{a.spec.type}</Badge>}
-                          </CardContent>
-                        </Card>
-                      </Link>
+                      <EntityCard key={`API/${a.metadata.name}`} entity={a} />
                     ))}
                   </div>
                 </div>

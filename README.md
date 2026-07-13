@@ -14,7 +14,7 @@ An Internal Developer Portal (IDP) for Kubernetes-native platform teams. One OID
 - **CI/CD and release visibility** — per-entity cards showing Gitea Actions runs, git releases, container images (color-coded by environment), package dependencies, and latest image tag per environment (dev/staging/production).
 - **Activity feed** — portal-managed PR history per team, filtered by role; lifecycle status per service. Session notifications for scaffold, import, and catalog update events.
 - **Cluster views** — namespace-scoped pods and deployments derived from Pinniped group membership (no cluster-admin required); WhoAmI identity; reload without page refresh; kubeconfig download.
-- **CLI** *(planned v0.4.0)* — `wxops` binary: `login`, `scaffold new`, `catalog list/get`, `tunnel`, and `debug` commands. Mirrors the portal wizard from the terminal; usable in CI/CD pipelines without a browser session.
+- **CLI** — `wxops` binary: `login`, `catalog list/get`, and `debug` commands. Resolves entity → namespace → ready-to-run `kubectl` and `mirrord` commands; shows per-environment Darlane status from the live promostatus API. Usable in CI/CD pipelines via `WXOPS_TOKEN` env var. Cross-platform binaries for Linux, macOS, and Windows (amd64 / arm64).
 
 ## Architecture
 
@@ -170,6 +170,8 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | Performance (cache layers, TTLs, polling, scaling) | [docs/performance.md](docs/performance.md) |
 | Local development | [docs/local-development.md](docs/local-development.md) |
 | Container design (nginx, supervisord, Dockerfile) | [docs/container.md](docs/container.md) |
+| CLI (`wxops` binary — login, catalog, debug) | [docs/cli.md](docs/cli.md) |
+| Darlane — per-environment parallel debug pods | [docs/darlane.md](docs/darlane.md) |
 | API reference | [docs/api-reference.md](docs/api-reference.md) |
 | Release workflow | [docs/release-workflow.md](docs/release-workflow.md) |
 | Roadmap & architecture decisions | [ROADMAP.md](ROADMAP.md) |
@@ -186,8 +188,8 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | v0.2.1 | Scaffolding fixes (Image Updater naming, nginx routing, Vault update) | `shipped` |
 | v0.3.0 | Platform visibility — lifecycle promotion UI, FlexSearch command palette, catalog search, dark theme | `shipped` |
 | v0.3.1 | Portal UI polish — entity detail two-column layout, docs drawer, build-time version stamping | `shipped` |
-| v0.4.0 | CLI (`wxops` binary) + inner-loop tools (DevSpace, Mirrord/Telepresence, feature flags, A/B testing) | `planned` |
-| v0.5.0 | Runtime observability — ArgoCD/Crossplane status via Pinniped, DORA-lite metrics | `planned` |
+| v0.4.0 | CLI (`wxops` binary) + Darlane per-environment parallel debug pods + inner-loop tooling (Mirrord, Mutagen) | `shipped` |
+| v0.5.0 | Runtime observability — ArgoCD/Crossplane XR status via Pinniped; Alertmanager active-alert surface; Grafana/Loki/Tempo deep links pre-scoped per service | `planned` |
 
 See [ROADMAP.md](ROADMAP.md) for the full feature list and architecture decisions.
 

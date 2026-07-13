@@ -50,7 +50,6 @@ export function parseXTenantApp(response: any): Partial<WizardState> {
     livenessPath: probes.liveness?.path ?? "",
     readinessPath: probes.readiness?.path ?? "",
     rolloutType: params.rolloutStrategy?.type ?? "RollingUpdate",
-    devSpaceEnabled: params.devSpace?.enabled ?? false,
     envVars: envVars.length > 0 ? envVars : [],
     podAnnotations: podAnnotations.length > 0 ? podAnnotations : [],
     extraLabels: extraLabels.length > 0 ? extraLabels : [],

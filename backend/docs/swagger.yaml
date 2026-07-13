@@ -212,8 +212,6 @@ definitions:
         type: array
       description:
         type: string
-      devSpaceEnabled:
-        type: boolean
       domain:
         type: string
       envVars:
@@ -289,18 +287,40 @@ definitions:
       team:
         type: string
     type: object
-  scaffold.DevSpaceSpec:
+  scaffold.DarlaneSpec:
     properties:
       command:
         items:
           type: string
         type: array
+      containerPort:
+        type: integer
       enabled:
         type: boolean
+      env:
+        items:
+          $ref: '#/definitions/scaffold.EnvVar'
+        type: array
+      fileSync:
+        $ref: '#/definitions/scaffold.FileSyncSpec'
+      headerRouting:
+        $ref: '#/definitions/scaffold.HeaderRoutingSpec'
       image:
         type: string
+      productionOverride:
+        type: boolean
       replicas:
         type: integer
+      resources:
+        $ref: '#/definitions/scaffold.ResourceSpec'
+      stickySession:
+        $ref: '#/definitions/scaffold.StickySessionSpec'
+      telemetryPort:
+        type: integer
+      trafficWeight:
+        type: integer
+      ttl:
+        type: string
     type: object
   scaffold.EnvFromRef:
     properties:
@@ -317,6 +337,27 @@ definitions:
   scaffold.EnvVar:
     properties:
       name:
+        type: string
+      value:
+        type: string
+    type: object
+  scaffold.FileSyncSpec:
+    properties:
+      enabled:
+        type: boolean
+      initFromImage:
+        description: |-
+          InitFromImage seeds the writable volume from a container image before sync starts.
+          When empty the volume starts blank (scratch). Set to false to explicitly opt out.
+        type: string
+      mountPath:
+        type: string
+    type: object
+  scaffold.HeaderRoutingSpec:
+    properties:
+      enabled:
+        type: boolean
+      header:
         type: string
       value:
         type: string
@@ -435,6 +476,17 @@ definitions:
       type:
         type: string
     type: object
+  scaffold.StickySessionSpec:
+    properties:
+      cookieName:
+        type: string
+      enabled:
+        type: boolean
+      sameSite:
+        type: string
+      secure:
+        type: boolean
+    type: object
   scaffold.TLSSpec:
     properties:
       clusterIssuer:
@@ -453,8 +505,6 @@ definitions:
       containerPort:
         type: integer
       databaseSecrets:
-        type: boolean
-      devSpaceEnabled:
         type: boolean
       envVars:
         items:
@@ -508,8 +558,8 @@ definitions:
         type: string
       containerPort:
         type: integer
-      devSpace:
-        $ref: '#/definitions/scaffold.DevSpaceSpec'
+      darlane:
+        $ref: '#/definitions/scaffold.DarlaneSpec'
       env:
         items:
           $ref: '#/definitions/scaffold.EnvVar'
@@ -860,6 +910,29 @@ paths:
       security:
       - CookieAuth: []
       summary: Get document content
+      tags:
+      - catalog
+  /api/v1/catalog/entities/{kind}/{name}/darlane:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Entity kind (must be Component)
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: Entity name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - CookieAuth: []
+      summary: Set up Darlane for an environment overlay
       tags:
       - catalog
   /api/v1/catalog/entities/{kind}/{name}/deprecate:

@@ -81,7 +81,6 @@ function buildSubmitBody(state: WizardState): Record<string, unknown> {
     livenessPath: state.livenessPath || undefined,
     readinessPath: state.readinessPath || undefined,
     rolloutType: state.rolloutType || undefined,
-    devSpaceEnabled: state.devSpaceEnabled,
     // DB: only extensions are project-level; name/tier/cluster go in the Promote flow.
     dbExtensions: state.dbExtensions.length > 0 ? state.dbExtensions : undefined,
     envVars: state.envVars.filter((p) => p.key),

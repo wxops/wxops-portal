@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -1345,8 +1346,9 @@ func (h *CatalogHandler) GetPromoStatus(c *gin.Context) {
 	locked := entity.Metadata.Annotations["wxops.cloud/deprecated"] == "true"
 
 	type overlayStatus struct {
-		Exists bool `json:"exists"`
-		OpenPR *int `json:"openPR,omitempty"`
+		Exists          bool `json:"exists"`
+		OpenPR          *int `json:"openPR,omitempty"`
+		DarlaneEnabled bool `json:"darlaneEnabled,omitempty"`
 	}
 	type promoStatus struct {
 		Lifecycle string `json:"lifecycle"`
@@ -1358,7 +1360,10 @@ func (h *CatalogHandler) GetPromoStatus(c *gin.Context) {
 		CertEnabled     bool `json:"certEnabled"`
 		VaultEnabled    bool `json:"vaultEnabled"`
 		DatabaseEnabled bool `json:"databaseEnabled"`
-		Tags            struct {
+		// Vault UI config — lets the frontend build direct links without duplicating env vars.
+		VaultAddr    string `json:"vaultAddr,omitempty"`
+		VaultKVMount string `json:"vaultKvMount,omitempty"`
+		Tags         struct {
 			Dev        *EnvVersion `json:"dev"`
 			Staging    *EnvVersion `json:"staging"`
 			Production *EnvVersion `json:"production"`
@@ -1373,6 +1378,13 @@ func (h *CatalogHandler) GetPromoStatus(c *gin.Context) {
 	status := promoStatus{
 		Lifecycle: entity.Spec.Lifecycle,
 		Locked:    locked,
+	}
+	if h.cfg != nil && h.cfg.VaultAddr != "" {
+		status.VaultAddr = h.cfg.VaultAddr
+		status.VaultKVMount = h.cfg.VaultKVMount
+		if status.VaultKVMount == "" {
+			status.VaultKVMount = "secret"
+		}
 	}
 
 	// Overlay existence + tags — both read from gitops-infra.
@@ -1435,14 +1447,24 @@ func (h *CatalogHandler) GetPromoStatus(c *gin.Context) {
 
 		for _, env := range []string{"dev", "staging", "production"} {
 			path := fmt.Sprintf("tenants-apps/%s/%s/overlays/%s/kustomization.yaml", srcTeam, srcApp, env)
-			exists, _ := h.giteaClient.FileExistsOnMain(c.Request.Context(), gitopsOwner, gitopsRepo, path)
+			kustYAML, ferr := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, path)
+			exists := ferr == nil && len(kustYAML) > 0
+			var darlaneEnabled bool
+			if exists {
+				if cfg, perr := scaffold.ParseOverlayConfig(kustYAML, nil); perr == nil {
+					darlaneEnabled = cfg.DarlaneEnabled
+				}
+			}
 			switch env {
 			case "dev":
 				status.Overlays.Dev.Exists = exists
+				status.Overlays.Dev.DarlaneEnabled = darlaneEnabled
 			case "staging":
 				status.Overlays.Staging.Exists = exists
+				status.Overlays.Staging.DarlaneEnabled = darlaneEnabled
 			case "production":
 				status.Overlays.Production.Exists = exists
+				status.Overlays.Production.DarlaneEnabled = darlaneEnabled
 			}
 		}
 
@@ -1877,33 +1899,73 @@ func (h *CatalogHandler) PromoteLifecycle(c *gin.Context) {
 			commitMsg = fmt.Sprintf("feat(promote): add %s overlay for %s/%s", envName, srcTeam, srcApp)
 		}
 
-		// Dev: commit directly to main and immediately update lifecycle (no PR review, no confirm step).
+		// Dev: commit directly to main (no PR review, no confirm step).
 		if envName == "dev" {
-			if err := h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, "main", commitMsg, commitFiles); err != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": "commit overlay: " + err.Error()})
-				return
+			// update-overlay: skip the commit entirely if no overlay file changed.
+			// Prevents no-op commits when only vault keys were edited (vault content
+			// lives in Vault, not in the overlay YAML, so the generated files are identical).
+			if isEdit {
+				anyChanged := false
+				for fname, newData := range commitFiles {
+					existing, ferr := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, fname)
+					if ferr != nil || !bytes.Equal(existing, newData) {
+						anyChanged = true
+						break
+					}
+				}
+				if !anyChanged {
+					log.Printf("[catalog] dev overlay unchanged — skipping commit: %s/%s by %s", srcTeam, srcApp, session.Username)
+					c.JSON(http.StatusOK, gin.H{
+						"action":    req.Action,
+						"committed": false,
+						"message":   "overlay unchanged — no commit needed",
+					})
+					return
+				}
 			}
 
 			newLC := req.TargetLifecycle // "development"
 			oldLC := entity.Spec.Lifecycle
-			if oldLC != newLC {
+			// Only promote lifecycle on create-overlay, not update-overlay.
+			lifecycleChanged := !isEdit && oldLC != newLC
+
+			// Batch all writes into one commit: overlay files + catalog entity lifecycle
+			// update (if changed) + all cascaded Resource/API entities.
+			batchFiles := make(map[string][]byte, len(commitFiles)+4)
+			for k, v := range commitFiles {
+				batchFiles[k] = v
+			}
+
+			if lifecycleChanged {
 				entity.Spec.Lifecycle = newLC
-				entityYAML, err := yaml.Marshal(entity)
-				if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "marshal entity: " + err.Error()})
+				entityYAML, merr := yaml.Marshal(entity)
+				if merr != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "marshal entity: " + merr.Error()})
 					return
 				}
-				if err := h.commitEntityUpdate(c, kind, name, entityYAML, fmt.Sprintf("chore(catalog): confirm %s/%s lifecycle %s → %s", kind, name, oldLC, newLC)); err != nil {
-					return
+				relPath := h.store.EntityRelPath(kind, name)
+				if relPath != "" {
+					batchFiles[h.cfg.GiteaCatalogPath+"/"+relPath] = entityYAML
 				}
+
 				owner := entity.Spec.Owner
 				for _, dep := range entity.Spec.DependsOn {
 					if !strings.HasPrefix(dep, "resource:") {
 						continue
 					}
 					relName := dep[strings.LastIndex(dep, "/")+1:]
-					if err := h.cascadeLifecycle(c.Request.Context(), "Resource", relName, owner, newLC, session.Username); err != nil {
-						log.Printf("[catalog] cascade lifecycle warn: Resource/%s: %v", relName, err)
+					rel, rerr := h.store.Get(c.Request.Context(), "Resource", relName)
+					if rerr != nil || rel.Spec.Owner != owner || rel.Spec.Lifecycle == newLC {
+						continue
+					}
+					rel.Spec.Lifecycle = newLC
+					ry, merr2 := yaml.Marshal(rel)
+					if merr2 != nil {
+						continue
+					}
+					rp := h.store.EntityRelPath("Resource", relName)
+					if rp != "" {
+						batchFiles[h.cfg.GiteaCatalogPath+"/"+rp] = ry
 					}
 				}
 				for _, apiRef := range entity.Spec.ProvidesApis {
@@ -1911,22 +1973,64 @@ func (h *CatalogHandler) PromoteLifecycle(c *gin.Context) {
 						continue
 					}
 					relName := apiRef[strings.LastIndex(apiRef, "/")+1:]
-					if err := h.cascadeLifecycle(c.Request.Context(), "API", relName, owner, newLC, session.Username); err != nil {
-						log.Printf("[catalog] cascade lifecycle warn: API/%s: %v", relName, err)
+					rel, rerr := h.store.Get(c.Request.Context(), "API", relName)
+					if rerr != nil || rel.Spec.Owner != owner || rel.Spec.Lifecycle == newLC {
+						continue
+					}
+					rel.Spec.Lifecycle = newLC
+					ry, merr2 := yaml.Marshal(rel)
+					if merr2 != nil {
+						continue
+					}
+					rp := h.store.EntityRelPath("API", relName)
+					if rp != "" {
+						batchFiles[h.cfg.GiteaCatalogPath+"/"+rp] = ry
 					}
 				}
+
+				commitMsg = fmt.Sprintf("feat(promote): add dev overlay + promote %s/%s %s → %s", srcTeam, srcApp, oldLC, newLC)
 			}
 
-			log.Printf("[catalog] dev overlay committed to main: %s/%s by %s (action=%s)", srcTeam, srcApp, session.Username, req.Action)
+			if err := h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, "main", commitMsg, batchFiles); err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "commit overlay: " + err.Error()})
+				return
+			}
+			if lifecycleChanged {
+				h.store.InvalidateCache()
+			}
+
+			log.Printf("[catalog] dev overlay committed to main: %s/%s by %s (action=%s, lifecycleChanged=%v)", srcTeam, srcApp, session.Username, req.Action, lifecycleChanged)
 			c.JSON(http.StatusOK, gin.H{
-				"action":    req.Action,
-				"committed": true,
-				"lifecycle": newLC,
+				"action":           req.Action,
+				"committed":        true,
+				"lifecycle":        newLC,
+				"lifecycleChanged": lifecycleChanged,
 			})
 			return
 		}
 
 		// Staging / Production: open a PR for platform-team review.
+		// update-overlay: skip PR creation if no overlay file actually changed.
+		if isEdit {
+			anyChanged := false
+			for fname, newData := range commitFiles {
+				existing, ferr := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, fname)
+				if ferr != nil || !bytes.Equal(existing, newData) {
+					anyChanged = true
+					break
+				}
+			}
+			if !anyChanged {
+				log.Printf("[catalog] %s overlay unchanged — skipping PR: %s/%s by %s", envName, srcTeam, srcApp, session.Username)
+				c.JSON(http.StatusOK, gin.H{
+					"action":    req.Action,
+					"committed": false,
+					"message":   "overlay unchanged — no PR needed",
+				})
+				return
+			}
+		}
+
 		branchPrefix := "promote"
 		if isEdit {
 			branchPrefix = "overlay-update"
@@ -2005,31 +2109,92 @@ func (h *CatalogHandler) PromoteLifecycle(c *gin.Context) {
 		return
 	}
 
-	if err := h.commitEntityUpdate(c, kind, name, entityYAML, fmt.Sprintf("chore(catalog): confirm %s/%s lifecycle %s → %s", kind, name, oldLC, newLC)); err != nil {
-		return
-	}
+	if h.giteaClient != nil && h.cfg != nil {
+		// Gitea mode: batch main entity + all cascaded Resources/APIs into one commit.
+		relPath := h.store.EntityRelPath(kind, name)
+		if relPath == "" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "entity file path not found"})
+			return
+		}
+		batchFiles := map[string][]byte{
+			h.cfg.GiteaCatalogPath + "/" + relPath: entityYAML,
+		}
 
-	// Cascade lifecycle to owned Resource and API entities so the catalog stays consistent.
-	// Best-effort — failures are logged but do not affect the main response.
-	owner := entity.Spec.Owner
-	for _, dep := range entity.Spec.DependsOn {
-		// dep format: "resource:default/{name}" — only cascade to Resource refs
-		if !strings.HasPrefix(dep, "resource:") {
-			continue
+		owner := entity.Spec.Owner
+		cascadeCount := 0
+		for _, dep := range entity.Spec.DependsOn {
+			if !strings.HasPrefix(dep, "resource:") {
+				continue
+			}
+			relName := dep[strings.LastIndex(dep, "/")+1:]
+			rel, rerr := h.store.Get(c.Request.Context(), "Resource", relName)
+			if rerr != nil || rel.Spec.Owner != owner || rel.Spec.Lifecycle == newLC {
+				continue
+			}
+			rel.Spec.Lifecycle = newLC
+			ry, merr := yaml.Marshal(rel)
+			if merr != nil {
+				continue
+			}
+			rp := h.store.EntityRelPath("Resource", relName)
+			if rp != "" {
+				batchFiles[h.cfg.GiteaCatalogPath+"/"+rp] = ry
+				cascadeCount++
+			}
 		}
-		relName := dep[strings.LastIndex(dep, "/")+1:]
-		if err := h.cascadeLifecycle(c.Request.Context(), "Resource", relName, owner, newLC, session.Username); err != nil {
-			log.Printf("[catalog] cascade lifecycle warn: Resource/%s: %v", relName, err)
+		for _, apiRef := range entity.Spec.ProvidesApis {
+			if !strings.HasPrefix(apiRef, "api:") {
+				continue
+			}
+			relName := apiRef[strings.LastIndex(apiRef, "/")+1:]
+			rel, rerr := h.store.Get(c.Request.Context(), "API", relName)
+			if rerr != nil || rel.Spec.Owner != owner || rel.Spec.Lifecycle == newLC {
+				continue
+			}
+			rel.Spec.Lifecycle = newLC
+			ry, merr := yaml.Marshal(rel)
+			if merr != nil {
+				continue
+			}
+			rp := h.store.EntityRelPath("API", relName)
+			if rp != "" {
+				batchFiles[h.cfg.GiteaCatalogPath+"/"+rp] = ry
+				cascadeCount++
+			}
 		}
-	}
-	for _, apiRef := range entity.Spec.ProvidesApis {
-		// apiRef format: "api:default/{name}"
-		if !strings.HasPrefix(apiRef, "api:") {
-			continue
+
+		batchMsg := fmt.Sprintf("chore(catalog): confirm %s/%s lifecycle %s → %s", kind, name, oldLC, newLC)
+		if cascadeCount > 0 {
+			batchMsg = fmt.Sprintf("chore(catalog): confirm %s/%s lifecycle %s → %s (+ %d related)", kind, name, oldLC, newLC, cascadeCount)
 		}
-		relName := apiRef[strings.LastIndex(apiRef, "/")+1:]
-		if err := h.cascadeLifecycle(c.Request.Context(), "API", relName, owner, newLC, session.Username); err != nil {
-			log.Printf("[catalog] cascade lifecycle warn: API/%s: %v", relName, err)
+		if err := h.giteaClient.CommitFiles(c.Request.Context(), h.cfg.GiteaCatalogOwner, h.cfg.GiteaCatalogRepo, "main", batchMsg, batchFiles); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "commit: " + err.Error()})
+			return
+		}
+		h.store.InvalidateCache()
+	} else {
+		// Local-dev mode: sequential writes (no batch concept in local FS).
+		if err := h.commitEntityUpdate(c, kind, name, entityYAML, fmt.Sprintf("chore(catalog): confirm %s/%s lifecycle %s → %s", kind, name, oldLC, newLC)); err != nil {
+			return
+		}
+		owner := entity.Spec.Owner
+		for _, dep := range entity.Spec.DependsOn {
+			if !strings.HasPrefix(dep, "resource:") {
+				continue
+			}
+			relName := dep[strings.LastIndex(dep, "/")+1:]
+			if err := h.cascadeLifecycle(c.Request.Context(), "Resource", relName, owner, newLC, session.Username); err != nil {
+				log.Printf("[catalog] cascade lifecycle warn: Resource/%s: %v", relName, err)
+			}
+		}
+		for _, apiRef := range entity.Spec.ProvidesApis {
+			if !strings.HasPrefix(apiRef, "api:") {
+				continue
+			}
+			relName := apiRef[strings.LastIndex(apiRef, "/")+1:]
+			if err := h.cascadeLifecycle(c.Request.Context(), "API", relName, owner, newLC, session.Username); err != nil {
+				log.Printf("[catalog] cascade lifecycle warn: API/%s: %v", relName, err)
+			}
 		}
 	}
 
@@ -2306,4 +2471,286 @@ func (h *CatalogHandler) GetOverlayConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, cfg)
+}
+
+// SetupDarlane adds or replaces the darlane JSON 6902 patch in an existing
+// overlay kustomization.yaml. For dev overlays it commits directly to main;
+// for staging/production it opens a PR for platform-team review.
+//
+// @Summary      Set up Darlane for an environment overlay
+// @Tags         catalog
+// @Accept       json
+// @Produce      json
+// @Param        kind  path  string  true  "Entity kind (must be Component)"
+// @Param        name  path  string  true  "Entity name"
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities/{kind}/{name}/darlane [post]
+func (h *CatalogHandler) SetupDarlane(c *gin.Context) {
+	kind := c.Param("kind")
+	name := c.Param("name")
+
+	var req struct {
+		Env               string            `json:"env" binding:"required"` // "dev" | "staging" | "production"
+		Replicas          *int32            `json:"replicas,omitempty"`
+		Command           []string          `json:"command,omitempty"`
+		FileSync          bool              `json:"fileSync,omitempty"`
+		MountPath         string            `json:"mountPath,omitempty"`
+		InitFromImage     string            `json:"initFromImage,omitempty"`
+		TTL               string            `json:"ttl,omitempty"`
+		ResourcesCPUReq   string            `json:"resourcesCpuReq,omitempty"`
+		ResourcesCPULim   string            `json:"resourcesCpuLim,omitempty"`
+		ResourcesMemReq   string            `json:"resourcesMemReq,omitempty"`
+		ResourcesMemLim   string            `json:"resourcesMemLim,omitempty"`
+		EnvVars           []scaffold.EnvVar `json:"envVars,omitempty"`
+		TrafficWeight     *int32            `json:"trafficWeight,omitempty"`
+		StickySession          bool              `json:"stickySession,omitempty"`
+		CookieName             string            `json:"cookieName,omitempty"`
+		SameSite               string            `json:"sameSite,omitempty"`
+		Secure                 bool              `json:"secure,omitempty"`
+		HeaderRoutingEnabled   bool              `json:"headerRoutingEnabled,omitempty"`
+		HeaderRoutingHeader    string            `json:"headerRoutingHeader,omitempty"`
+		HeaderRoutingValue     string            `json:"headerRoutingValue,omitempty"`
+		ContainerPort     *int32            `json:"containerPort,omitempty"`
+		TelemetryPort     *int32            `json:"telemetryPort,omitempty"`
+		ProductionOverride bool             `json:"productionOverride,omitempty"`
+		Disable           bool              `json:"disable,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if kind != "Component" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "darlane setup only applies to Component entities"})
+		return
+	}
+
+	envName := req.Env
+	if envName == "development" {
+		envName = "dev"
+	}
+	if envName != "dev" && envName != "staging" && envName != "production" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "env must be dev, staging, or production"})
+		return
+	}
+
+	entity, err := h.store.Get(c.Request.Context(), kind, name)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("%s/%s not found", kind, name)})
+		return
+	}
+
+	session := auth.GetSession(c)
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+	isPlatform := auth.IsPlatformTeam(session.Groups)
+	isManager := auth.IsTeamManager(session.Groups, entity.Spec.Owner)
+	isMember := auth.MemberOfTeam(session.Groups, entity.Spec.Owner)
+	canElevate := isPlatform || isManager
+
+	if envName == "dev" {
+		if !isMember && !canElevate {
+			c.JSON(http.StatusForbidden, gin.H{"error": "must be a team member to set up Darlane for development"})
+			return
+		}
+	} else if !canElevate {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only platform-team or team Managers can set up Darlane for " + envName})
+		return
+	}
+
+	if envName == "production" && !req.ProductionOverride {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "productionOverride must be true to enable Darlane on production"})
+		return
+	}
+
+	if h.giteaClient == nil || h.cfg == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Gitea not configured"})
+		return
+	}
+
+	loc := entity.Metadata.Annotations["gitea/source-location"]
+	parts := strings.SplitN(loc, "/", 2)
+	if len(parts) != 2 {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "entity has no valid gitea/source-location"})
+		return
+	}
+	srcTeam, srcApp := parts[0], parts[1]
+
+	gitopsOwner := h.cfg.GiteaCatalogOwner
+	gitopsRepo := h.cfg.GiteaCatalogRepo
+	overlayPath := fmt.Sprintf("tenants-apps/%s/%s/overlays/%s/kustomization.yaml", srcTeam, srcApp, envName)
+
+	currentKustYAML, ferr := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, overlayPath)
+	if ferr != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "overlay does not exist �� create the overlay first via the promotion wizard"})
+		return
+	}
+
+	// Disable path: strip darlane patch and commit/PR.
+	if req.Disable {
+		newKustYAML, err := scaffold.RemoveDarlanePatch(currentKustYAML)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "remove darlane patch: " + err.Error()})
+			return
+		}
+		commitMsg := fmt.Sprintf("feat(darlane): disable darlane for %s/%s overlay/%s", srcTeam, srcApp, envName)
+		if envName == "dev" {
+			if err := h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, "main", commitMsg,
+				map[string][]byte{overlayPath: newKustYAML}); err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "commit darlane disable: " + err.Error()})
+				return
+			}
+			h.store.InvalidateCache()
+			log.Printf("[catalog] darlane disabled on dev overlay: %s/%s by %s", srcTeam, srcApp, session.Username)
+			c.JSON(http.StatusOK, gin.H{"committed": true, "message": "Darlane disabled — committed to main"})
+			return
+		}
+		branch := fmt.Sprintf("darlane/%s/%s-%s-disable-%d", srcTeam, srcApp, envName, time.Now().Unix())
+		if err := h.giteaClient.CreateBranch(c.Request.Context(), gitopsOwner, gitopsRepo, branch, "main"); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "create branch: " + err.Error()})
+			return
+		}
+		if err := h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, branch, commitMsg,
+			map[string][]byte{overlayPath: newKustYAML}); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "push files: " + err.Error()})
+			return
+		}
+		prTitle := fmt.Sprintf("[Darlane] disable %s/%s → %s", srcTeam, srcApp, envName)
+		prBody := fmt.Sprintf("## Disable Darlane: %s/%s %s\n\nRemoves `darlane` patch from `overlays/%s/kustomization.yaml`.\n\n---\n*Created via WxOps Portal by %s*",
+			srcTeam, srcApp, envName, envName, session.Username)
+		labelID := h.ensurePortalLabel(c.Request.Context())
+		var pr *gitea.PullRequestInfo
+		if labelID > 0 {
+			pr, err = h.giteaClient.CreatePullRequest(c.Request.Context(), gitopsOwner, gitopsRepo, prTitle, prBody, branch, "main", labelID)
+		} else {
+			pr, err = h.giteaClient.CreatePullRequest(c.Request.Context(), gitopsOwner, gitopsRepo, prTitle, prBody, branch, "main")
+		}
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "create PR: " + err.Error()})
+			return
+		}
+		log.Printf("[catalog] darlane disable PR opened: %s/%s %s by %s (PR #%d)", srcTeam, srcApp, envName, session.Username, pr.Number)
+		c.JSON(http.StatusOK, gin.H{"committed": false, "prTitle": pr.Title, "prNumber": pr.Number})
+		return
+	}
+
+	// Build DarlaneSpec from request.
+	replicas := int32(0)
+	if req.Replicas != nil {
+		replicas = *req.Replicas
+	}
+	ttl := req.TTL
+	if ttl == "" {
+		ttl = "4h"
+	}
+	ds := &scaffold.DarlaneSpec{
+		Enabled:  true,
+		Replicas: &replicas,
+		TTL:      ttl,
+	}
+	if len(req.Command) > 0 {
+		ds.Command = req.Command
+	}
+	if req.FileSync {
+		mp := req.MountPath
+		if mp == "" {
+			mp = "/app"
+		}
+		ds.FileSync = &scaffold.FileSyncSpec{Enabled: true, MountPath: mp, InitFromImage: req.InitFromImage}
+	}
+	if req.ResourcesCPUReq != "" || req.ResourcesCPULim != "" || req.ResourcesMemReq != "" || req.ResourcesMemLim != "" {
+		ds.Resources = &scaffold.ResourceSpec{
+			Requests: &scaffold.ResourceValues{CPU: req.ResourcesCPUReq, Memory: req.ResourcesMemReq},
+			Limits:   &scaffold.ResourceValues{CPU: req.ResourcesCPULim, Memory: req.ResourcesMemLim},
+		}
+	}
+	if len(req.EnvVars) > 0 {
+		ds.Env = req.EnvVars
+	}
+	if req.TrafficWeight != nil {
+		ds.TrafficWeight = req.TrafficWeight
+	}
+	if req.StickySession {
+		ds.StickySession = &scaffold.StickySessionSpec{
+			Enabled:    true,
+			CookieName: req.CookieName,
+			Secure:     req.Secure,
+			SameSite:   req.SameSite,
+		}
+	}
+	if req.HeaderRoutingEnabled {
+		ds.HeaderRouting = &scaffold.HeaderRoutingSpec{
+			Enabled: true,
+			Header:  req.HeaderRoutingHeader,
+			Value:   req.HeaderRoutingValue,
+		}
+	}
+	if req.ContainerPort != nil {
+		ds.ContainerPort = req.ContainerPort
+	}
+	if req.TelemetryPort != nil {
+		ds.TelemetryPort = req.TelemetryPort
+	}
+	if req.ProductionOverride {
+		ds.ProductionOverride = true
+	}
+
+	// XR name: staging/production use env-suffixed name.
+	baseXRName := srcTeam + "-" + srcApp
+	xrName := baseXRName
+	if envName == "staging" || envName == "production" {
+		xrName = baseXRName + "-" + envName
+	}
+
+	darlanePatch := scaffold.BuildDarlanePatch(ds, xrName)
+	newKustYAML, err := scaffold.InjectDarlanePatch(currentKustYAML, darlanePatch, xrName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "inject darlane patch: " + err.Error()})
+		return
+	}
+
+	commitMsg := fmt.Sprintf("feat(darlane): enable darlane for %s/%s overlay/%s", srcTeam, srcApp, envName)
+
+	if envName == "dev" {
+		if err := h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, "main", commitMsg,
+			map[string][]byte{overlayPath: newKustYAML}); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "commit darlane patch: " + err.Error()})
+			return
+		}
+		log.Printf("[catalog] darlane enabled on dev overlay: %s/%s by %s", srcTeam, srcApp, session.Username)
+		c.JSON(http.StatusOK, gin.H{"committed": true, "message": "Darlane enabled — overlay committed to main"})
+		return
+	}
+
+	// Staging / Production: open a PR.
+	branch := fmt.Sprintf("darlane/%s/%s-%s-%d", srcTeam, srcApp, envName, time.Now().Unix())
+	if err := h.giteaClient.CreateBranch(c.Request.Context(), gitopsOwner, gitopsRepo, branch, "main"); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "create branch: " + err.Error()})
+		return
+	}
+	if err := h.giteaClient.CommitFiles(c.Request.Context(), gitopsOwner, gitopsRepo, branch, commitMsg,
+		map[string][]byte{overlayPath: newKustYAML}); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "push files: " + err.Error()})
+		return
+	}
+
+	prTitle := fmt.Sprintf("[Darlane] %s/%s → %s", srcTeam, srcApp, envName)
+	prBody := fmt.Sprintf("## Darlane: %s/%s %s\n\nAdds `darlane` patch to `overlays/%s/kustomization.yaml`.\n\n"+
+		"---\n*Created via WxOps Portal by %s*", srcTeam, srcApp, envName, envName, session.Username)
+
+	labelID := h.ensurePortalLabel(c.Request.Context())
+	var pr *gitea.PullRequestInfo
+	if labelID > 0 {
+		pr, err = h.giteaClient.CreatePullRequest(c.Request.Context(), gitopsOwner, gitopsRepo, prTitle, prBody, branch, "main", labelID)
+	} else {
+		pr, err = h.giteaClient.CreatePullRequest(c.Request.Context(), gitopsOwner, gitopsRepo, prTitle, prBody, branch, "main")
+	}
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "create PR: " + err.Error()})
+		return
+	}
+
+	log.Printf("[catalog] darlane PR opened: %s/%s %s by %s (PR #%d)", srcTeam, srcApp, envName, session.Username, pr.Number)
+	c.JSON(http.StatusOK, gin.H{"committed": false, "prTitle": pr.Title, "prNumber": pr.Number})
 }

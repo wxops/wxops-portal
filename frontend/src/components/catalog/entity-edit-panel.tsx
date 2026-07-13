@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import yaml from "js-yaml";
@@ -196,7 +197,7 @@ export function EntityEditPanel({
       .map((e) => e.metadata.name);
   }, [allEntities]);
 
-  return (
+  const panel = (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
@@ -612,6 +613,8 @@ export function EntityEditPanel({
       </div>
     </div>
   );
+
+  return createPortal(panel, document.body);
 }
 
 /* ── Sub-components ────────────────────────────────────────────────────────── */

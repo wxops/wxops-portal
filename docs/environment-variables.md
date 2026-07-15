@@ -71,6 +71,20 @@ or deletes. When `VAULT_ADDR` is empty, the Vault write step is skipped silently
 | `VAULT_TOKEN` | — | | Short-lived token with `wxops-portal` policy. Create with `vault token create -policy=wxops-portal -period=720h -orphan -renewable=true` and keep the accessor for renewal. |
 | `VAULT_KV_MOUNT` | `secret` | | KV v2 mount path. Secrets are written to `{VAULT_KV_MOUNT}/{team}/{appName}`. |
 
+### CLI Download Proxy
+
+The portal serves CLI binary downloads at `GET /api/v1/cli/download/:platform` so
+tenant developers can install `wxops` without direct access to the Gitea repo.
+The portal fetches the latest release asset server-side using `GITEA_TOKEN` and
+streams it back to the authenticated browser session.
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `GITEA_PORTAL_OWNER` | _(GITEA_CATALOG_OWNER)_ | | Org that owns the portal release repo. When empty, falls back to `GITEA_CATALOG_OWNER` at runtime. |
+| `GITEA_PORTAL_REPO` | `wxops-portal-v2` | | Repo where `wxops-*` release binaries are attached. The portal calls `GET /api/v1/repos/{owner}/{repo}/releases?limit=1` to find the latest release, then streams the matching asset. |
+
+No additional token is needed — the existing `GITEA_TOKEN` is reused.
+
 ### Catalog Cache Refresh Webhook
 
 `WEBHOOK_TOKEN` authenticates the catalog cache invalidation webhook. Wire a Gitea

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, FileText, Hammer, Network, Tag, Users } from "lucide-react";
@@ -5,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { OpenApiViewer } from "@/components/catalog/openapi-viewer";
 import { EntityActions } from "@/components/catalog/entity-actions";
+import { EntityNavBar } from "@/components/catalog/entity-nav-bar";
 import { DocsDrawer } from "@/components/catalog/docs-drawer";
 import { RuntimeStatusCard } from "@/components/catalog/runtime-status-card";
 import { CIStatusCard } from "@/components/catalog/ci-status-card";
@@ -58,6 +60,19 @@ export default async function EntityDetailPage({
 }) {
   const { kind, name } = await params;
   const { tab: tabParam } = await searchParams;
+
+  // These kinds have richer dedicated pages — redirect immediately so there
+  // is exactly one canonical URL per kind and no dead generic paths.
+  const DEDICATED: Record<string, string> = {
+    User:   "users",
+    Group:  "groups",
+    System: "systems",
+    Doc:    "Doc",
+  };
+  if (DEDICATED[kind]) {
+    redirect(`/dashboard/catalog/${DEDICATED[kind]}/${name}`);
+  }
+
   const cookieStore    = await cookies();
   const sessionCookie  = cookieStore.get("wxops_session")?.value ?? "";
   const userSession    = await getSession();
@@ -622,6 +637,13 @@ export default async function EntityDetailPage({
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0 mt-0.5">
+              <EntityNavBar
+                kind={entity.kind}
+                name={entity.metadata.name}
+                title={displayTitle}
+                description={entity.metadata.description ?? ""}
+                lifecycle={lifecycle}
+              />
               {showDocs && <DocsDrawer entityRef={entityRef} />}
               <EntityActions entity={entity} userGroups={userGroups} />
             </div>

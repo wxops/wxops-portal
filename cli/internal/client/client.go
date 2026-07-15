@@ -56,6 +56,7 @@ type Entity struct {
 		Name        string            `json:"name"`
 		Title       string            `json:"title"`
 		Description string            `json:"description"`
+		Tags        []string          `json:"tags"`
 		Annotations map[string]string `json:"annotations"`
 	} `json:"metadata"`
 	Spec struct {
@@ -108,14 +109,26 @@ func (c *Client) GetEntity(kind, name string) (*Entity, error) {
 
 // PromoStatusOverlay is the per-environment slice of the promostatus response.
 type PromoStatusOverlay struct {
-	Exists         bool `json:"exists"`
-	DarlaneEnabled bool `json:"darlaneEnabled"`
+	Exists            bool   `json:"exists"`
+	DarlaneEnabled    bool   `json:"darlaneEnabled"`
+	FileSyncMountPath string `json:"fileSyncMountPath"`
+}
+
+// EnvTag holds the image tag and optional date for a single environment.
+type EnvTag struct {
+	Tag  string `json:"tag"`
+	Date string `json:"date"`
 }
 
 // PromoStatus mirrors the /promostatus API response fields used by the CLI.
 type PromoStatus struct {
 	Lifecycle string `json:"lifecycle"`
-	Overlays  struct {
+	Tags      struct {
+		Dev        *EnvTag `json:"dev"`
+		Staging    *EnvTag `json:"staging"`
+		Production *EnvTag `json:"production"`
+	} `json:"tags"`
+	Overlays struct {
 		Dev        PromoStatusOverlay `json:"dev"`
 		Staging    PromoStatusOverlay `json:"staging"`
 		Production PromoStatusOverlay `json:"production"`

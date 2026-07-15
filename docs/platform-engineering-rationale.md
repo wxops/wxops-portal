@@ -170,7 +170,7 @@ spec:
     #   securityContext:
     #     runAsNonRoot: true
     #
-    #   fileSync:                          # writable volume for mutagen / VS Code Remote
+    #   fileSync:                          # writable volume for wxops darlane sync / VS Code Remote
     #     enabled: true
     #     mountPath: /app
     #

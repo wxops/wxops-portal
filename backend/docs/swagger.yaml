@@ -1123,6 +1123,40 @@ paths:
       summary: Get per-environment versions
       tags:
       - catalog
+  /api/v1/cli/download/{platform}:
+    get:
+      description: Proxies the latest release asset from the portal Gitea repo using
+        the service-account token.  Requires a valid session cookie.
+      parameters:
+      - description: Target platform (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64)
+        in: path
+        name: platform
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: CLI binary
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Download wxops CLI binary
+      tags:
+      - cli
   /api/v1/scaffold/projects:
     post:
       parameters:

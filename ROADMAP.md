@@ -1,7 +1,7 @@
 # WxOps Portal — Roadmap
 
 > Living document. Updated as features ship.
-> Last updated: 2026-07-13
+> Last updated: 2026-07-15
 
 ---
 
@@ -218,6 +218,41 @@ Entity detail layout redesign, docs-as-drawer, and build-time version stamping.
 
 ---
 
+## Shipped — v0.4.1: Darlane Sync Improvements & CLI Download Proxy
+
+Post-release patch addressing the `darlane sync` delete bug and hardening
+the inner-loop DX. Also adds authenticated CLI binary downloads through the
+portal so developers never need direct Gitea access.
+
+### `wxops darlane sync` — Enhanced File Sync
+
+| Fix / Feature | Detail |
+|---|---|
+| **Delete propagation (bug fix)** | Files and directories deleted locally are now removed from the pod on the next flush via `kubectl exec rm -rf`. Previously only `Write`/`Create`/`Rename` events were handled; `Remove` was silently ignored. |
+| Initial full sync | On startup the tool syncs all non-excluded files to the pod before incremental events begin. Suppressed with `--no-initial-sync`. |
+| Max-debounce cap (2 s) | A continuous burst no longer blocks syncs indefinitely — flush fires at the 2-second mark regardless of incoming events. |
+| kubectl retry | Both sync and delete calls are retried up to 3 times (2 s delay) so the session survives a pod restart mid-watch. |
+| Cleaner output | Consistent `↑  synced` / `✗  deleted` prefixes; file names listed inline (up to 5, then `… and N more`); errors to stderr. |
+| Graceful SIGINT/SIGTERM | `signal.NotifyContext` — `Ctrl-C` flushes any pending batch then prints `stopped.` before exiting. |
+
+### CLI Download Proxy
+
+| Fix / Feature | Detail |
+|---|---|
+| `GET /api/v1/cli/download/:platform` | New protected backend endpoint that calls the Gitea releases API with the service-account token and streams the latest `wxops-*` binary back to the authenticated browser session. Users never need direct Gitea access. |
+| Overview page download card | Platform links in the CLI card now point to `/api/v1/cli/download/{platform}` with architecture labels. |
+| `GITEA_PORTAL_OWNER` / `GITEA_PORTAL_REPO` | Two new optional env vars (defaults: `GITEA_CATALOG_OWNER` / `wxops-portal-v2`). |
+
+### nginx Cookie Buffer Fix
+
+| Fix | Detail |
+|---|---|
+| `proxy_buffer_size 32k` on `/auth/` | nginx's default 4 k proxy buffer was too small for the AES-256-GCM Pinniped session cookie (id_token + access_token + refresh_token ≈ 3–4 kB), causing a 502 `upstream sent too big header` error on `/auth/callback` in K8s deployments. Fixed by adding `proxy_buffer_size 32k; proxy_buffers 4 32k;` to the `/auth/` location block. |
+| `X-Forwarded-Proto` preservation | Added `map $http_x_forwarded_proto $real_proto` so nginx passes the Ingress controller's `X-Forwarded-Proto: https` header upstream rather than overwriting it with the internal `http` scheme. |
+| Cookie `Secure` flag | Backend now detects HTTPS from `X-Forwarded-Proto` header (`secure := c.GetHeader("X-Forwarded-Proto") == "https"`) so the `Secure` flag is set correctly in production without hardcoding. |
+
+---
+
 ## Pending (infrastructure — not portal code)
 
 These are blocked on platform-side work, not portal development.
@@ -265,9 +300,12 @@ These are blocked on platform-side work, not portal development.
 | `wxops catalog list [--kind] [--lifecycle]` | ✓ Shipped |
 | `wxops catalog get <kind> <name>` | ✓ Shipped |
 | `wxops debug <service> [--env]` — live Darlane status + kubectl/mirrord commands | ✓ Shipped |
+| `wxops darlane sync` — fsnotify watch + tar-pipe into pod | ✓ Shipped |
+| `wxops darlane exec` — interactive pod shell | ✓ Shipped |
+| `wxops darlane port-forward` — local port → pod | ✓ Shipped |
 | `wxops version` | ✓ Shipped |
 | `WXOPS_TOKEN` + `WXOPS_PORTAL_URL` env vars for CI/CD | ✓ Shipped |
-| Cross-platform binaries: linux/darwin/windows × amd64/arm64 | ✓ Shipped |
+| Cross-platform binaries: linux/darwin × amd64/arm64 | ✓ Shipped |
 | `Makefile` targets for local build/install/cross-compile | ✓ Shipped |
 | `wxops scaffold new` — interactive project creation | Deferred to v0.5.0 |
 | `wxops darlane enable` — write Darlane config from CLI | Deferred to v0.5.0 |
@@ -359,6 +397,39 @@ assigns responsibility for new joiners.
 | Cost tracking | Resource usage per environment from metrics API |
 | Health probe roll-up | Platform-wide dashboard from per-entity health checks |
 | Compliance status | Vault policy coverage, RBAC audit, pod security per namespace |
+
+### Inner-Loop Sync Transport
+
+The current `darlane sync` transport is `kubectl exec tar xf -` — simple, zero daemon, but
+blocked by distroless/scratch images (no `tar`) and always sends whole files. The options below
+are ordered from easiest to adopt to most architecturally involved.
+
+#### Transport comparison
+
+| Transport | Agent in pod? | Delta sync | Distroless | Complexity | Best for |
+|-----------|--------------|-----------|------------|-----------|----------|
+| `kubectl exec tar` *(current)* | No | No | ✗ Blocked | Low | Quick setup, standard images |
+| rsync over kubectl exec | No | Yes (byte-level) | ✗ Blocked | Low | Large files / slow links |
+| Sidecar file-receiver agent | Yes (sidecar) | No | ✓ Works | Medium | Distroless, scratch images |
+| gRPC streaming agent | Yes (sidecar) | Yes | ✓ Works | High | Enterprise: mTLS, no kubectl |
+| WebSocket relay via portal | Yes (sidecar) | Yes | ✓ Works | High | Enterprise: zero-kubectl model |
+| Mirrord / Telepresence | Yes (daemon) | N/A — no sync | ✓ Works | High | Full inner-loop interception |
+
+#### Planned enhancements
+
+| Feature | Description |
+|---------|-------------|
+| rsync delta sync | Use `rsync` over `kubectl exec` as an alternative to tar pipe. Only changed bytes are transferred — significant win for large files or large source trees. Requires `rsync` in the image; CLI auto-detects and falls back to tar if unavailable. `darlane sync --transport rsync`. |
+| Sidecar file-receiver agent | Small Go binary (`wxops-file-receiver`) deployable as an init container or sidecar. Exposes a minimal HTTP endpoint to accept tar streams — no `tar` or `rsync` required in the main container. Solves distroless and scratch images. XTenantApp adds `fileSyncSidecar: true` to inject the sidecar automatically via the Crossplane Composition. |
+| Skaffold / DevSpace config generation | `wxops darlane config-gen --tool skaffold` generates a `skaffold.yaml` with correct `sync` rules for the active session (local/remote paths, excludes). Lets teams plug darlane path resolution into existing Skaffold or DevSpace pipelines without duplicating config. |
+
+#### Enterprise backlog
+
+| Feature | Description |
+|---------|-------------|
+| gRPC streaming agent | `wxops-sync-agent` sidecar exposes a gRPC endpoint. CLI streams file deltas with mTLS using a Pinniped-issued credential. Fully authenticated, encrypted transport — no plain kubectl exec required. Delta sync at byte level via rolling hash (similar to rsync algorithm). Session state aware: agent signals pod-replaced events to the CLI so re-seed fires without a retry-based inference. |
+| WebSocket relay through portal | `POST /api/v1/darlane/:service/sync` WebSocket endpoint on the portal. CLI authenticates with the portal session cookie and streams file changes; portal relays to the pod-side agent via in-cluster networking. Developers need no kubeconfig or kubectl at all — portal session is the only credential. Removes the `kubectl` binary as a hard dependency of `wxops darlane`. |
+| Mirrord integration | `wxops darlane mirror <service>` wraps `mirrord exec` with namespace/target derived from the catalog entity. Mirrord intercepts syscalls so the local process reads/writes the pod filesystem directly — no file sync loop needed. Generates the `mirrord.json` config from the entity annotations (`container-port`, namespace, deployment). |
 
 ### Catalog & Scaffold Extensions
 

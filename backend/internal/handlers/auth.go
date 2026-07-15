@@ -48,8 +48,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create dev session"})
 			return
 		}
+		secure := c.GetHeader("X-Forwarded-Proto") == "https"
 		c.SetSameSite(http.SameSiteLaxMode)
-		c.SetCookie(auth.SessionCookieName, encoded, 8*3600, "/", "", false, true)
+		c.SetCookie(auth.SessionCookieName, encoded, 8*3600, "/", "", secure, true)
 		if cliRedirectURI != "" {
 			c.Redirect(http.StatusFound, cliRedirectURI+"?token="+url.QueryEscape(encoded))
 			return
@@ -122,10 +123,12 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
-	// 8-hour session; SameSite=Lax works for same-origin redirects.
-	// Set Secure=true when serving over HTTPS in production.
+	// Secure=true when the request arrived over HTTPS, detected from
+	// X-Forwarded-Proto preserved by nginx from the Ingress controller.
+	// Stays false for plain HTTP in local dev.
+	secure := c.GetHeader("X-Forwarded-Proto") == "https"
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(auth.SessionCookieName, encoded, 8*3600, "/", "", false, true)
+	c.SetCookie(auth.SessionCookieName, encoded, 8*3600, "/", "", secure, true)
 
 	// CLI login: redirect back to the local callback server with the encoded session.
 	if cliRedirectURI != "" {

@@ -31,6 +31,13 @@ type ClusterHandler struct {
 	registry   cluster.Registry
 	oidcClient *auth.OIDCClient
 	sm         *auth.SessionManager
+	// supervisorCAData is the base64-encoded PEM CA for the Pinniped Supervisor
+	// TLS endpoint (from OIDC_CA_BUNDLE / OIDC_CA_BUNDLE_FILE). Empty when the
+	// Supervisor uses a publicly trusted certificate.
+	// Used as --ca-bundle-data in the generated exec-credential kubeconfig so
+	// `pinniped login oidc` can verify the Supervisor — distinct from the spoke
+	// cluster CA that goes to --concierge-ca-bundle-data.
+	supervisorCAData string
 	// credCache caches short-lived Concierge mTLS credentials to avoid hitting
 	// the Supervisor and Concierge on every request.
 	// Key: "<sub>:<clusterID>"   Value: cachedCred
@@ -44,8 +51,15 @@ type cachedCred struct {
 }
 
 // NewClusterHandler constructs a ClusterHandler.
-func NewClusterHandler(registry cluster.Registry, oidcClient *auth.OIDCClient, sm *auth.SessionManager) *ClusterHandler {
-	return &ClusterHandler{registry: registry, oidcClient: oidcClient, sm: sm}
+// supervisorCA is the raw PEM of the Pinniped Supervisor's TLS CA (from
+// OIDC_CA_BUNDLE / OIDC_CA_BUNDLE_FILE). Pass nil when the Supervisor uses a
+// publicly trusted certificate.
+func NewClusterHandler(registry cluster.Registry, oidcClient *auth.OIDCClient, sm *auth.SessionManager, supervisorCA []byte) *ClusterHandler {
+	var supervisorCAData string
+	if len(supervisorCA) > 0 {
+		supervisorCAData = base64.StdEncoding.EncodeToString(supervisorCA)
+	}
+	return &ClusterHandler{registry: registry, oidcClient: oidcClient, sm: sm, supervisorCAData: supervisorCAData}
 }
 
 // ListClusters returns all registered spoke clusters.
@@ -295,6 +309,331 @@ func (h *ClusterHandler) ListDeployments(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deployments": deployments})
 }
 
+// GetPod returns detailed information for a single pod on a spoke cluster.
+// Secret env var values are masked as "***"; all other fields are passed through.
+//
+//	GET /api/v1/clusters/:id/pods/:name?namespace=default
+func (h *ClusterHandler) GetPod(c *gin.Context) {
+	client, ok := h.buildSpokeClient(c)
+	if !ok {
+		return
+	}
+	ns := c.DefaultQuery("namespace", "default")
+	podName := c.Param("name")
+
+	raw, err := client.GetPod(c.Request.Context(), ns, podName)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	var pod struct {
+		Metadata struct {
+			Name      string `json:"name"`
+			Namespace string `json:"namespace"`
+		} `json:"metadata"`
+		Spec struct {
+			NodeName   string `json:"nodeName"`
+			Containers []struct {
+				Name  string `json:"name"`
+				Image string `json:"image"`
+				Resources struct {
+					Requests map[string]string `json:"requests"`
+					Limits   map[string]string `json:"limits"`
+				} `json:"resources"`
+				Env []struct {
+					Name  string `json:"name"`
+					Value string `json:"value"`
+					ValueFrom *struct {
+						SecretKeyRef    *struct{ Name string `json:"name"`; Key string `json:"key"` }    `json:"secretKeyRef"`
+						ConfigMapKeyRef *struct{ Name string `json:"name"`; Key string `json:"key"` }    `json:"configMapKeyRef"`
+						FieldRef        *struct{ FieldPath string `json:"fieldPath"` }                   `json:"fieldRef"`
+					} `json:"valueFrom"`
+				} `json:"env"`
+				EnvFrom []struct {
+					ConfigMapRef *struct{ Name string `json:"name"` } `json:"configMapRef"`
+					SecretRef    *struct{ Name string `json:"name"` } `json:"secretRef"`
+				} `json:"envFrom"`
+				VolumeMounts []struct {
+					Name      string `json:"name"`
+					MountPath string `json:"mountPath"`
+					ReadOnly  bool   `json:"readOnly"`
+				} `json:"volumeMounts"`
+			} `json:"containers"`
+		} `json:"spec"`
+		Status struct {
+			Phase            string `json:"phase"`
+			ContainerStatuses []struct {
+				Name         string `json:"name"`
+				Ready        bool   `json:"ready"`
+				RestartCount int    `json:"restartCount"`
+			} `json:"containerStatuses"`
+		} `json:"status"`
+	}
+
+	if err := json.Unmarshal(raw, &pod); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse pod"})
+		return
+	}
+
+	// Build quick lookup for container statuses.
+	type csEntry struct {
+		Ready    bool
+		Restarts int
+	}
+	csMap := map[string]csEntry{}
+	for _, cs := range pod.Status.ContainerStatuses {
+		csMap[cs.Name] = csEntry{cs.Ready, cs.RestartCount}
+	}
+
+	type envEntry struct {
+		Name   string `json:"name"`
+		Value  string `json:"value"`
+		Source string `json:"source"` // literal | secret | configmap | field
+	}
+	type volumeMount struct {
+		Name      string `json:"name"`
+		MountPath string `json:"mountPath"`
+		ReadOnly  bool   `json:"readOnly"`
+	}
+	type containerInfo struct {
+		Name         string            `json:"name"`
+		Image        string            `json:"image"`
+		Ready        bool              `json:"ready"`
+		RestartCount int               `json:"restartCount"`
+		Requests     map[string]string `json:"requests"`
+		Limits       map[string]string `json:"limits"`
+		Env          []envEntry        `json:"env"`
+		EnvFrom      []string          `json:"envFrom"` // "configmap:name" or "secret:name"
+		VolumeMounts []volumeMount     `json:"volumeMounts"`
+	}
+
+	containers := make([]containerInfo, 0, len(pod.Spec.Containers))
+	for _, ctr := range pod.Spec.Containers {
+		cs := csMap[ctr.Name]
+
+		env := make([]envEntry, 0, len(ctr.Env))
+		for _, e := range ctr.Env {
+			entry := envEntry{Name: e.Name}
+			if e.ValueFrom != nil {
+				switch {
+				case e.ValueFrom.SecretKeyRef != nil:
+					entry.Value = "***"
+					entry.Source = "secret"
+				case e.ValueFrom.ConfigMapKeyRef != nil:
+					entry.Value = e.Value
+					entry.Source = "configmap"
+				case e.ValueFrom.FieldRef != nil:
+					entry.Value = e.ValueFrom.FieldRef.FieldPath
+					entry.Source = "field"
+				default:
+					entry.Value = e.Value
+					entry.Source = "literal"
+				}
+			} else {
+				entry.Value = e.Value
+				entry.Source = "literal"
+			}
+			env = append(env, entry)
+		}
+
+		var envFrom []string
+		for _, ef := range ctr.EnvFrom {
+			if ef.ConfigMapRef != nil {
+				envFrom = append(envFrom, "configmap:"+ef.ConfigMapRef.Name)
+			} else if ef.SecretRef != nil {
+				envFrom = append(envFrom, "secret:"+ef.SecretRef.Name)
+			}
+		}
+
+		mounts := make([]volumeMount, 0, len(ctr.VolumeMounts))
+		for _, vm := range ctr.VolumeMounts {
+			// Skip auto-mounted service account token mounts.
+			if strings.Contains(vm.MountPath, "/var/run/secrets/kubernetes.io") {
+				continue
+			}
+			mounts = append(mounts, volumeMount{vm.Name, vm.MountPath, vm.ReadOnly})
+		}
+
+		requests := ctr.Resources.Requests
+		if requests == nil {
+			requests = map[string]string{}
+		}
+		limits := ctr.Resources.Limits
+		if limits == nil {
+			limits = map[string]string{}
+		}
+
+		containers = append(containers, containerInfo{
+			Name:         ctr.Name,
+			Image:        ctr.Image,
+			Ready:        cs.Ready,
+			RestartCount: cs.Restarts,
+			Requests:     requests,
+			Limits:       limits,
+			Env:          env,
+			EnvFrom:      envFrom,
+			VolumeMounts: mounts,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"name":       pod.Metadata.Name,
+		"namespace":  pod.Metadata.Namespace,
+		"status":     pod.Status.Phase,
+		"node":       pod.Spec.NodeName,
+		"containers": containers,
+	})
+}
+
+// ListServices returns services in the given namespace on a spoke cluster.
+//
+//	GET /api/v1/clusters/:id/services?namespace=default
+func (h *ClusterHandler) ListServices(c *gin.Context) {
+	client, ok := h.buildSpokeClient(c)
+	if !ok {
+		return
+	}
+	ns := c.DefaultQuery("namespace", "default")
+
+	raw, err := client.ListServices(c.Request.Context(), ns)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	var svcList struct {
+		Items []struct {
+			Metadata struct {
+				Name      string `json:"name"`
+				Namespace string `json:"namespace"`
+			} `json:"metadata"`
+			Spec struct {
+				Type      string `json:"type"`
+				ClusterIP string `json:"clusterIP"`
+				Ports     []struct {
+					Name       string      `json:"name"`
+					Protocol   string      `json:"protocol"`
+					Port       int32       `json:"port"`
+					TargetPort any `json:"targetPort"`
+					NodePort   int32       `json:"nodePort"`
+				} `json:"ports"`
+			} `json:"spec"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(raw, &svcList); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse service list"})
+		return
+	}
+
+	type portInfo struct {
+		Name       string `json:"name"`
+		Protocol   string `json:"protocol"`
+		Port       int32  `json:"port"`
+		TargetPort string `json:"targetPort"`
+		NodePort   int32  `json:"nodePort,omitempty"`
+	}
+	type svcInfo struct {
+		Name      string     `json:"name"`
+		Namespace string     `json:"namespace"`
+		Type      string     `json:"type"`
+		ClusterIP string     `json:"clusterIP"`
+		Ports     []portInfo `json:"ports"`
+	}
+
+	services := make([]svcInfo, 0, len(svcList.Items))
+	for _, item := range svcList.Items {
+		ports := make([]portInfo, 0, len(item.Spec.Ports))
+		for _, p := range item.Spec.Ports {
+			ports = append(ports, portInfo{
+				Name:       p.Name,
+				Protocol:   p.Protocol,
+				Port:       p.Port,
+				TargetPort: fmt.Sprintf("%v", p.TargetPort),
+				NodePort:   p.NodePort,
+			})
+		}
+		services = append(services, svcInfo{
+			Name:      item.Metadata.Name,
+			Namespace: item.Metadata.Namespace,
+			Type:      item.Spec.Type,
+			ClusterIP: item.Spec.ClusterIP,
+			Ports:     ports,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"services": services})
+}
+
+// ListResourceQuotas returns ResourceQuotas in the given namespace on a spoke cluster.
+//
+//	GET /api/v1/clusters/:id/quotas?namespace=default
+func (h *ClusterHandler) ListResourceQuotas(c *gin.Context) {
+	client, ok := h.buildSpokeClient(c)
+	if !ok {
+		return
+	}
+	ns := c.DefaultQuery("namespace", "default")
+
+	raw, err := client.ListResourceQuotas(c.Request.Context(), ns)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	var quotaList struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+			Status struct {
+				Hard map[string]string `json:"hard"`
+				Used map[string]string `json:"used"`
+			} `json:"status"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(raw, &quotaList); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse resource quota list"})
+		return
+	}
+
+	type resourceEntry struct {
+		Name string `json:"name"`
+		Hard string `json:"hard"`
+		Used string `json:"used"`
+	}
+	type quotaInfo struct {
+		Name      string          `json:"name"`
+		Resources []resourceEntry `json:"resources"`
+	}
+
+	// Surface the most developer-relevant resource keys in a stable order.
+	interestingKeys := []string{"cpu", "memory", "pods", "requests.cpu", "requests.memory", "limits.cpu", "limits.memory"}
+
+	quotas := make([]quotaInfo, 0, len(quotaList.Items))
+	for _, item := range quotaList.Items {
+		var resources []resourceEntry
+		for _, key := range interestingKeys {
+			hard, ok := item.Status.Hard[key]
+			if !ok {
+				continue
+			}
+			resources = append(resources, resourceEntry{
+				Name: key,
+				Hard: hard,
+				Used: item.Status.Used[key],
+			})
+		}
+		if len(resources) > 0 {
+			quotas = append(quotas, quotaInfo{Name: item.Metadata.Name, Resources: resources})
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"quotas": quotas})
+}
+
 // GetKubeconfig generates a kubeconfig for the spoke cluster.
 //
 // When the cluster has Pinniped fields configured (issuer_url,
@@ -341,24 +680,30 @@ func (h *ClusterHandler) GetKubeconfig(c *gin.Context) {
 			fmt.Sprintf("--concierge-authenticator-name=%s", cl.JWTAuthenticatorName),
 			"--concierge-authenticator-type=jwt",
 			fmt.Sprintf("--concierge-endpoint=%s", conciergeEndpoint),
-			fmt.Sprintf("--concierge-ca-bundle-data=%s", caData),
+			fmt.Sprintf("--concierge-ca-bundle-data=%s", caData), // spoke cluster / Concierge CA
 			fmt.Sprintf("--issuer=%s", cl.IssuerURL),
 			"--client-id=pinniped-cli",
 			"--scopes=offline_access,openid,pinniped:request-audience,username,groups",
-			fmt.Sprintf("--ca-bundle-data=%s", caData),
 			fmt.Sprintf("--request-audience=%s", cl.Audience),
 			fmt.Sprintf("--upstream-identity-provider-type=%s", upstreamIDPType),
 			"--upstream-identity-provider-flow=browser_authcode",
+		}
+		// --ca-bundle-data is the Supervisor TLS CA, not the spoke cluster CA.
+		// Omit when the Supervisor uses a publicly trusted certificate so pinniped
+		// CLI falls back to the system root pool.
+		if h.supervisorCAData != "" {
+			execArgs = append(execArgs, fmt.Sprintf("--ca-bundle-data=%s", h.supervisorCAData))
 		}
 		if cl.UpstreamIDPName != "" {
 			execArgs = append(execArgs, fmt.Sprintf("--upstream-identity-provider-name=%s", cl.UpstreamIDPName))
 		}
 
 		// Serialise exec args as YAML sequence entries.
-		argLines := ""
+		var sb strings.Builder
 		for _, arg := range execArgs {
-			argLines += fmt.Sprintf("      - %s\n", arg)
+			fmt.Fprintf(&sb, "      - %s\n", arg)
 		}
+		argLines := sb.String()
 
 		kubeconfig = fmt.Sprintf(`apiVersion: v1
 kind: Config

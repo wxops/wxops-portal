@@ -106,8 +106,9 @@ func New(cfg *config.Config) (*Server, error) {
 	// HTTP handlers.
 	healthH := handlers.NewHealthHandler()
 	authH := handlers.NewAuthHandler(oidcClient, sm, cfg)
-	clusterH := handlers.NewClusterHandler(registry, oidcClient, sm)
+	clusterH := handlers.NewClusterHandler(registry, oidcClient, sm, cfg.OIDCCABundle)
 	catalogH := handlers.NewCatalogHandler(catalogStore, specFetcher, gc, cfg)
+	cliH := handlers.NewCLIHandler(cfg)
 
 	// Vault client — optional, used by scaffold to write .env secrets.
 	var vc *vault.Client
@@ -188,7 +189,10 @@ func New(cfg *config.Config) (*Server, error) {
 			cl.GET("/:id", clusterH.GetCluster)
 			cl.GET("/:id/namespaces", clusterH.ListNamespaces)
 			cl.GET("/:id/pods", clusterH.ListPods)
+			cl.GET("/:id/pods/:name", clusterH.GetPod)
 			cl.GET("/:id/deployments", clusterH.ListDeployments)
+			cl.GET("/:id/services", clusterH.ListServices)
+			cl.GET("/:id/quotas", clusterH.ListResourceQuotas)
 			cl.GET("/:id/identity", clusterH.GetIdentity)
 			cl.GET("/:id/kubeconfig", clusterH.GetKubeconfig)
 			// Pinniped cluster-scoped token exchange + mTLS credentials
@@ -216,6 +220,8 @@ func New(cfg *config.Config) (*Server, error) {
 			cat.DELETE("/entities/:kind/:name", catalogH.DeleteEntity)
 			cat.GET("/activity", catalogH.ListActivity)
 		}
+
+		api.GET("/cli/download/:platform", cliH.Download)
 
 		if scaffoldH != nil {
 			sc := api.Group("/scaffold")

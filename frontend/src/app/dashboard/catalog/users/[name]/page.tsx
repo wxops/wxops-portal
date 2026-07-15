@@ -1,30 +1,13 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { ArrowLeft, Mail } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ArrowLeft, Mail, Tag, Box, Zap, BookOpen,
+  Users, FileText, LayoutGrid, User,
+} from "lucide-react";
+import type { Entity } from "@/lib/types";
+import { EntityNavBar } from "@/components/catalog/entity-nav-bar";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
-
-interface Entity {
-  kind: string;
-  metadata: {
-    name: string;
-    title?: string;
-    description?: string;
-    tags?: string[];
-  };
-  spec: {
-    owner?: string;
-    system?: string;
-    type?: string;
-    memberOf?: string[];
-    email?: string;
-    docType?: string;
-    docStatus?: string;
-    author?: string;
-  };
-}
 
 async function fetchAll(cookie: string): Promise<Entity[]> {
   try {
@@ -45,51 +28,41 @@ function refName(ref: string): string {
   return afterColon.includes("/") ? afterColon.split("/").pop()! : afterColon;
 }
 
-const docTypeBadge: Record<string, string> = {
-  rfc:           "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
-  adr:           "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  documentation: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
-};
-
-const docStatusColors: Record<string, string> = {
-  proposed:      "text-amber-600",
-  "under-review":"text-blue-600",
-  accepted:      "text-green-600",
-  deprecated:    "text-gray-500",
-  superseded:    "text-orange-500",
-};
-
-function DocCard({ doc }: { doc: Entity }) {
-  const docType   = doc.spec.docType ?? "documentation";
-  const docStatus = doc.spec.docStatus ?? "proposed";
-  return (
-    <Link href={`/dashboard/catalog/Doc/${doc.metadata.name}`} className="block group">
-      <Card className="flex flex-col h-full transition-colors group-hover:border-primary/50 group-hover:bg-muted/30">
-        <CardHeader className="pb-2">
-          <div className="flex items-start justify-between gap-2">
-            <CardTitle className="text-sm font-medium leading-snug">
-              {doc.metadata.title ?? doc.metadata.name}
-            </CardTitle>
-            <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${docTypeBadge[docType] ?? "bg-muted text-muted-foreground"}`}>
-              {docType}
-            </span>
-          </div>
-          {doc.spec.system && (
-            <p className="text-xs font-mono text-muted-foreground">{doc.spec.system}</p>
-          )}
-        </CardHeader>
-        <CardContent className="flex flex-1 flex-col gap-1.5">
-          {doc.metadata.description && (
-            <p className="text-xs text-muted-foreground line-clamp-2">{doc.metadata.description}</p>
-          )}
-          <span className={`text-xs font-medium mt-auto ${docStatusColors[docStatus] ?? "text-muted-foreground"}`}>
-            {docStatus}
-          </span>
-        </CardContent>
-      </Card>
-    </Link>
-  );
+function avatarGradient(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const g = [
+    "from-wxops-purple to-blue-500",
+    "from-wxops-green to-wxops-cyan",
+    "from-amber-400 to-rose-500",
+    "from-wxops-cyan to-wxops-purple",
+    "from-rose-400 to-wxops-purple",
+    "from-blue-500 to-wxops-green",
+  ];
+  return g[Math.abs(hash) % g.length];
 }
+
+const DOC_TYPE_STYLE: Record<string, { badge: string; label: string }> = {
+  rfc:           { badge: "text-violet-700 bg-violet-100 border-violet-200 dark:text-violet-400 dark:bg-violet-900/30 dark:border-violet-800/40", label: "RFC" },
+  adr:           { badge: "text-blue-700 bg-blue-100 border-blue-200 dark:text-blue-400 dark:bg-blue-900/30 dark:border-blue-800/40", label: "ADR" },
+  documentation: { badge: "text-emerald-700 bg-emerald-100 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-900/30 dark:border-emerald-800/40", label: "Doc" },
+};
+
+const DOC_STATUS_STYLE: Record<string, string> = {
+  proposed:       "text-amber-600 dark:text-amber-400",
+  "under-review": "text-blue-600 dark:text-blue-400",
+  accepted:       "text-wxops-green",
+  deprecated:     "text-muted-foreground",
+  superseded:     "text-orange-500",
+};
+
+const LIFECYCLE_STYLE: Record<string, string> = {
+  experimental: "text-amber-700 bg-amber-100 border-amber-200 dark:text-amber-400 dark:bg-amber-900/30 dark:border-amber-800/40",
+  development:  "text-blue-700 bg-blue-100 border-blue-200 dark:text-blue-400 dark:bg-blue-900/30 dark:border-blue-800/40",
+  staging:      "text-violet-700 bg-violet-100 border-violet-200 dark:text-violet-400 dark:bg-violet-900/30 dark:border-violet-800/40",
+  production:   "text-green-700 bg-green-100 border-green-200 dark:text-green-400 dark:bg-green-900/30 dark:border-green-800/40",
+  deprecated:   "text-red-700 bg-red-100 border-red-200 dark:text-red-400 dark:bg-red-900/30 dark:border-red-800/40",
+};
 
 export default async function UserDetailPage({
   params,
@@ -101,147 +74,308 @@ export default async function UserDetailPage({
   const session     = cookieStore.get("wxops_session")?.value ?? "";
 
   const entities = await fetchAll(session);
-
-  const user = entities.find(
-    (e) => e.kind === "User" && e.metadata.name === name,
-  );
+  const user     = entities.find((e) => e.kind === "User" && e.metadata.name === name);
 
   const memberOfNames = (user?.spec.memberOf ?? []).map(refName);
   const groups = entities.filter(
     (e) => e.kind === "Group" && memberOfNames.includes(e.metadata.name),
   );
 
-  const userRef = `user:${name}`;
-  const authoredDocs = entities.filter(
-    (e) => e.kind === "Doc" && e.spec.author === userRef,
+  const ownedComponents = entities.filter(
+    (e) => e.kind === "Component" && refName(e.spec.owner ?? "") === name,
   );
-
-  const rfcs          = authoredDocs.filter((d) => d.spec.docType === "rfc");
-  const adrs          = authoredDocs.filter((d) => d.spec.docType === "adr");
-  const documentation = authoredDocs.filter((d) => !d.spec.docType || d.spec.docType === "documentation");
+  const ownedApis = entities.filter(
+    (e) => e.kind === "API" && refName(e.spec.owner ?? "") === name,
+  );
+  const authoredDocs = entities.filter(
+    (e) => e.kind === "Doc" && e.spec.author === `user:${name}`,
+  );
 
   const displayName = user?.metadata.title ?? user?.metadata.name ?? name;
   const initials    = displayName
-    .split(" ")
+    .split(/[\s._-]+/)
     .map((w: string) => w[0])
     .slice(0, 2)
     .join("")
-    .toUpperCase();
+    .toUpperCase() || name.slice(0, 2).toUpperCase();
+  const gradient = avatarGradient(name);
+  const tags     = user?.metadata.tags ?? [];
+  const email    = user?.spec.email as string | undefined;
+
+  if (!user) {
+    return (
+      <div className="space-y-4 max-w-lg">
+        <Link href="/dashboard/catalog" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="h-3.5 w-3.5" /> Catalog
+        </Link>
+        <div className="rounded-xl border border-dashed p-10 text-center space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <User className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">User not found</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              <code className="font-mono">@{name}</code> is not registered in the catalog.
+            </p>
+          </div>
+          <Link href="/dashboard/catalog" className="inline-flex items-center gap-1.5 rounded-lg bg-wxops-purple px-4 py-2 text-sm font-medium text-white hover:bg-wxops-purple/90 transition-colors">
+            Browse Catalog
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const hasOwned = ownedComponents.length > 0 || ownedApis.length > 0 || authoredDocs.length > 0;
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-4">
 
-      <Link
-        href="/dashboard/catalog"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Catalog
+      <Link href="/dashboard/catalog" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <ArrowLeft className="h-3.5 w-3.5" /> Catalog
       </Link>
 
-      {/* Header */}
-      <div className="rounded-lg border bg-card p-5">
-        <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xl font-bold text-primary">
+      {/* ── Profile header — horizontal ───────────────────────────────────── */}
+      <div className="rounded-xl border bg-card px-6 py-5">
+        <div className="flex items-start gap-5">
+          {/* Avatar */}
+          <div className={`shrink-0 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${gradient} text-xl font-bold text-white shadow-sm`}>
             {initials}
           </div>
-          <div className="space-y-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="secondary">User</Badge>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold leading-tight">{displayName}</h1>
+                <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                  <p className="text-xs font-mono text-muted-foreground">@{name}</p>
+                  {email && (
+                    <a href={`mailto:${email}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      <Mail className="h-3 w-3" />{email}
+                    </a>
+                  )}
+                </div>
+              </div>
+              <EntityNavBar
+                kind="User"
+                name={name}
+                title={displayName}
+                description={user.metadata.description ?? ""}
+                lifecycle=""
+              />
             </div>
-            <h1 className="text-xl font-bold">{displayName}</h1>
-            <p className="text-sm font-mono text-muted-foreground">@{name}</p>
-            {user?.spec.email && (
-              <a
-                href={`mailto:${user.spec.email}`}
-                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-              >
-                <Mail className="h-3.5 w-3.5" />
-                {user.spec.email}
-              </a>
+            {user.metadata.description && (
+              <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{user.metadata.description}</p>
+            )}
+            {tags.length > 0 && (
+              <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                <Tag className="h-3 w-3 text-muted-foreground shrink-0" />
+                {tags.map((t) => (
+                  <span key={t} className="rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs font-mono text-muted-foreground">{t}</span>
+                ))}
+              </div>
             )}
           </div>
         </div>
-
-        {user?.metadata.description && (
-          <p className="text-sm text-muted-foreground mt-4 leading-relaxed">
-            {user.metadata.description}
-          </p>
-        )}
-
-        {/* Member of */}
-        {groups.length > 0 && (
-          <div className="mt-4 pt-4 border-t flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Member of</span>
-            {groups.map((g) => (
-              <Link
-                key={g.metadata.name}
-                href={`/dashboard/catalog/groups/${g.metadata.name}`}
-                className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium hover:bg-muted transition-colors"
-              >
-                {g.metadata.title ?? g.metadata.name}
-              </Link>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Authored documents */}
-      {authoredDocs.length > 0 && (
+      {/* ── Two-column body ───────────────────────────────────────────────── */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_288px] items-start">
+
+        {/* ── Left: owned content ──────────────────────────────────────────── */}
         <div className="space-y-6">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Authored Documents
-          </h2>
+          {!hasOwned && (
+            <div className="rounded-xl border border-dashed px-6 py-10 text-center">
+              <LayoutGrid className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">
+                {displayName} doesn&apos;t own any services, APIs, or documents yet.
+              </p>
+            </div>
+          )}
 
-          {rfcs.length > 0 && (
+          {ownedComponents.length > 0 && (
             <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-violet-700 dark:text-violet-400 uppercase tracking-wider">RFCs</span>
-                <span className="text-xs text-muted-foreground">({rfcs.length})</span>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {rfcs.map((d) => <DocCard key={d.metadata.name} doc={d} />)}
+              <SectionHeader icon={Box} label="Services" count={ownedComponents.length} />
+              <div className="space-y-2">
+                {ownedComponents.map((c) => (
+                  <EntityRow key={c.metadata.name} entity={c} kind="component" />
+                ))}
               </div>
             </section>
           )}
 
-          {adrs.length > 0 && (
+          {ownedApis.length > 0 && (
             <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider">ADRs</span>
-                <span className="text-xs text-muted-foreground">({adrs.length})</span>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {adrs.map((d) => <DocCard key={d.metadata.name} doc={d} />)}
+              <SectionHeader icon={Zap} label="APIs" count={ownedApis.length} />
+              <div className="space-y-2">
+                {ownedApis.map((a) => (
+                  <EntityRow key={a.metadata.name} entity={a} kind="API" />
+                ))}
               </div>
             </section>
           )}
 
-          {documentation.length > 0 && (
+          {authoredDocs.length > 0 && (
             <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Documentation</span>
-                <span className="text-xs text-muted-foreground">({documentation.length})</span>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {documentation.map((d) => <DocCard key={d.metadata.name} doc={d} />)}
+              <SectionHeader icon={BookOpen} label="Documents" count={authoredDocs.length} />
+              <div className="space-y-2">
+                {authoredDocs.map((d) => {
+                  const docType  = d.spec.docType ?? "documentation";
+                  const docStatus = d.spec.docStatus ?? "proposed";
+                  const typeConf  = DOC_TYPE_STYLE[docType] ?? DOC_TYPE_STYLE.documentation;
+                  return (
+                    <Link
+                      key={d.metadata.name}
+                      href={`/dashboard/catalog/Doc/${d.metadata.name}`}
+                      className="flex items-start justify-between gap-3 rounded-xl border bg-card px-4 py-3 hover:bg-muted/30 transition-colors group"
+                    >
+                      <div className="min-w-0 flex items-start gap-2.5">
+                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate group-hover:text-foreground">
+                            {d.metadata.title ?? d.metadata.name}
+                          </p>
+                          {d.metadata.description && (
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">{d.metadata.description}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 ${typeConf.badge}`}>
+                          {typeConf.label}
+                        </span>
+                        <span className={`text-[10px] font-medium ${DOC_STATUS_STYLE[docStatus] ?? "text-muted-foreground"}`}>
+                          {docStatus}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             </section>
           )}
         </div>
-      )}
 
-      {authoredDocs.length === 0 && user && (
-        <div className="rounded-md border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          No documents authored by {displayName} yet.
-        </div>
-      )}
+        {/* ── Right: identity info panel ───────────────────────────────────── */}
+        <aside className="sticky top-6">
+          <div className="rounded-xl border bg-card divide-y divide-border/60">
 
-      {!user && (
-        <div className="rounded-md border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
-          User <code className="font-mono">{name}</code> not found in catalog.
-        </div>
-      )}
+            {/* Handle */}
+            <div className="px-4 py-3 space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                <User className="h-3 w-3" /> Identity
+              </p>
+              <InfoField label="Handle">
+                <span className="font-mono text-sm text-foreground">@{name}</span>
+              </InfoField>
+            </div>
+
+            {/* Groups */}
+            {groups.length > 0 && (
+              <div className="px-4 py-3 space-y-3">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                  <Users className="h-3 w-3" /> Member of
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {groups.map((g) => (
+                    <Link
+                      key={g.metadata.name}
+                      href={`/dashboard/catalog/groups/${g.metadata.name}`}
+                      className="inline-flex items-center rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-medium hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                      {g.metadata.title ?? g.metadata.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Contributions at a glance */}
+            {hasOwned && (
+              <div className="px-4 py-3 space-y-3">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Contributions
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <StatCell count={ownedComponents.length} label="services" />
+                  <StatCell count={ownedApis.length}       label="APIs" />
+                  <StatCell count={authoredDocs.length}    label="docs" />
+                </div>
+              </div>
+            )}
+
+          </div>
+        </aside>
+
+      </div>
     </div>
+  );
+}
+
+// ── Shared sub-components ─────────────────────────────────────────────────────
+
+function SectionHeader({
+  icon: Icon, label, count,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  count: number;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-xs text-muted-foreground tabular-nums">({count})</span>
+      <div className="flex-1 h-px bg-border" />
+    </div>
+  );
+}
+
+function InfoField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[10px] text-muted-foreground/70">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function StatCell({ count, label }: { count: number; label: string }) {
+  return (
+    <div>
+      <p className="text-base font-bold tabular-nums">{count}</p>
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+function EntityRow({ entity, kind }: { entity: Entity; kind: string }) {
+  return (
+    <Link
+      href={`/dashboard/catalog/${kind}/${entity.metadata.name}`}
+      className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 hover:bg-muted/30 transition-colors group"
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-medium truncate group-hover:text-foreground">
+          {entity.metadata.title ?? entity.metadata.name}
+        </p>
+        {entity.metadata.description && (
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{entity.metadata.description}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {entity.spec.type && (
+          <span className="text-[10px] font-mono text-muted-foreground border border-border rounded px-1.5 py-0.5">
+            {entity.spec.type}
+          </span>
+        )}
+        {entity.spec.lifecycle && (
+          <span className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 ${LIFECYCLE_STYLE[entity.spec.lifecycle] ?? "text-muted-foreground bg-muted border-border"}`}>
+            {entity.spec.lifecycle}
+          </span>
+        )}
+      </div>
+    </Link>
   );
 }

@@ -18,6 +18,7 @@ import {
   Terminal,
   Download,
 } from "lucide-react";
+import { PermissionsModal } from "@/components/dashboard/permissions-modal";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
@@ -401,6 +402,9 @@ export default async function DashboardPage() {
                 <p className="text-sm text-muted-foreground">No groups assigned</p>
               )}
             </div>
+
+            {/* Permissions button */}
+            <PermissionsModal groups={groups} username={session.username} />
           </div>
         </div>
 
@@ -418,27 +422,28 @@ export default async function DashboardPage() {
 
           <div className="px-4 py-3 space-y-2">
             {[
-              { label: "Linux amd64",  href: "#" },
-              { label: "Linux arm64",  href: "#" },
-              { label: "macOS arm64",  href: "#" },
-              { label: "macOS amd64",  href: "#" },
+              { label: "Linux",  os: "linux",  arch: "amd64", platform: "linux-amd64" },
+              { label: "Linux",  os: "linux",  arch: "arm64", platform: "linux-arm64" },
+              { label: "macOS",  os: "darwin", arch: "arm64", platform: "darwin-arm64" },
+              { label: "macOS",  os: "darwin", arch: "amd64", platform: "darwin-amd64" },
             ].map((p) => (
               <a
-                key={p.label}
-                href={p.href}
+                key={p.platform}
+                href={`/api/v1/cli/download/${p.platform}`}
                 className="flex items-center gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs transition-colors hover:bg-muted/50 hover:border-wxops-indigo/30"
               >
                 <Download className="h-3 w-3 text-wxops-indigo shrink-0" />
                 <span className="font-medium">{p.label}</span>
+                <span className="ml-auto font-mono text-muted-foreground">{p.arch}</span>
               </a>
             ))}
           </div>
 
           <div className="px-4 pb-3 flex items-center justify-between text-[11px] text-muted-foreground border-t pt-2.5">
             <code className="bg-muted px-1.5 py-0.5 rounded font-mono">make cli-install</code>
-            <a href="#" className="text-primary hover:underline flex items-center gap-0.5">
+            <Link href="/dashboard/catalog/docs/cli" className="text-primary hover:underline flex items-center gap-0.5">
               Docs <ArrowRight className="h-2.5 w-2.5" />
-            </a>
+            </Link>
           </div>
         </div>
       </div>

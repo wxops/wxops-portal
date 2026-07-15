@@ -788,6 +788,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/cli/download/{platform}": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Proxies the latest release asset from the portal Gitea repo using the service-account token.  Requires a valid session cookie.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "cli"
+                ],
+                "summary": "Download wxops CLI binary",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Target platform (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64)",
+                        "name": "platform",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CLI binary",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/scaffold/projects": {
             "post": {
                 "security": [

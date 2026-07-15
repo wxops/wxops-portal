@@ -128,6 +128,13 @@ type Config struct {
 	// Substituted into scaffold template CI workflow files as {{ .BotEmail }}
 	// so generated pipelines use the correct committer identity.
 	GiteaBotEmail string
+
+	// NOTE: GITEA_PORTAL_OWNER — org that owns the portal repo (defaults to GITEA_CATALOG_OWNER).
+	// NOTE: GITEA_PORTAL_REPO  — repo name where wxops CLI releases are published (default: wxops-portal-v2).
+	// The portal proxies CLI binary downloads from this repo via the service-account token
+	// so tenant developers don't need direct Gitea access.
+	GiteaPortalOwner string
+	GiteaPortalRepo  string
 }
 
 // Load reads configuration from environment variables.
@@ -186,6 +193,8 @@ func Load() *Config {
 		WebhookToken:             getEnv("WEBHOOK_TOKEN", ""),
 		GiteaBotUsername:         getEnv("GITEA_BOT_USERNAME", ""),
 		GiteaBotEmail:            getEnv("GITEA_BOT_EMAIL", ""),
+		GiteaPortalOwner:         getEnv("GITEA_PORTAL_OWNER", ""),
+		GiteaPortalRepo:          getEnv("GITEA_PORTAL_REPO", "wxops-portal-v2"),
 	}
 }
 

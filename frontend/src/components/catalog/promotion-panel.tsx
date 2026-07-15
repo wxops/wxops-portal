@@ -1375,7 +1375,7 @@ function DarlaneWizardModal({ env, mode, originalConfig, config, setConfig, subm
                     onChange={(e) => setConfig({ ...config, fileSync: e.target.checked })}
                     className="rounded border-border accent-wxops-green" />
                   <span className="font-medium">File sync</span>
-                  <span className={hintCls}>— writable volume for mutagen / VS Code Remote</span>
+                  <span className={hintCls}>— writable volume for wxops darlane sync / VS Code Remote</span>
                 </label>
                 {config.fileSync && (
                   <div className="pl-5 space-y-3">

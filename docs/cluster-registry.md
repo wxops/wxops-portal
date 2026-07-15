@@ -33,12 +33,43 @@ metadata:
     # Pinniped — required for /kubeconfig (exec-credential kubeconfig)
     wxops.cloud/issuer-url: https://supervisor.example.com/providers/pinniped
     wxops.cloud/concierge-endpoint: ""                    # defaults to api-server when empty
-    wxops.cloud/upstream-idp-name: dex                    # kubectl get oidcidentityproviders -n pinniped-supervisor
+    wxops.cloud/upstream-idp-name: "Dex OIDC Authenticator"  # metadata.name of the identity provider CR federated by the FederationDomain (see below)
     wxops.cloud/upstream-idp-type: oidc                   # oidc | ldap | activedirectory | github
 data:
   api-server: <base64(https://api.example.com:6443)>
   ca-bundle: <base64(PEM CA cert)>
 ```
+
+### upstream-idp-name — finding the right value
+
+`wxops.cloud/upstream-idp-name` must match the `displayName` of the identity provider entry inside your Pinniped Supervisor's `FederationDomain` — **not** the `metadata.name` of the `OIDCIdentityProvider` CR. The `FederationDomain` assigns a display name to each federated upstream under `spec.identityProviders[].displayName`, and that is the value `pinniped login oidc` uses via `--upstream-identity-provider-name`.
+
+```yaml
+# Example FederationDomain — the displayName is what goes in the annotation
+apiVersion: config.supervisor.pinniped.dev/v1alpha1
+kind: FederationDomain
+metadata:
+  name: wxops-federation
+  namespace: pinniped-supervisor
+spec:
+  issuer: https://supervisor.example.com/providers/pinniped
+  identityProviders:
+  - displayName: "Dex OIDC Authenticator"       # ← this value
+    objectRef:
+      apiGroup: idp.supervisor.pinniped.dev
+      kind: OIDCIdentityProvider
+      name: dex                                  # metadata.name of the OIDCIdentityProvider CR
+```
+
+To find the value for an existing setup:
+
+```bash
+kubectl get federationdomain -n pinniped-supervisor -o jsonpath='{.items[*].spec.identityProviders[*].displayName}'
+```
+
+Set `wxops.cloud/upstream-idp-type` to match the `kind` of the referenced CR: `oidc` for `OIDCIdentityProvider`, `ldap` for `LDAPIdentityProvider`, `activedirectory` for `ActiveDirectoryIdentityProvider`.
+
+---
 
 ### Pinniped CA bundle — two modes
 
@@ -81,6 +112,18 @@ The `ca-bundle` Secret key accepts a PEM-encoded certificate. You can also pass 
 ```
 
 Priority: `ca_bundle_file` > `ca_bundle_base64` > `ca_bundle`.
+
+---
+
+## User RBAC on spoke clusters
+
+Registering a cluster in the portal is only half the setup. Once a user authenticates via Pinniped, every portal cluster tab (Pods, Deployments, Services, Quotas) makes K8s API calls under **the user's own identity** — not the portal's ServiceAccount. If that identity has no RoleBinding on the spoke, the tab returns a 403 error.
+
+See **[deployment.md — Step 3b](./deployment.md#step-3b--each-spoke-cluster-tenant-user-rbac)** for the exact ClusterRole and RoleBinding manifests to apply, including:
+
+- `wxops-portal-tenant-viewer` — ClusterRole applied once per spoke (pods/services/deployments/quotas read)
+- `wxops-portal-platform-viewer` — ClusterRole for platform-team including namespace listing
+- Per-tenant `RoleBinding` template (apply when a new org namespace is created)
 
 ---
 

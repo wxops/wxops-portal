@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Download, Loader2, RefreshCw } from "lucide-react";
+import { User, Download, Loader2, RefreshCw, Copy, Check, Terminal } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { ClusterResourceTabs } from "@/components/clusters/cluster-resource-tabs";
 
 interface IdentityInfo {
@@ -43,6 +44,8 @@ export function ClusterDetail({ clusterId, clusterName }: Props) {
   const [identityState, dispatch] = useReducer(identityReducer, { status: "loading" });
   const [fetchTrigger, setFetchTrigger] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
+  const [kubeconfigDownloaded, setKubeconfigDownloaded] = useState(false);
+  const [copiedSnippet, setCopiedSnippet] = useState(false);
 
   // Button handler — dispatches loading state from an event handler (not inside an
   // effect) so the react-hooks/set-state-in-effect rule is not triggered.
@@ -81,7 +84,14 @@ export function ClusterDetail({ clusterId, clusterName }: Props) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setKubeconfigDownloaded(true);
   }
+
+  const kubeconfigSnippet = [
+    `export KUBECONFIG=~/Downloads/kubeconfig-${clusterId}.yaml`,
+    `kubectl get pods -n <your-namespace>`,
+    `kubectl auth whoami`,
+  ].join("\n");
 
   return (
     <div className="space-y-6">
@@ -154,6 +164,43 @@ export function ClusterDetail({ clusterId, clusterName }: Props) {
             </div>
           )}
         </CardContent>
+
+        {/* Kubeconfig usage snippet — shown after first download */}
+        {kubeconfigDownloaded && (
+          <div className="border-t bg-muted/20 px-5 py-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs font-medium text-muted-foreground">Use your kubeconfig</p>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(kubeconfigSnippet).then(() => {
+                    setCopiedSnippet(true);
+                    setTimeout(() => setCopiedSnippet(false), 1500);
+                  });
+                }}
+                className={cn(
+                  "flex items-center gap-1 text-[10px] rounded border px-1.5 py-0.5 transition-colors",
+                  copiedSnippet
+                    ? "text-wxops-green border-wxops-green/30 bg-wxops-green/10"
+                    : "text-muted-foreground border-border bg-muted/50 hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {copiedSnippet ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                {copiedSnippet ? "copied" : "copy all"}
+              </button>
+            </div>
+            <div className="rounded-lg border bg-card overflow-hidden">
+              {kubeconfigSnippet.split("\n").map((line, i) => (
+                <div key={i} className={cn("flex items-center gap-2 px-3 py-1.5 font-mono text-xs", i > 0 && "border-t border-border/40")}>
+                  <span className="text-muted-foreground/40 select-none tabular-nums w-3">{i + 1}</span>
+                  <span className={cn("text-foreground/80", line.startsWith("#") && "text-muted-foreground/60")}>{line}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Resource tabs — session cookie forwarded automatically */}

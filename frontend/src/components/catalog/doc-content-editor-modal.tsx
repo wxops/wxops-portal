@@ -224,7 +224,7 @@ export function DocContentEditorModal({ entity, onClose }: DocContentEditorModal
               {isDirty ? (
                 <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500 inline-block" />
-                  Unsaved changes
+                  Edited — copy &amp; commit via Git
                 </span>
               ) : (
                 <span className="text-muted-foreground/60">No changes</span>

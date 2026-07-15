@@ -823,19 +823,21 @@ func (h *CatalogHandler) ListActivity(c *gin.Context) {
 			}
 		}
 
-		author := ""
+		author, authorAvatar := "", ""
 		if pr.User != nil {
 			author = pr.User.Login
+			authorAvatar = pr.User.AvatarURL
 		}
 		entry := gin.H{
-			"number":    pr.Number,
-			"title":     pr.Title,
-			"state":     pr.State,
-			"merged":    pr.Merged,
-			"mergedAt":  pr.MergedAt,
-			"author":    author,
-			"createdAt": pr.CreatedAt,
-			"updatedAt": pr.UpdatedAt,
+			"number":       pr.Number,
+			"title":        pr.Title,
+			"state":        pr.State,
+			"merged":       pr.Merged,
+			"mergedAt":     pr.MergedAt,
+			"author":       author,
+			"authorAvatar": authorAvatar,
+			"createdAt":    pr.CreatedAt,
+			"updatedAt":    pr.UpdatedAt,
 		}
 
 		if pr.State == "closed" && !pr.Merged {
@@ -1346,9 +1348,10 @@ func (h *CatalogHandler) GetPromoStatus(c *gin.Context) {
 	locked := entity.Metadata.Annotations["wxops.cloud/deprecated"] == "true"
 
 	type overlayStatus struct {
-		Exists          bool `json:"exists"`
-		OpenPR          *int `json:"openPR,omitempty"`
-		DarlaneEnabled bool `json:"darlaneEnabled,omitempty"`
+		Exists               bool   `json:"exists"`
+		OpenPR               *int   `json:"openPR,omitempty"`
+		DarlaneEnabled       bool   `json:"darlaneEnabled,omitempty"`
+		FileSyncMountPath    string `json:"fileSyncMountPath,omitempty"`
 	}
 	type promoStatus struct {
 		Lifecycle string `json:"lifecycle"`
@@ -1450,21 +1453,26 @@ func (h *CatalogHandler) GetPromoStatus(c *gin.Context) {
 			kustYAML, ferr := h.giteaClient.GetRepoFile(c.Request.Context(), gitopsOwner, gitopsRepo, path)
 			exists := ferr == nil && len(kustYAML) > 0
 			var darlaneEnabled bool
+			var fileSyncMountPath string
 			if exists {
 				if cfg, perr := scaffold.ParseOverlayConfig(kustYAML, nil); perr == nil {
 					darlaneEnabled = cfg.DarlaneEnabled
+					fileSyncMountPath = cfg.DarlaneMountPath
 				}
 			}
 			switch env {
 			case "dev":
 				status.Overlays.Dev.Exists = exists
 				status.Overlays.Dev.DarlaneEnabled = darlaneEnabled
+				status.Overlays.Dev.FileSyncMountPath = fileSyncMountPath
 			case "staging":
 				status.Overlays.Staging.Exists = exists
 				status.Overlays.Staging.DarlaneEnabled = darlaneEnabled
+				status.Overlays.Staging.FileSyncMountPath = fileSyncMountPath
 			case "production":
 				status.Overlays.Production.Exists = exists
 				status.Overlays.Production.DarlaneEnabled = darlaneEnabled
+				status.Overlays.Production.FileSyncMountPath = fileSyncMountPath
 			}
 		}
 

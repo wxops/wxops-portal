@@ -14,7 +14,7 @@ An Internal Developer Portal (IDP) for Kubernetes-native platform teams. One OID
 - **CI/CD and release visibility** — per-entity cards showing Gitea Actions runs, git releases, container images (color-coded by environment), package dependencies, and latest image tag per environment (dev/staging/production).
 - **Activity feed** — portal-managed PR history per team, filtered by role; lifecycle status per service. Session notifications for scaffold, import, and catalog update events.
 - **Cluster views** — namespace-scoped pods and deployments derived from Pinniped group membership (no cluster-admin required); WhoAmI identity; reload without page refresh; kubeconfig download.
-- **CLI** — `wxops` binary: `login`, `catalog list/get`, and `debug` commands. Resolves entity → namespace → ready-to-run `kubectl` and `mirrord` commands; shows per-environment Darlane status from the live promostatus API. Usable in CI/CD pipelines via `WXOPS_TOKEN` env var. Cross-platform binaries for Linux, macOS, and Windows (amd64 / arm64).
+- **CLI** — `wxops` binary: `login`, `catalog list/get`, `debug`, and a full `darlane` command group (`sync`, `push`, `logs`, `restart`, `status`, `exec`, `port-forward`). `darlane sync` watches a local directory and streams changes into the Darlane pod in real time — colored startup summary, catalog pre-flight checks, tar probe with copy-paste `kubectl debug` hint for no-tar images, delete propagation, mount-path mismatch warning, rollout restart tip, and `--tail-logs` to stream pod output alongside sync events. `darlane push` runs a one-shot sync for CI pipelines. `darlane status` shows per-environment overlay, darlane flag, mount path, and image tag. Authenticated binary downloads served through the portal (`/api/v1/cli/download/:platform`) so users never need direct Gitea access. Usable in CI/CD pipelines via `WXOPS_TOKEN` env var. Cross-platform binaries for Linux and macOS (amd64 / arm64).
 
 ## Architecture
 
@@ -130,10 +130,23 @@ The `src/components/ui/` directory contains **source files owned by this repo** 
 | `internal/cluster/` | Cluster registry (static JSON or K8s Secret discovery), Pinniped token exchange |
 | `internal/config/` | All env var loading via `config.Load()` — single source of truth |
 | `internal/gitea/` | Gitea API methods: repo CRUD, file commits, PR creation, CI/package queries |
-| `internal/handlers/` | Gin route handlers: `auth.go`, `catalog.go`, `clusters.go`, `scaffold.go` |
+| `internal/handlers/` | Gin route handlers: `auth.go`, `catalog.go`, `clusters.go`, `scaffold.go`, `cli.go` |
 | `internal/scaffold/` | Manifest generators: XTenantApp, XTenantDatabase, ExternalSecret, Kustomize overlays, Image Updater CR, catalog entities |
 | `internal/server/` | Gin engine setup, route registration, CORS middleware |
 | `internal/vault/` | Vault KV v2 HTTP client — create/update only |
+
+### CLI stack (`cli/`)
+
+Standalone Go module (`github.com/wxops/wxops-cli`) — separate `go.mod`, cross-compiled for Linux and macOS (amd64 / arm64).
+
+| Layer | Package | Role |
+|---|---|---|
+| Commands | `spf13/cobra` v1.10 | Subcommand tree, flag parsing, help text |
+| File watching | `fsnotify/fsnotify` v1.7 | Cross-platform inotify/kqueue watcher for `darlane sync` |
+| Portal API | `internal/client/` | Plain HTTP + JSON client — shares the `wxops_session` cookie model |
+| Auth | `internal/client/credentials.go` | Token stored at `~/.wxops/credentials.json`; `WXOPS_TOKEN` env var for CI |
+| Session state | `~/.wxops/darlane-<service>-<env>.json` | Persists `--local`/`--remote`/`--exclude` across `sync`, `push`, `restart` |
+| Sync transport | `kubectl exec tar xf -` pipe | No daemon — tar pipe into the pod via `kubectl exec`; requires `tar` in the image |
 
 ## Quick Start
 
@@ -162,7 +175,7 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | Environment variables reference | [docs/environment-variables.md](docs/environment-variables.md) |
 | **Service catalog — YAML user guide (all kinds, annotations, link types)** | [docs/catalog-user-guide.md](docs/catalog-user-guide.md) |
 | Service catalog — design rationale | [docs/service-catalog.md](docs/service-catalog.md) |
-| Golden-path git flow (branches, CI, image tags) | [docs/golden-path-git-flow.md](docs/golden-path-git-flow.md) |
+| Golden-path git flow (branches, CI, imsage tags) | [docs/golden-path-git-flow.md](docs/golden-path-git-flow.md) |
 | Lifecycle webhook (CI in gitops-infra → portal) | [docs/lifecycle-webhook.md](docs/lifecycle-webhook.md) |
 | Cross-environment promotion design | [docs/cross-environment-promotion.md](docs/cross-environment-promotion.md) |
 | Cluster registry (K8s Secrets + clusters.json) | [docs/cluster-registry.md](docs/cluster-registry.md) |
@@ -188,7 +201,8 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | v0.2.1 | Scaffolding fixes (Image Updater naming, nginx routing, Vault update) | `shipped` |
 | v0.3.0 | Platform visibility — lifecycle promotion UI, FlexSearch command palette, catalog search, dark theme | `shipped` |
 | v0.3.1 | Portal UI polish — entity detail two-column layout, docs drawer, build-time version stamping | `shipped` |
-| v0.4.0 | CLI (`wxops` binary) + Darlane per-environment parallel debug pods + inner-loop tooling (Mirrord, Mutagen) | `shipped` |
+| v0.4.0 | CLI (`wxops` binary) + Darlane per-environment parallel debug pods + inner-loop tooling (Mirrord, `wxops darlane sync`) | `shipped` |
+| v0.4.1 | Cluster view kubectl companion (pod detail drawer, services, quotas); `darlane sync` reliability (delete propagation, initial sync, retry); darlane inner-loop DX (startup summary, pre-flight checks, `push`/`logs`/`restart`/`status` subcommands, `--tail-logs`, tar probe + `kubectl debug` hint) | `shipped` |
 | v0.5.0 | Runtime observability — ArgoCD/Crossplane XR status via Pinniped; Alertmanager active-alert surface; Grafana/Loki/Tempo deep links pre-scoped per service | `planned` |
 
 See [ROADMAP.md](ROADMAP.md) for the full feature list and architecture decisions.

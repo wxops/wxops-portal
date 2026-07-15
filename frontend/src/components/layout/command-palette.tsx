@@ -3,10 +3,11 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Search, X, Layers, Globe, Users, Database, FileText, User, Box,
+  Search, X, Layers, Globe, Users, Database, FileText, User, Box, Star, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCatalogSearch, type IndexedEntity } from "@/lib/catalog-index";
+import { getRecent, getPinned, trackVisit, type NavEntity } from "@/lib/entity-nav";
 
 // ── Kind appearance map ────────────────────────────────────────────────────────
 
@@ -23,7 +24,57 @@ const KIND: Record<string, { icon: React.ElementType; dot: string }> = {
 function entityHref(kind: string, name: string): string {
   if (kind === "System") return `/dashboard/catalog/systems/${name}`;
   if (kind === "Group")  return `/dashboard/catalog/groups/${name}`;
+  if (kind === "User")   return `/dashboard/catalog/users/${name}`;
   return `/dashboard/catalog/${kind}/${name}`;
+}
+
+function IdleSection({
+  label, icon, items, onSelect,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  items: NavEntity[];
+  onSelect: (e: NavEntity) => void;
+}) {
+  return (
+    <div className="mb-1">
+      <div className="flex items-center gap-1.5 px-4 py-1.5">
+        {icon}
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+          {label}
+        </span>
+      </div>
+      {items.map((e) => {
+        const cfg  = KIND[e.kind] ?? KIND.Component;
+        const Icon = cfg.icon;
+        return (
+          <button
+            key={`${e.kind}/${e.name}`}
+            type="button"
+            onClick={() => onSelect(e)}
+            className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-muted/50 transition-colors"
+          >
+            <Icon className={cn("h-4 w-4 shrink-0", cfg.dot.replace("bg-", "text-"))} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-medium truncate">{e.title}</span>
+                {e.lifecycle && (
+                  <span className="shrink-0 text-[10px] text-muted-foreground/50">{e.lifecycle}</span>
+                )}
+              </div>
+              {e.description && (
+                <p className="text-xs text-muted-foreground truncate">{e.description}</p>
+              )}
+            </div>
+            <span className="shrink-0 flex items-center gap-1.5">
+              <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
+              <span className="text-[10px] font-mono text-muted-foreground/50">{e.kind}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -35,6 +86,8 @@ export function CommandPalette() {
   const [selected, setSelected] = useState(0);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState(false);
+  const [recent, setRecent]     = useState<NavEntity[]>([]);
+  const [pinned, setPinned]     = useState<NavEntity[]>([]);
 
   const inputRef  = useRef<HTMLInputElement>(null);
   const listRef   = useRef<HTMLUListElement>(null);
@@ -49,6 +102,9 @@ export function CommandPalette() {
     setError(false);
     setLoading(true);
     setOpen(true);
+    // Read localStorage snapshots for the idle view
+    setRecent(getRecent().slice(0, 5));
+    setPinned(getPinned());
     // Build / retrieve the FlexSearch index (module-level cache, built once)
     getCatalogSearch()
       .then((fn) => { searchRef.current = fn; })
@@ -125,7 +181,14 @@ export function CommandPalette() {
     }
   }
 
-  function navigate(entity: IndexedEntity) {
+  function navigate(entity: { kind: string; name: string; title: string; description: string; lifecycle: string }) {
+    trackVisit({
+      kind:        entity.kind,
+      name:        entity.name,
+      title:       entity.title,
+      description: entity.description,
+      lifecycle:   entity.lifecycle,
+    });
     router.push(entityHref(entity.kind, entity.name));
     setOpen(false);
   }
@@ -250,16 +313,36 @@ export function CommandPalette() {
           </div>
         )}
 
-        {/* ── Idle hint ──────────────────────────────────────────────────────── */}
+        {/* ── Idle: pinned + recently viewed ────────────────────────────────── */}
         {!query && !error && (
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/50">
-            <span className="text-[11px] text-muted-foreground/50">
-              Search across all catalog entities
-            </span>
-            <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground/40 font-mono">
-              <span>↑↓ navigate</span>
-              <span>↵ open</span>
-            </div>
+          <div className="py-2">
+            {pinned.length > 0 && (
+              <IdleSection
+                label="Pinned"
+                icon={<Star className="h-3 w-3 fill-current text-amber-500" />}
+                items={pinned}
+                onSelect={navigate}
+              />
+            )}
+            {recent.length > 0 && (
+              <IdleSection
+                label="Recently Viewed"
+                icon={<Clock className="h-3 w-3 text-muted-foreground" />}
+                items={recent}
+                onSelect={navigate}
+              />
+            )}
+            {pinned.length === 0 && recent.length === 0 && (
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <span className="text-[11px] text-muted-foreground/50">
+                  Search across all catalog entities
+                </span>
+                <div className="hidden sm:flex items-center gap-3 text-[10px] text-muted-foreground/40 font-mono">
+                  <span>↑↓ navigate</span>
+                  <span>↵ open</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

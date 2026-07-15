@@ -15,7 +15,7 @@ inside the spoke cluster. It allows a developer to:
 
 - **Scale a dev replica up** on demand without touching the main deployment
 - **Exec directly** into the container with their own image overrides or start command
-- **File-sync** a local source tree into the pod (via Mutagen / VS Code Remote)
+- **File-sync** a local source tree into the pod (via `wxops darlane sync` or VS Code Remote)
 - **Mirror live traffic** to their local process (via Mirrord) without re-deploying
 - **Scale back to zero** when done, releasing cluster resources
 
@@ -131,7 +131,7 @@ The portal generates a [JSON 6902](https://kubectl.docs.kubernetes.io/references
 | `ttl` | string | `"4h"` | Advisory duration for auto scale-down. Format: Go duration string (`"1h"`, `"8h"`, `"24h"`). The composition or a sidecar controller reads this. See [TTL semantics](#ttl-semantics) below. |
 | `command` | []string | — | Override the container entry-point. Replaces the image `CMD`. If absent, use the image default. |
 | `image` | string | — | Override the container image for the debug pod. If absent, use the same image as the main deployment. |
-| `fileSync.enabled` | bool | — | Mount a writable `emptyDir` volume (or a PVC, composition decides) at `fileSync.mountPath`. Required for Mutagen / VS Code Remote. |
+| `fileSync.enabled` | bool | — | Mount a writable `emptyDir` volume (or a PVC, composition decides) at `fileSync.mountPath`. Required for `wxops darlane sync` / VS Code Remote. |
 | `fileSync.mountPath` | string | `"/app"` | Mount path inside the container. |
 | `fileSync.initFromImage` | string | `"true"` | Seed the writable volume via an init container. `"true"` = copy from the Darlane pod's own image; an image reference (`registry/app:tag`) = copy from a specific image; `"false"` = start with an empty volume (sync from scratch). |
 | `trafficWeight` | int32 | `0` | Percentage of ingress traffic routed to the Darlane pod. `0` = debug-only. `1–99` = A/B split. `100` = full canary. The composition should no-op if the traffic-split controller is not installed. |
@@ -274,15 +274,15 @@ The per-environment row shows one of three states:
 
 ---
 
-## Mirrord vs Mutagen — Choosing the Right Inner-Loop Tool
+## Mirrord vs `wxops darlane sync` — Choosing the Right Inner-Loop Tool
 
-Both tools connect a developer's local machine to a running pod, but they address
+Both approaches connect a developer's local machine to a running pod, but they address
 different workflows. The Darlane parallel pod supports both, and they are **not
 redundant**.
 
 ### Where the code runs
 
-| | Mirrord | Mutagen |
+| | Mirrord | `wxops darlane sync` |
 |---|---|---|
 | **Code executes** | On your **local machine** | Inside the **cluster pod** |
 | **What it provides** | Pod's network, env vars, service mesh, and mounted secrets — tunnelled to your local process | Real-time file sync from your local filesystem into the pod's writable volume |
@@ -315,19 +315,13 @@ darlane:
   # fileSync is NOT required for Mirrord
 ```
 
-### Mutagen workflow
+### `wxops darlane sync` workflow
 
-The pod runs the code. Mutagen watches your local directory and streams changes
-into the pod's writable volume, which the framework's hot-reload picks up.
+The pod runs the code. `darlane sync` watches your local directory and streams
+changes into the pod's writable volume; the framework's hot-reload picks them up.
 
 ```bash
-# Sync local ./src into the pod's /app volume
-mutagen sync create \
-  --name payment-api-darlane \
-  ./src \
-  k8s://tenant-wxops/payment-api-darlane:/app
-
-# The pod's uvicorn --reload detects the file change and restarts
+wxops darlane sync payment-api --local ./src --remote /app
 ```
 
 Darlane config needed:
@@ -355,12 +349,12 @@ darlane:
 | Debugging a specific live request with a debugger attached | Mirrord |
 | Workload needs sidecars (Vault agent, Envoy, custom CNI) to function | Mirrord |
 | Reproducing a bug that only manifests in the cluster environment | Mirrord |
-| Framework requires running inside the cluster OS/arch (GPU, native libs) | Mutagen |
-| Team shares a dev cluster and you don't want to disrupt their traffic | Mutagen (Mirrord steal mode disrupts the live pod) |
-| Testing file-watching behaviour of the app itself | Mutagen |
+| Framework requires running inside the cluster OS/arch (GPU, native libs) | `wxops darlane sync` |
+| Team shares a dev cluster and you don't want to disrupt their traffic | `wxops darlane sync` (no traffic interception) |
+| Testing file-watching behaviour of the app itself | `wxops darlane sync` |
 
-Both tools can be combined: Mutagen for continuous file sync + Mirrord for
-intercepting a specific request when the bug is tricky. They target the same
+Both approaches can be combined: `darlane sync` for continuous file sync + Mirrord
+for intercepting a specific request when the bug is tricky. They target the same
 debug pod.
 
 ---
@@ -386,6 +380,94 @@ it will disrupt other developers targeting the same service.
 
 The composition MUST scope `trafficWeight` enforcement to `dev` only unless
 `productionOverride: true` is explicitly set.
+
+---
+
+## `wxops darlane sync` — Live File Sync
+
+`wxops darlane sync` watches a local directory with `fsnotify`, batches changes
+under a debounce window, and streams them into the Darlane pod using
+`kubectl exec … tar xf -`. No daemon required.
+
+```bash
+wxops darlane sync <service>
+wxops darlane sync <service> --local ./src --remote /app/src
+wxops darlane sync <service> --exclude '*.log' --exclude 'tmp/' --no-initial-sync
+```
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--local` | `.` | Local directory to watch |
+| `--remote` | `/app` | Target path inside the container |
+| `--env`, `-e` | `dev` | Target environment: `dev`, `staging`, `production` |
+| `--namespace`, `-n` | _(derived)_ | Override the K8s namespace (default: `tenant-{org}`) |
+| `--deployment` | _(derived)_ | Override the deployment name (default: `{app}-darlane`) |
+| `--debounce` | `100` | Debounce window in milliseconds — waits this long after the last event before syncing |
+| `--exclude` | — | Glob pattern to skip (repeatable). Combined with built-in excludes. |
+| `--no-initial-sync` | `false` | Skip the initial full sync on startup |
+
+### Built-in excludes
+
+`.git`, `node_modules`, `__pycache__`, `.next`, `vendor` are always excluded
+regardless of `--exclude` flags.
+
+### Startup behavior
+
+On launch the tool prints:
+```
+watching  ./src  →  tenant-wxops/payment-api-darlane:/app
+→  initial sync: 42 file(s)
+```
+
+The initial full sync (`collectAllFiles` walk) ensures the pod volume is aligned
+with local state before incremental events start. Pass `--no-initial-sync` to skip
+this when the pod already has the correct content (e.g. seeded from image with
+`fileSync.initFromImage: true`).
+
+### Delete propagation
+
+Files and directories deleted locally are removed from the pod on the next flush:
+
+```
+✗  deleted 1 file(s): handlers/old_handler.go
+↑  synced  2 file(s): handlers/handler.go, handlers/util.go
+```
+
+Deletes are applied before syncs within each flush batch so that a
+delete-then-recreate arrives in the correct order in the pod.
+Under the hood a single `kubectl exec rm -rf` is issued per batch —
+each path is a separate argv element, not a shell argument, so there is no
+injection risk.
+
+### Debounce and max-flush cap
+
+Events are debounced for `--debounce` ms after the last event. If a continuous
+burst (e.g. a `go build` emitting hundreds of files) keeps resetting the timer,
+a flush is forced at the 2-second mark regardless. This prevents a long burst
+from blocking all syncs indefinitely.
+
+### kubectl retry
+
+On each sync or delete the tool retries up to 3 times with a 2-second delay
+between attempts. Pods restart during active development; this makes the sync
+survive a pod restart without losing a batch:
+
+```
+⚠  pod not ready, retrying (1/3)…
+↑  synced  3 file(s): main.go, handler.go, util.go
+```
+
+### Graceful shutdown
+
+`Ctrl-C` (or `SIGTERM`) flushes any pending changes before exiting:
+
+```
+^C
+↑  synced  1 file(s): main.go
+stopped.
+```
 
 ---
 
@@ -438,7 +520,7 @@ mirrord exec \
 
 ---
 
-## Not In Scope (v0.4.0)
+## Not In Scope
 
 | Feature | Status |
 |---|---|
@@ -446,3 +528,4 @@ mirrord exec \
 | TTL enforcement | Composition team defines the mechanism; portal writes the hint |
 | Darlane status from cluster (pod phase, ready) | Cluster is read-only from the portal; status from overlay only |
 | Mirrord steal-mode traffic routing | Use `mirrord exec` directly; portal only generates the kubectl commands |
+| `wxops darlane enable` write command | Enable Darlane via the portal UI; CLI is read-only for Darlane config |

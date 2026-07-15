@@ -235,3 +235,42 @@ func (c *SpokeClient) ListDeployments(ctx context.Context, namespace string) (js
 	}
 	return json.RawMessage(body), nil
 }
+
+// GetPod returns the raw Kubernetes Pod JSON for a single pod.
+func (c *SpokeClient) GetPod(ctx context.Context, namespace, name string) (json.RawMessage, error) {
+	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s", namespace, name)
+	body, status, err := c.get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("kubernetes API returned %d: %s", status, body)
+	}
+	return json.RawMessage(body), nil
+}
+
+// ListServices returns the raw Kubernetes ServiceList JSON for the given namespace.
+func (c *SpokeClient) ListServices(ctx context.Context, namespace string) (json.RawMessage, error) {
+	path := fmt.Sprintf("/api/v1/namespaces/%s/services", namespace)
+	body, status, err := c.get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("kubernetes API returned %d: %s", status, body)
+	}
+	return json.RawMessage(body), nil
+}
+
+// ListResourceQuotas returns the raw Kubernetes ResourceQuotaList JSON for the given namespace.
+func (c *SpokeClient) ListResourceQuotas(ctx context.Context, namespace string) (json.RawMessage, error) {
+	path := fmt.Sprintf("/api/v1/namespaces/%s/resourcequotas", namespace)
+	body, status, err := c.get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("kubernetes API returned %d: %s", status, body)
+	}
+	return json.RawMessage(body), nil
+}

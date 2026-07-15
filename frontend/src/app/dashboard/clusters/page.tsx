@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Server } from "lucide-react";
+import { Server, ChevronRight, Circle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
@@ -25,6 +25,15 @@ async function fetchClusters(cookie: string): Promise<{ clusters: ClusterInfo[];
   }
 }
 
+// Derive environment label and color from cluster id/name.
+function envFromCluster(id: string, name: string): { label: string; color: string; dot: string } {
+  const s = (id + " " + name).toLowerCase();
+  if (s.includes("prod"))    return { label: "production", color: "text-wxops-green border-wxops-green/40 bg-wxops-green/10",  dot: "bg-wxops-green"  };
+  if (s.includes("staging")) return { label: "staging",    color: "text-wxops-cyan border-wxops-cyan/40 bg-wxops-cyan/10",    dot: "bg-wxops-cyan"   };
+  if (s.includes("dev"))     return { label: "dev",        color: "text-wxops-purple border-wxops-purple/40 bg-wxops-purple/10", dot: "bg-wxops-purple" };
+  return                              { label: "cluster",   color: "text-muted-foreground border-border bg-muted/40",           dot: "bg-muted-foreground" };
+}
+
 export default async function ClustersPage() {
   const cookieStore = await cookies();
   const session = cookieStore.get("wxops_session")?.value ?? "";
@@ -33,55 +42,90 @@ export default async function ClustersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Clusters</h1>
-        <p className="text-muted-foreground mt-1">
-          Select a cluster and connect to view its resources.
-        </p>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Clusters</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Spoke clusters accessible via your Pinniped session.
+          </p>
+        </div>
+        {clusters.length > 0 && (
+          <span className="text-sm text-muted-foreground tabular-nums shrink-0">
+            {clusters.length} cluster{clusters.length !== 1 ? "s" : ""}
+          </span>
+        )}
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           Failed to load clusters: {error}
         </div>
       )}
 
       {clusters.length === 0 && !error && (
-        <div className="rounded-md border border-dashed px-6 py-12 text-center text-muted-foreground">
-          No clusters available. Ask an admin to grant you access.
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl border bg-muted/50">
+            <Server className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">No clusters available</p>
+            <p className="text-xs text-muted-foreground mt-1">Ask a platform admin to grant your team cluster access.</p>
+          </div>
         </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {clusters.map((cl) => (
-          <Card key={cl.id} className="flex flex-col">
-            <CardHeader className="pb-2">
+        {clusters.map((cl) => {
+          const env = envFromCluster(cl.id, cl.name);
+          return (
+            <Link
+              key={cl.id}
+              href={`/dashboard/clusters/${cl.id}`}
+              className="group flex flex-col rounded-xl border bg-card p-5 gap-4 transition-colors hover:bg-muted/30 hover:border-border/80"
+            >
+              {/* Header */}
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Server className="h-4 w-4 text-muted-foreground" />
-                  <CardTitle className="text-base">{cl.name}</CardTitle>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-muted/50">
+                    <Server className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm leading-tight truncate">{cl.name}</p>
+                    <p className="text-[11px] text-muted-foreground font-mono mt-0.5">/{cl.id}</p>
+                  </div>
                 </div>
-                <Badge variant="secondary" className="shrink-0 text-xs">
-                  Pinniped
+                <Badge
+                  className={cn(
+                    "shrink-0 text-[11px] border rounded-full px-2.5 py-0.5 font-medium capitalize",
+                    env.color
+                  )}
+                >
+                  {env.label}
                 </Badge>
               </div>
-            </CardHeader>
-            <CardContent className="flex flex-1 flex-col gap-4">
+
+              {/* API server */}
               <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">API Server</p>
-                <p className="truncate text-sm font-mono">{cl.api_server}</p>
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">API Server</p>
+                <p className="text-xs font-mono text-foreground/80 truncate">{cl.api_server}</p>
               </div>
-              <div className="mt-auto flex gap-2">
-                <Link
-                  href={`/dashboard/clusters/${cl.id}`}
-                  className="inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90"
-                >
-                  View Resources
-                </Link>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Circle className="h-2 w-2 fill-wxops-green text-wxops-green" />
+                  <span>Pinniped SSO</span>
+                </div>
+                <span className={cn(
+                  "flex items-center gap-1 text-xs font-medium transition-colors text-muted-foreground group-hover:text-foreground"
+                )}>
+                  View resources
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </span>
               </div>
-            </CardContent>
-          </Card>
-        ))}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

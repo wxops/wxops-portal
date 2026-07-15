@@ -131,13 +131,27 @@
       "concierge_endpoint": "https://<impersonation-proxy-loadbalancer-ip-or-hostname>:443",
 
       "_f_upstream_idp_name": [
-        "OPTIONAL — upstream IDP name registered in the Pinniped Supervisor.",
-        "Passed as --upstream-identity-provider-name to the pinniped CLI.",
-        "  kubectl get oidcidentityproviders   -n pinniped-supervisor",
-        "  kubectl get ldapidentityproviders   -n pinniped-supervisor",
-        "  kubectl get activedirectoryidentityproviders -n pinniped-supervisor"
+        "OPTIONAL — the displayName of the identity provider entry in the Pinniped",
+        "Supervisor's FederationDomain (spec.identityProviders[].displayName).",
+        "This is NOT the metadata.name of the OIDCIdentityProvider CR — those are",
+        "two different things linked together by the FederationDomain's objectRef.",
+        "",
+        "Example FederationDomain snippet:",
+        "  spec:",
+        "    identityProviders:",
+        "    - displayName: \"Dex OIDC Authenticator\"   ← this value",
+        "      objectRef:",
+        "        kind: OIDCIdentityProvider",
+        "        name: dex                              ← CR metadata.name (different)",
+        "",
+        "Find the value on an existing cluster:",
+        "  kubectl get federationdomain -n pinniped-supervisor \\",
+        "    -o jsonpath='{.items[*].spec.identityProviders[*].displayName}'",
+        "",
+        "Passed as --upstream-identity-provider-name to the pinniped CLI in the",
+        "generated kubeconfig."
       ],
-      "upstream_idp_name": "my-oidc-idp",
+      "upstream_idp_name": "Dex OIDC Authenticator",
 
       "_f_upstream_idp_type": [
         "OPTIONAL — must match the CR kind of upstream_idp_name.",
@@ -173,7 +187,7 @@
       ],
       "concierge_endpoint": "https://prod.k8s.example.com:6443",
 
-      "upstream_idp_name": "corporate-oidc",
+      "upstream_idp_name": "Corporate OIDC Authenticator",
       "upstream_idp_type": "oidc"
     }
   ]

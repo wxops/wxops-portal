@@ -219,6 +219,11 @@ const markdownComponents: Components = {
     ),
     em: ({ children }) => <em className="italic">{children}</em>,
     hr: () => <hr className="border-border my-6" />,
+    img: ({ src, alt }) => {
+      if (!src) return null;
+      // eslint-disable-next-line @next/next/no-img-element
+      return <img src={src} alt={alt ?? ""} className="max-w-full rounded-lg border border-border my-4" />;
+    },
 };
 
 export function DocViewer({ content }: DocViewerProps) {

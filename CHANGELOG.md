@@ -9,6 +9,12 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+## [0.4.1] — 2026-07-15
+
+### Chores
+
+- Enhance cli darlane and enhance devEx with portal ([`b1867ec`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/b1867eca779392353f526d17e5da255b40303f19))
+
 ## [0.4.0] — 2026-07-13
 
 ### Features
@@ -85,6 +91,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+[0.4.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.1
 [0.4.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.0
 [0.3.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.3.1
 [0.3.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.3.0
@@ -95,5 +102,5 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 [0.1.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.2
 [0.1.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.1
 [0.1.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.0
-[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.4.0...HEAD
+[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.4.1...HEAD
 

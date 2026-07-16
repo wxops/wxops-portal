@@ -35,6 +35,7 @@ security constraints, and conventions that are NOT obvious from the code alone.
 | Environment promotion (overlay model) | `docs/cross-environment-promotion.md` |
 | Deployment / infra | `docs/deployment.md`, `docs/environment-variables.md` |
 | Cluster features | `docs/cluster-registry.md` |
+| XTenantApp / XTenantDatabase / Vault (full spec schema, base vs overlay split, field mapping) | `docs/platform-features.md` |
 
 ## Security Constraints
 

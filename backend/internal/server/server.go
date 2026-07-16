@@ -222,6 +222,7 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 
 		api.GET("/cli/download/:platform", cliH.Download)
+		api.GET("/cli/version", cliH.Version)
 
 		if scaffoldH != nil {
 			sc := api.Group("/scaffold")

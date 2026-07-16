@@ -35,6 +35,49 @@ var platformFilenames = map[string]string{
 	"darwin-arm64": "wxops-darwin-arm64",
 }
 
+// Version returns the tag name of the latest portal release, which equals the
+// latest CLI version since CLI binaries are attached to the same release.
+//
+// @Summary      Get latest CLI version
+// @Description  Returns the tag name of the latest portal release. CLI binaries are attached to the same release, so this reflects the current CLI version.
+// @Tags         cli
+// @Produce      json
+// @Success      200  {object}  map[string]string  "version tag, e.g. {\"version\":\"v0.4.1\"}"
+// @Security     CookieAuth
+// @Router       /api/v1/cli/version [get]
+func (h *CLIHandler) Version(c *gin.Context) {
+	owner := h.cfg.GiteaPortalOwner
+	if owner == "" {
+		owner = h.cfg.GiteaCatalogOwner
+	}
+	repo := h.cfg.GiteaPortalRepo
+
+	if h.cfg.GiteaURL == "" || owner == "" {
+		c.JSON(http.StatusOK, gin.H{"version": "unknown"})
+		return
+	}
+
+	relURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/releases?limit=1", h.cfg.GiteaURL, owner, repo)
+	relReq, _ := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, relURL, nil)
+	relReq.Header.Set("Authorization", "token "+h.cfg.GiteaToken)
+
+	relResp, err := h.hc.Do(relReq)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"version": "unknown"})
+		return
+	}
+	defer relResp.Body.Close()
+
+	var releases []struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(relResp.Body).Decode(&releases); err != nil || len(releases) == 0 {
+		c.JSON(http.StatusOK, gin.H{"version": "unknown"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"version": releases[0].TagName})
+}
+
 // Download streams the latest wxops CLI binary for the requested platform.
 //
 // @Summary      Download wxops CLI binary

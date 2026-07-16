@@ -17,6 +17,7 @@ import {
   Lightbulb,
   Terminal,
   Download,
+  ExternalLink,
 } from "lucide-react";
 import { PermissionsModal } from "@/components/dashboard/permissions-modal";
 
@@ -104,6 +105,20 @@ async function fetchClusterCount(cookie: string): Promise<number> {
   }
 }
 
+async function fetchCLIVersion(cookie: string): Promise<string> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/v1/cli/version`, {
+      headers: { Cookie: `wxops_session=${cookie}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return "unknown";
+    const data = await res.json();
+    return data.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 export default async function DashboardPage() {
   const session     = await requireSession();
   const cookieStore = await cookies();
@@ -112,9 +127,10 @@ export default async function DashboardPage() {
   const groups        = session.groups ?? [];
   const isPlatformTeam = groups.includes(PLATFORM_TEAM);
 
-  const [catalog, clusterCount] = await Promise.all([
+  const [catalog, clusterCount, cliVersion] = await Promise.all([
     fetchCatalogStats(rawCookie, groups, isPlatformTeam),
     fetchClusterCount(rawCookie),
+    fetchCLIVersion(rawCookie),
   ]);
 
   const statCards = [
@@ -308,6 +324,29 @@ export default async function DashboardPage() {
             </Link>
           ))}
         </div>
+
+        {/* Platform Docs guide-book */}
+        <a
+          href="https://docs.wxops.cloud"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group block"
+        >
+          <div className="rounded-xl border bg-card px-5 py-4 flex items-center gap-4 transition-all duration-200 hover:border-wxops-purple/40 hover-glow-purple">
+            <div className="inline-flex rounded-lg p-2.5 bg-wxops-purple/10 shrink-0">
+              <BookOpen className="h-5 w-5 text-wxops-purple" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold leading-snug">Platform Docs</p>
+              <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+                Architecture, CLI reference, golden-path guides, and Darlane walkthroughs.
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-wxops-purple shrink-0 transition-all duration-200 group-hover:gap-1.5">
+              Read the docs <ArrowRight className="h-3.5 w-3.5" />
+            </span>
+          </div>
+        </a>
       </div>
 
       </div>{/* ← end left column */}
@@ -363,43 +402,50 @@ export default async function DashboardPage() {
 
             {/* Groups */}
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2.5">
-                Group (Tenant) Membership
+              <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-2">
+                Team (Tenant) Membership
               </p>
               {groups.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {groupMemberships(groups).map(({ org, teams }) => (
-                    <div key={org} className="rounded-lg border bg-muted/30 px-3 py-3 flex flex-col items-center text-center">
-                      <Link href={`/dashboard/catalog/groups/${org}`}>
-                        <Badge
-                          variant="secondary"
-                          className="bg-wxops-indigo/10 text-wxops-indigo border-wxops-indigo/25 hover:bg-wxops-indigo/20 transition-colors cursor-pointer text-sm font-semibold px-3 py-1"
+                <div className="rounded-lg border border-border/60 overflow-hidden">
+                  {groupMemberships(groups).map(({ org, teams }, i) => (
+                    <div
+                      key={org}
+                      className={cn(
+                        "flex items-start gap-0 transition-colors hover:bg-muted/25",
+                        i > 0 && "border-t border-border/50",
+                      )}
+                    >
+                      {/* Org accent bar */}
+                      <span className="w-0.5 self-stretch bg-wxops-indigo/40 shrink-0" />
+
+                      <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2 min-w-0">
+                        <Link
+                          href={`/dashboard/catalog/groups/${org}`}
+                          className="text-[10px] font-mono font-semibold text-muted-foreground/50 hover:text-wxops-indigo hover:underline leading-none shrink-0 transition-colors"
                         >
                           {org}
-                        </Badge>
-                      </Link>
-                      {teams.length > 0 && (
-                        <>
-                          <div className="w-full border-t mt-2.5 mb-2" />
-                          <div className="flex flex-wrap justify-center gap-1">
+                        </Link>
+                        {teams.length > 0 && (
+                          <>
+                            <span className="text-border/60 text-[10px] leading-none shrink-0 select-none">/</span>
                             {teams.map((t) => (
                               <Link key={t} href={`/dashboard/catalog/groups/${org}:${t}`}>
                                 <Badge
                                   variant="secondary"
-                                  className="bg-wxops-purple/10 text-wxops-purple border-wxops-purple/25 hover:bg-wxops-purple/20 transition-colors cursor-pointer text-[10px] px-1.5 py-0 h-4"
+                                  className="bg-wxops-purple/10 text-wxops-purple border-wxops-purple/20 hover:bg-wxops-purple/20 transition-colors cursor-pointer text-[10px] font-medium px-1.5 py-0 h-[18px] leading-none"
                                 >
                                   {t}
                                 </Badge>
                               </Link>
                             ))}
-                          </div>
-                        </>
-                      )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No groups assigned</p>
+                <p className="text-xs text-muted-foreground">No groups assigned</p>
               )}
             </div>
 
@@ -416,8 +462,16 @@ export default async function DashboardPage() {
             </div>
             <span className="text-xs font-semibold flex-1">wxops CLI</span>
             <span className="text-[10px] font-mono font-semibold text-wxops-indigo bg-wxops-indigo/10 border border-wxops-indigo/20 rounded-full px-1.5 py-0.5">
-              v0.4.0
+              {cliVersion}
             </span>
+            <a
+              href="https://docs.wxops.cloud/docs/cli/overview"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-wxops-indigo transition-colors"
+            >
+              Docs <ExternalLink className="h-2.5 w-2.5" />
+            </a>
           </div>
 
           <div className="px-4 py-3 space-y-2">
@@ -438,14 +492,8 @@ export default async function DashboardPage() {
               </a>
             ))}
           </div>
-
-          <div className="px-4 pb-3 flex items-center justify-between text-[11px] text-muted-foreground border-t pt-2.5">
-            <code className="bg-muted px-1.5 py-0.5 rounded font-mono">make cli-install</code>
-            <Link href="/dashboard/catalog/docs/cli" className="text-primary hover:underline flex items-center gap-0.5">
-              Docs <ArrowRight className="h-2.5 w-2.5" />
-            </Link>
-          </div>
         </div>
+
       </div>
 
     </div>

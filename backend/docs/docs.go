@@ -840,6 +840,34 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/cli/version": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Returns the tag name of the latest portal release. CLI binaries are attached to the same release, so this reflects the current CLI version.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "cli"
+                ],
+                "summary": "Get latest CLI version",
+                "responses": {
+                    "200": {
+                        "description": "version tag, e.g. {\\\"version\\\":\\\"v0.4.1\\\"}",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/scaffold/projects": {
             "post": {
                 "security": [

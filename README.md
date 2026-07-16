@@ -203,6 +203,7 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | v0.3.1 | Portal UI polish — entity detail two-column layout, docs drawer, build-time version stamping | `shipped` |
 | v0.4.0 | CLI (`wxops` binary) + Darlane per-environment parallel debug pods + inner-loop tooling (Mirrord, `wxops darlane sync`) | `shipped` |
 | v0.4.1 | Cluster view kubectl companion (pod detail drawer, services, quotas); `darlane sync` reliability (delete propagation, initial sync, retry); darlane inner-loop DX (startup summary, pre-flight checks, `push`/`logs`/`restart`/`status` subcommands, `--tail-logs`, tar probe + `kubectl debug` hint) | `shipped` |
+| v0.4.2 | Add the route for CLI Versioning `GET /api/v1/cli/version` and update UI in overview for `CLI` and `docs-site` introduced | `shipped` |
 | v0.5.0 | Runtime observability — ArgoCD/Crossplane XR status via Pinniped; Alertmanager active-alert surface; Grafana/Loki/Tempo deep links pre-scoped per service | `planned` |
 
 See [ROADMAP.md](ROADMAP.md) for the full feature list and architecture decisions.

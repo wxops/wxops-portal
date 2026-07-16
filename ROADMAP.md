@@ -271,7 +271,7 @@ These are blocked on platform-side work, not portal development.
 
 ---
 
-## Shipped — v0.4.0: Darlane & `wxops` CLI
+## Shipped — v0.4.0: Darlane & `wxops` CLI & Wire with Doc Site
 
 > Full implementation docs: [`docs/darlane.md`](docs/darlane.md), [`docs/cli.md`](docs/cli.md)
 
@@ -291,6 +291,8 @@ These are blocked on platform-side work, not portal development.
 | `trafficWeight` / A/B split | Deferred — schema field reserved |
 | TTL enforcement in composition | Deferred — portal writes the hint; composition team implements |
 | `productionOverride` — debug pods in production | Deferred — field reserved, portal never sets it |
+| `GET /api/v1/cli/version` - Add endpoint for checking latest CLI versioning for downloaded | ✓ Shipped |
+| Wire UI for docs to docs-site built by [Docusaurus](https://docusaurus.io/) | ✓ Shipped |
 
 **`wxops` CLI binary**
 

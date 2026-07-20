@@ -9,6 +9,12 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+## [0.4.3] — 2026-07-20
+
+### Chores
+
+- Support cli command for updated ([`3c29856`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/3c298561a75a64fd92c11c08b7a2e498da8418ff))
+
 ## [0.4.2] — 2026-07-16
 
 ### Chores
@@ -97,6 +103,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+[0.4.3] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.3
 [0.4.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.2
 [0.4.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.1
 [0.4.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.0
@@ -109,5 +116,5 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 [0.1.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.2
 [0.1.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.1
 [0.1.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.0
-[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.4.2...HEAD
+[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.4.3...HEAD
 

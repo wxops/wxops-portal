@@ -25,6 +25,7 @@ to explore services and generate Darlane debug commands.`,
 	root.AddCommand(commands.NewCatalogCmd())
 	root.AddCommand(commands.NewDebugCmd())
 	root.AddCommand(commands.NewDarlaneCmd())
+	root.AddCommand(commands.NewUpdateCmd(version))
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the CLI version",

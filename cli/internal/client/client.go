@@ -146,3 +146,44 @@ func (c *Client) GetPromoStatus(kind, name string) (*PromoStatus, error) {
 	}
 	return &status, nil
 }
+
+// LatestVersion returns the latest CLI version tag from the portal.
+func (c *Client) LatestVersion() (string, error) {
+	body, err := c.get("/api/v1/cli/version")
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", fmt.Errorf("unexpected response format: %w", err)
+	}
+	return resp.Version, nil
+}
+
+// DownloadCLI streams the CLI binary for the given platform.
+// The caller is responsible for closing the returned ReadCloser.
+// contentLength is -1 when the server does not send Content-Length.
+func (c *Client) DownloadCLI(platform string) (io.ReadCloser, int64, error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/api/v1/cli/download/"+platform, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Cookie", "wxops_session="+c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("portal unreachable: %w", err)
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close()
+		return nil, 0, fmt.Errorf("unauthorized — run `wxops login --portal %s` to refresh your token", c.baseURL)
+	}
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, 0, fmt.Errorf("API error %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return resp.Body, resp.ContentLength, nil
+}

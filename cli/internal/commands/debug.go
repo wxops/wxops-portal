@@ -102,9 +102,6 @@ func NewDebugCmd() *cobra.Command {
 			// ── kubectl + mirrord commands ───────────────────────────────────
 			fmt.Fprintf(out, "Commands (%s)\n\n", env)
 
-			fmt.Fprintln(out, "  # Scale up")
-			fmt.Fprintf(out, "  kubectl -n %s scale deployment/%s --replicas=1\n\n", namespace, deployName)
-
 			fmt.Fprintln(out, "  # Exec (bash)")
 			fmt.Fprintf(out, "  kubectl -n %s exec -it deployment/%s -- bash\n\n", namespace, deployName)
 
@@ -131,9 +128,6 @@ func NewDebugCmd() *cobra.Command {
 			}
 			fmt.Fprintln(out)
 			fmt.Fprintln(out)
-
-			fmt.Fprintln(out, "  # Scale down")
-			fmt.Fprintf(out, "  kubectl -n %s scale deployment/%s --replicas=0\n\n", namespace, deployName)
 
 			return nil
 		},

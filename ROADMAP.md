@@ -1,7 +1,7 @@
 # WxOps Portal — Roadmap
 
 > Living document. Updated as features ship.
-> Last updated: 2026-07-15
+> Last updated: 2026-07-20
 
 ---
 
@@ -250,6 +250,34 @@ portal so developers never need direct Gitea access.
 | `proxy_buffer_size 32k` on `/auth/` | nginx's default 4 k proxy buffer was too small for the AES-256-GCM Pinniped session cookie (id_token + access_token + refresh_token ≈ 3–4 kB), causing a 502 `upstream sent too big header` error on `/auth/callback` in K8s deployments. Fixed by adding `proxy_buffer_size 32k; proxy_buffers 4 32k;` to the `/auth/` location block. |
 | `X-Forwarded-Proto` preservation | Added `map $http_x_forwarded_proto $real_proto` so nginx passes the Ingress controller's `X-Forwarded-Proto: https` header upstream rather than overwriting it with the internal `http` scheme. |
 | Cookie `Secure` flag | Backend now detects HTTPS from `X-Forwarded-Proto` header (`secure := c.GetHeader("X-Forwarded-Proto") == "https"`) so the `Secure` flag is set correctly in production without hardcoding. |
+
+---
+
+## Shipped — v0.4.3: `wxops update` Self-Update Command
+
+Closes the last gap in the CLI lifecycle: developers can now keep the binary
+current without Gitea access, a manual download, or curl flags.
+
+### `wxops update`
+
+| Feature | Detail |
+|---|---|
+| Version check | `GET /api/v1/cli/version` returns the latest tag. If the installed version already matches, the command exits immediately with "Already up to date." |
+| Platform detection | Detects the running OS and architecture at compile time (`runtime.GOOS`/`runtime.GOARCH`) — no flags needed. |
+| Atomic replace | Binary is downloaded to a temp file in the same directory as the current executable (same filesystem as the target, so rename is guaranteed atomic). Executable bit set before rename. |
+| Symlink-safe | `filepath.EvalSymlinks` is called before writing so the real file is replaced, not the symlink. |
+| Dev build guard | Binaries stamped with `dev` (local builds without `-ldflags`) always show the prompt and never silently overwrite. |
+| `--yes` / `-y` flag | Skips the `[y/N]` confirmation for scripted use (e.g. provisioning scripts, onboarding automation). |
+| Content-length check | If the server sends `Content-Length`, the downloaded byte count is verified before the rename. An incomplete download is rejected and the temp file cleaned up. |
+
+### Portal-side requirements
+
+| Requirement | Status |
+|---|---|
+| `GET /api/v1/cli/version` — returns `{"version":"vX.Y.Z"}` | ✓ Shipped in v0.4.2 |
+| `GET /api/v1/cli/download/:platform` — streams binary | ✓ Shipped in v0.4.1 |
+
+The `wxops update` command is purely a client-side addition — no new backend endpoints.
 
 ---
 

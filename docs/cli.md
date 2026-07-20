@@ -1,6 +1,6 @@
 # `wxops` CLI
 
-> **Status:** Shipped (v0.4.0).
+> **Status:** Shipped (v0.4.0+). `wxops update` self-update command added in v0.4.3.
 > Source: `cli/` — standalone Go module (`github.com/wxops/wxops-cli`).
 > Released as cross-platform binaries attached to each Gitea tag release.
 
@@ -17,9 +17,11 @@ Use cases:
 - Browse the service catalog from the terminal or a CI job
 - Get the correct `kubectl` / `mirrord` commands for any service without opening a browser
 - Script catalog queries in shell pipelines
+- Keep the CLI itself up to date with `wxops update` — no Gitea access required
 
 The CLI never writes to Kubernetes directly — it only reads from the portal API.
-Any write operations (create overlay, enable Darlane) remain UI-only in v0.4.0.
+Write operations (create overlay, enable Darlane) remain UI-only.
+The only local mutation is `wxops update`, which replaces the CLI binary in place.
 
 ---
 
@@ -183,9 +185,6 @@ Darlane status
 
 Commands (dev)
 
-  # Scale up
-  kubectl -n tenant-wxops scale deployment/payment-api-dev --replicas=1
-
   # Exec (bash)
   kubectl -n tenant-wxops exec -it deployment/payment-api-dev -- bash
 
@@ -198,8 +197,10 @@ Commands (dev)
     --target-namespace tenant-wxops \
     -- <your-start-command>
 
-  # Scale down
-  kubectl -n tenant-wxops scale deployment/payment-api-dev --replicas=0
+  # File sync — watch local files and stream changes into the pod
+  wxops darlane sync payment-api
+  # Customise paths:
+  wxops darlane sync payment-api --local ./src --remote /app/src
 ```
 
 Namespace is derived from the entity owner without a cluster API call:
@@ -429,6 +430,48 @@ $ wxops version
 wxops version v0.4.0
 ```
 
+### `wxops update`
+
+Download the latest `wxops` binary from the portal and replace the current
+executable in place. Requires an active portal session.
+
+```
+wxops update [--yes]
+```
+
+| Flag | Description |
+|---|---|
+| `--yes`, `-y` | Skip the confirmation prompt and update immediately |
+
+**Example:**
+
+```
+$ wxops update
+Checking latest version...
+Current: v0.4.2
+Latest:  v0.4.3
+
+Download and replace current binary? [y/N] y
+Downloading v0.4.3 for linux-amd64...
+Updated to v0.4.3 (/usr/local/bin/wxops).
+```
+
+**How it works:**
+
+1. Calls `GET /api/v1/cli/version` to fetch the latest version tag from the portal.
+2. Compares against the version stamped at build time via `-ldflags`. If already up to date, exits immediately.
+3. Calls `GET /api/v1/cli/download/{os}-{arch}` — the same endpoint used by the one-click download buttons in the portal Overview page.
+4. Writes the binary to a temp file in the same directory as the current executable so the rename stays on the same filesystem.
+5. Sets the executable bit and atomically renames the temp file over the current binary.
+
+> **Permission:** if the binary lives in a system directory (e.g. `/usr/local/bin`), the
+> rename step requires write access — run with `sudo` or reinstall to a user-writable path
+> (e.g. `~/.local/bin`).
+
+> **Dev builds:** when `wxops version` reports `dev` (built locally without `-ldflags`),
+> the version comparison is skipped and the prompt always appears. This prevents silently
+> overwriting a local development build.
+
 ### `wxops login`
 
 See [Authentication](#authentication) above.
@@ -474,3 +517,4 @@ No separate tag or workflow — the CLI ships in lockstep with the portal image.
 | Token does not auto-refresh | Re-run `wxops login` when the session expires. |
 | `wxops debug` only prints dev commands by default | Use `--env staging` or `--env production` for other environments. |
 | `wxops darlane sync` requires `kubectl` in PATH | The sync command shells out to `kubectl`; the current kube context must have access to the target namespace. |
+| `wxops update` requires write access to the install directory | If the binary is in a system path (e.g. `/usr/local/bin`), run with `sudo` or use a user-writable directory. |

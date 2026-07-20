@@ -14,7 +14,7 @@ An Internal Developer Portal (IDP) for Kubernetes-native platform teams. One OID
 - **CI/CD and release visibility** — per-entity cards showing Gitea Actions runs, git releases, container images (color-coded by environment), package dependencies, and latest image tag per environment (dev/staging/production).
 - **Activity feed** — portal-managed PR history per team, filtered by role; lifecycle status per service. Session notifications for scaffold, import, and catalog update events.
 - **Cluster views** — namespace-scoped pods and deployments derived from Pinniped group membership (no cluster-admin required); WhoAmI identity; reload without page refresh; kubeconfig download.
-- **CLI** — `wxops` binary: `login`, `catalog list/get`, `debug`, and a full `darlane` command group (`sync`, `push`, `logs`, `restart`, `status`, `exec`, `port-forward`). `darlane sync` watches a local directory and streams changes into the Darlane pod in real time — colored startup summary, catalog pre-flight checks, tar probe with copy-paste `kubectl debug` hint for no-tar images, delete propagation, mount-path mismatch warning, rollout restart tip, and `--tail-logs` to stream pod output alongside sync events. `darlane push` runs a one-shot sync for CI pipelines. `darlane status` shows per-environment overlay, darlane flag, mount path, and image tag. Authenticated binary downloads served through the portal (`/api/v1/cli/download/:platform`) so users never need direct Gitea access. Usable in CI/CD pipelines via `WXOPS_TOKEN` env var. Cross-platform binaries for Linux and macOS (amd64 / arm64).
+- **CLI** — `wxops` binary: `login`, `catalog list/get`, `debug`, `update`, and a full `darlane` command group (`sync`, `push`, `logs`, `restart`, `status`, `exec`, `port-forward`). `darlane sync` watches a local directory and streams changes into the Darlane pod in real time — colored startup summary, catalog pre-flight checks, tar probe with copy-paste `kubectl debug` hint for no-tar images, delete propagation, mount-path mismatch warning, rollout restart tip, and `--tail-logs` to stream pod output alongside sync events. `darlane push` runs a one-shot sync for CI pipelines. `darlane status` shows per-environment overlay, darlane flag, mount path, and image tag. `wxops update` downloads the latest binary from the portal and replaces the current executable in place — no Gitea access or manual download required. Authenticated binary downloads served through the portal (`/api/v1/cli/download/:platform`). Usable in CI/CD pipelines via `WXOPS_TOKEN` env var. Cross-platform binaries for Linux and macOS (amd64 / arm64).
 
 ## Architecture
 
@@ -183,7 +183,7 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | Performance (cache layers, TTLs, polling, scaling) | [docs/performance.md](docs/performance.md) |
 | Local development | [docs/local-development.md](docs/local-development.md) |
 | Container design (nginx, supervisord, Dockerfile) | [docs/container.md](docs/container.md) |
-| CLI (`wxops` binary — login, catalog, debug) | [docs/cli.md](docs/cli.md) |
+| CLI (`wxops` binary — login, catalog, debug, update, darlane) | [docs/cli.md](docs/cli.md) |
 | Darlane — per-environment parallel debug pods | [docs/darlane.md](docs/darlane.md) |
 | API reference | [docs/api-reference.md](docs/api-reference.md) |
 | Release workflow | [docs/release-workflow.md](docs/release-workflow.md) |
@@ -204,6 +204,7 @@ See [docs/local-development.md](docs/local-development.md) for the full setup.
 | v0.4.0 | CLI (`wxops` binary) + Darlane per-environment parallel debug pods + inner-loop tooling (Mirrord, `wxops darlane sync`) | `shipped` |
 | v0.4.1 | Cluster view kubectl companion (pod detail drawer, services, quotas); `darlane sync` reliability (delete propagation, initial sync, retry); darlane inner-loop DX (startup summary, pre-flight checks, `push`/`logs`/`restart`/`status` subcommands, `--tail-logs`, tar probe + `kubectl debug` hint) | `shipped` |
 | v0.4.2 | Add the route for CLI Versioning `GET /api/v1/cli/version` and update UI in overview for `CLI` and `docs-site` introduced | `shipped` |
+| v0.4.3 | `wxops update` — self-update command; downloads latest binary from the portal and replaces the current executable in place | `shipped` |
 | v0.5.0 | Runtime observability — ArgoCD/Crossplane XR status via Pinniped; Alertmanager active-alert surface; Grafana/Loki/Tempo deep links pre-scoped per service | `planned` |
 
 See [ROADMAP.md](ROADMAP.md) for the full feature list and architecture decisions.

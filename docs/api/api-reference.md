@@ -6,7 +6,7 @@ All API routes are served by the Go backend. nginx routes traffic inside the con
 - `/api/v1/*` → Go `:8080` directly
 - `/api/*` → Next.js `:3000` (BFF Route Handlers that proxy to Go with the session cookie)
 
-The browser only ever talks to one origin. See [container.md](./container.md) for the full nginx routing table.
+The browser only ever talks to one origin. See [container.md](../platform/container.md) for the full nginx routing table.
 
 ---
 
@@ -29,7 +29,7 @@ The browser only ever talks to one origin. See [container.md](./container.md) fo
 
 > `POST /api/v1/webhooks/promote/:kind/:name` was removed in v0.3.0. Lifecycle promotion is now UI-driven via the Promotion panel.
 
-See [lifecycle-webhook.md](./lifecycle-webhook.md) for token configuration.
+See [lifecycle-webhook.md](../scaffolding/lifecycle-webhook.md) for token configuration.
 
 **Gitea webhook setup for cache refresh** (one-time platform-team config):
 - Repository: `gitops-infra` → Settings → Webhooks → Add
@@ -59,7 +59,7 @@ See [lifecycle-webhook.md](./lifecycle-webhook.md) for token configuration.
 
 ## Catalog (require `wxops_session` cookie)
 
-Catalog responses follow the Backstage `backstage.io/v1alpha1` envelope. See [service-catalog.md](./service-catalog.md) for the full schema.
+Catalog responses follow the Backstage `backstage.io/v1alpha1` envelope. See [service-catalog.md](../catalog/service-catalog.md) for the full schema.
 
 ### Entity CRUD
 

@@ -390,7 +390,7 @@ Wire to a Gitea push webhook on `gitops-infra` for instant catalog updates.
 
 > **v0.3.0:** `POST /api/v1/webhooks/promote/:kind/:name` was removed. Lifecycle
 > promotion is now UI-driven via the Promotion panel — no CI webhook needed.
-> See [lifecycle-webhook.md](./lifecycle-webhook.md).
+> See [lifecycle-webhook.md](../scaffolding/lifecycle-webhook.md).
 
 ---
 

@@ -2,7 +2,7 @@
 
 This guide is the authoritative reference for writing catalog entity files in the W'xOps platform. It covers every entity kind, every field, all annotation keys, link types, and the WxOps-specific extensions that go beyond the standard Backstage schema.
 
-For the design rationale and Go implementation details, see [service-catalog.md](service-catalog.md).
+For the design rationale and Go implementation details, see [service-catalog.md](./service-catalog.md).
 
 ---
 
@@ -673,7 +673,7 @@ When multiple `type: openapi` links are present, the portal tries them in order:
 
 ## Directory Layout
 
-See [service-catalog.md — Directory Layout](service-catalog.md#directory-layout-in-gitops-infra) for the full layout reference.
+See [service-catalog.md — Directory Layout](./service-catalog.md#directory-layout-in-gitops-infra) for the full layout reference.
 
 The short version: one subdirectory per team, with kind-named subdirectories inside:
 

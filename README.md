@@ -164,29 +164,30 @@ For local catalog testing without Gitea:
 CATALOG_LOCAL_DIR=./internal/catalog/examples
 ```
 
-See [docs/local-development.md](docs/local-development.md) for the full setup.
+See [docs/development/local-development.md](docs/development/local-development.md) for the full setup.
 
 ## Documentation
 
 | Topic | File |
 |---|---|
-| Architecture, auth sequence, hub-spoke topology | [docs/architecture.md](docs/architecture.md) |
-| Production deployment (RBAC, OIDCClient, steps 1–6) | [docs/deployment.md](docs/deployment.md) |
-| Environment variables reference | [docs/environment-variables.md](docs/environment-variables.md) |
-| **Service catalog — YAML user guide (all kinds, annotations, link types)** | [docs/catalog-user-guide.md](docs/catalog-user-guide.md) |
-| Service catalog — design rationale | [docs/service-catalog.md](docs/service-catalog.md) |
-| Golden-path git flow (branches, CI, imsage tags) | [docs/golden-path-git-flow.md](docs/golden-path-git-flow.md) |
-| Lifecycle webhook (CI in gitops-infra → portal) | [docs/lifecycle-webhook.md](docs/lifecycle-webhook.md) |
-| Cross-environment promotion design | [docs/cross-environment-promotion.md](docs/cross-environment-promotion.md) |
-| Cluster registry (K8s Secrets + clusters.json) | [docs/cluster-registry.md](docs/cluster-registry.md) |
-| Documentation strategy (RFC, ADR, Runbook) | [docs/documentation-strategy.md](docs/documentation-strategy.md) |
-| Performance (cache layers, TTLs, polling, scaling) | [docs/performance.md](docs/performance.md) |
-| Local development | [docs/local-development.md](docs/local-development.md) |
-| Container design (nginx, supervisord, Dockerfile) | [docs/container.md](docs/container.md) |
-| CLI (`wxops` binary — login, catalog, debug, update, darlane) | [docs/cli.md](docs/cli.md) |
-| Darlane — per-environment parallel debug pods | [docs/darlane.md](docs/darlane.md) |
-| API reference | [docs/api-reference.md](docs/api-reference.md) |
-| Release workflow | [docs/release-workflow.md](docs/release-workflow.md) |
+| Architecture, auth sequence, hub-spoke topology | [docs/concepts/architecture.md](docs/concepts/architecture.md) |
+| Production deployment (RBAC, OIDCClient, steps 1–6) | [docs/getting-started/deployment.md](docs/getting-started/deployment.md) |
+| Environment variables reference | [docs/getting-started/environment-variables.md](docs/getting-started/environment-variables.md) |
+| **Service catalog — YAML user guide (all kinds, annotations, link types)** | [docs/catalog/catalog-user-guide.md](docs/catalog/catalog-user-guide.md) |
+| Service catalog — design rationale | [docs/catalog/service-catalog.md](docs/catalog/service-catalog.md) |
+| Golden-path git flow (branches, CI, imsage tags) | [docs/scaffolding/golden-path-git-flow.md](docs/scaffolding/golden-path-git-flow.md) |
+| Lifecycle webhook (CI in gitops-infra → portal) | [docs/scaffolding/lifecycle-webhook.md](docs/scaffolding/lifecycle-webhook.md) |
+| Cross-environment promotion design | [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md) |
+| Cluster registry (K8s Secrets + clusters.json) | [docs/platform/cluster-registry.md](docs/platform/cluster-registry.md) |
+| Documentation strategy (RFC, ADR, Runbook) | [docs/catalog/documentation-strategy.md](docs/catalog/documentation-strategy.md) |
+| Performance (cache layers, TTLs, polling, scaling) | [docs/concepts/performance.md](docs/concepts/performance.md) |
+| Enterprise roadmap & platform evolution (audit, security, scorecards, cost, XDarlane, Guardian) | [docs/roadmap/enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md) |
+| Local development | [docs/development/local-development.md](docs/development/local-development.md) |
+| Container design (nginx, supervisord, Dockerfile) | [docs/platform/container.md](docs/platform/container.md) |
+| CLI (`wxops` binary — login, catalog, debug, update, darlane) | [docs/cli/cli.md](docs/cli/cli.md) |
+| Darlane — per-environment parallel debug pods | [docs/darlane/darlane.md](docs/darlane/darlane.md) |
+| API reference | [docs/api/api-reference.md](docs/api/api-reference.md) |
+| Release workflow | [docs/development/release-workflow.md](docs/development/release-workflow.md) |
 | Roadmap & architecture decisions | [ROADMAP.md](ROADMAP.md) |
 
 ## Roadmap

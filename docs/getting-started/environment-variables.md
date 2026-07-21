@@ -105,11 +105,11 @@ a catalog commit so new entities appear without delay.
 > **v0.3.0 change:** `POST /api/v1/webhooks/promote/:kind/:name` has been removed.
 > Lifecycle promotion (`experimental → development → staging → production`) is now
 > UI-driven via the Promotion panel on each Component detail page.
-> See [lifecycle-webhook.md](./lifecycle-webhook.md) for the full promotion flow.
+> See [lifecycle-webhook.md](../scaffolding/lifecycle-webhook.md) for the full promotion flow.
 
 ### Secret management in production
 
-Recommended: use ESO (External Secrets Operator) to sync secrets from Vault into a Kubernetes Secret, then reference it with `envFrom: secretRef`. See the Design Decisions section in [container.md](./container.md) for the rationale over Vault Agent file injection.
+Recommended: use ESO (External Secrets Operator) to sync secrets from Vault into a Kubernetes Secret, then reference it with `envFrom: secretRef`. See the Design Decisions section in [container.md](../platform/container.md) for the rationale over Vault Agent file injection.
 
 ```yaml
 envFrom:

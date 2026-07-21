@@ -196,7 +196,8 @@ Platform-team users fall through to the K8s API and see all namespaces.
 
 | Doc | What it covers |
 |-----|---------------|
-| [docs/architecture.md](architecture.md) | Auth flow, session model, Pinniped token exchange |
-| [docs/darlane.md](darlane.md) | Darlane XR schema, wizard, per-env permission model |
-| [docs/cross-environment-promotion.md](cross-environment-promotion.md) | Full promotion flow, overlay config, deprecation |
-| [docs/lifecycle-webhook.md](lifecycle-webhook.md) | CI webhook that fires on dev overlay merge |
+| [docs/security/security-assurance.md](security-assurance.md) | Evidence that the portal is a passive reflector — no cluster writes, no traffic interception, bounded egress, assume-breach blast radius |
+| [docs/architecture.md](../concepts/architecture.md) | Auth flow, session model, Pinniped token exchange |
+| [docs/darlane.md](../darlane/darlane.md) | Darlane XR schema, wizard, per-env permission model |
+| [docs/cross-environment-promotion.md](../scaffolding/cross-environment-promotion.md) | Full promotion flow, overlay config, deprecation |
+| [docs/lifecycle-webhook.md](../scaffolding/lifecycle-webhook.md) | CI webhook that fires on dev overlay merge |

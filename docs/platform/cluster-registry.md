@@ -119,7 +119,7 @@ Priority: `ca_bundle_file` > `ca_bundle_base64` > `ca_bundle`.
 
 Registering a cluster in the portal is only half the setup. Once a user authenticates via Pinniped, every portal cluster tab (Pods, Deployments, Services, Quotas) makes K8s API calls under **the user's own identity** — not the portal's ServiceAccount. If that identity has no RoleBinding on the spoke, the tab returns a 403 error.
 
-See **[deployment.md — Step 3b](./deployment.md#step-3b--each-spoke-cluster-tenant-user-rbac)** for the exact ClusterRole and RoleBinding manifests to apply, including:
+See **[deployment.md — Step 3b](../getting-started/deployment.md#step-3b--each-spoke-cluster-tenant-user-rbac)** for the exact ClusterRole and RoleBinding manifests to apply, including:
 
 - `wxops-portal-tenant-viewer` — ClusterRole applied once per spoke (pods/services/deployments/quotas read)
 - `wxops-portal-platform-viewer` — ClusterRole for platform-team including namespace listing

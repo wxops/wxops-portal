@@ -301,7 +301,7 @@ These are blocked on platform-side work, not portal development.
 
 ## Shipped — v0.4.0: Darlane & `wxops` CLI & Wire with Doc Site
 
-> Full implementation docs: [`docs/darlane.md`](docs/darlane.md), [`docs/cli.md`](docs/cli.md)
+> Full implementation docs: [`docs/darlane/darlane.md`](docs/darlane/darlane.md), [`docs/cli/cli.md`](docs/cli/cli.md)
 
 **Darlane — per-environment parallel debug pods**
 
@@ -315,7 +315,7 @@ These are blocked on platform-side work, not portal development.
 | `promostatus` returns `darlaneEnabled` per env (read live from overlay) | ✓ Shipped |
 | Promotion panel: "Enable Darlane" button + 2-step wizard + patch preview | ✓ Shipped |
 | Inline copy-paste kubectl / mirrord debug commands when Darlane is active | ✓ Shipped |
-| XR schema contract defined (see `docs/darlane.md`) | ✓ Shipped |
+| XR schema contract defined (see `docs/darlane/darlane.md`) | ✓ Shipped |
 | `trafficWeight` / A/B split | Deferred — schema field reserved |
 | TTL enforcement in composition | Deferred — portal writes the hint; composition team implements |
 | `productionOverride` — debug pods in production | Deferred — field reserved, portal never sets it |
@@ -374,13 +374,21 @@ observability surface that links to the existing LGTM stack rather than duplicat
 | Catalog completeness score | Per-entity quality score: description, owner, tags, links, lifecycle, API spec. Scaffolded entities score well by default; most useful for manually registered or legacy entities. |
 | DORA-lite metrics | Deployment frequency (successful prod workflow runs / week) and lead time (PR open → merge → image tag) computed from data the portal already collects. |
 
-See [docs/cross-environment-promotion.md](docs/cross-environment-promotion.md) for the promotion model that feeds into this observability layer.
+See [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md) for the promotion model that feeds into this observability layer.
 
 ---
 
 ## Backlog — Enterprise & Intelligence
 
 Not scheduled. Prioritized by real usage feedback.
+
+> **Dev-ready specs:** the items in this section are turned into a phased, code-grounded
+> development plan (release framing v0.6.0+, backend package/route surface, XDarlane XRD,
+> Guardian) in [docs/roadmap/enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md).
+>
+> **Intelligence vision:** how system intelligence combines with Darlane for
+> diagnose-and-validate incident response (on-call triage, hotfix, deep analysis) is in
+> [docs/roadmap/system-intelligence.md](docs/roadmap/system-intelligence.md).
 
 ### Cross-Tenant Dependency Visibility
 
@@ -514,11 +522,11 @@ Key decisions that shape all future work.
 | Document | Purpose |
 |----------|---------|
 | [README.md](README.md) | System overview, quick start, doc index |
-| [docs/architecture.md](docs/architecture.md) | Auth model, Pinniped, hub-spoke topology |
-| [docs/platform-engineering-rationale.md](docs/platform-engineering-rationale.md) | Why Crossplane + Portal + Golden Path |
-| [docs/cross-environment-promotion.md](docs/cross-environment-promotion.md) | Per-environment config, lifecycle promotion |
-| [docs/golden-path-git-flow.md](docs/golden-path-git-flow.md) | Branch model, CI pipeline, image lifecycle |
-| [docs/lifecycle-webhook.md](docs/lifecycle-webhook.md) | CI webhook for lifecycle promotion, trust chain |
-| [docs/documentation-strategy.md](docs/documentation-strategy.md) | ADR, RFC, Runbook strategy |
-| [docs/service-catalog.md](docs/service-catalog.md) | Entity kinds, relationships |
-| [docs/catalog-user-guide.md](docs/catalog-user-guide.md) | YAML field reference, examples |
+| [docs/concepts/architecture.md](docs/concepts/architecture.md) | Auth model, Pinniped, hub-spoke topology |
+| [docs/concepts/platform-engineering-rationale.md](docs/concepts/platform-engineering-rationale.md) | Why Crossplane + Portal + Golden Path |
+| [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md) | Per-environment config, lifecycle promotion |
+| [docs/scaffolding/golden-path-git-flow.md](docs/scaffolding/golden-path-git-flow.md) | Branch model, CI pipeline, image lifecycle |
+| [docs/scaffolding/lifecycle-webhook.md](docs/scaffolding/lifecycle-webhook.md) | CI webhook for lifecycle promotion, trust chain |
+| [docs/catalog/documentation-strategy.md](docs/catalog/documentation-strategy.md) | ADR, RFC, Runbook strategy |
+| [docs/catalog/service-catalog.md](docs/catalog/service-catalog.md) | Entity kinds, relationships |
+| [docs/catalog/catalog-user-guide.md](docs/catalog/catalog-user-guide.md) | YAML field reference, examples |

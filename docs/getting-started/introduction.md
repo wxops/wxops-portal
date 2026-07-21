@@ -152,7 +152,7 @@ user's tokens. For Gitea/Vault, the backend uses service tokens. For Kubernetes
 reads, the portal forwards the user's own Pinniped credentials — RBAC controls
 what each user can see. No per-cluster service accounts.
 
-See [architecture.md](architecture.md) for the full auth sequence, hub-spoke
+See [architecture.md](../concepts/architecture.md) for the full auth sequence, hub-spoke
 topology, and token exchange flow.
 
 ---
@@ -178,8 +178,8 @@ System ──── owns ────► Component ──── providesApis ─
 - Lifecycle tracking (experimental → development → production)
 - CI/CD status, releases, container images, dependency tracking per entity
 
-See [service-catalog.md](service-catalog.md) and
-[catalog-user-guide.md](catalog-user-guide.md).
+See [service-catalog.md](../catalog/service-catalog.md) and
+[catalog-user-guide.md](../catalog/catalog-user-guide.md).
 
 ### Golden-Path Scaffolding
 
@@ -194,7 +194,7 @@ One-click project creation from curated templates:
 Git-flow branching: `develop` (default, CI builds `dev-*` images) →
 `staging` (RC tags) → `main` (production releases).
 
-See [golden-path-git-flow.md](golden-path-git-flow.md).
+See [golden-path-git-flow.md](../scaffolding/golden-path-git-flow.md).
 
 ### Documentation
 
@@ -202,7 +202,7 @@ ADR, RFC, and Runbook entities linked to catalog components. Documents are
 `Doc` kind entities with `relatedTo` references. The portal renders them
 alongside the services they describe.
 
-See [documentation-strategy.md](documentation-strategy.md).
+See [documentation-strategy.md](../catalog/documentation-strategy.md).
 
 ### Cluster Registry
 
@@ -210,7 +210,7 @@ Multi-cluster visibility via Pinniped hub-spoke topology. The portal discovers
 spoke clusters from hub secrets and proxies K8s API calls using the user's
 Pinniped credentials. Each cluster shows namespaces, workloads, and node status.
 
-See [cluster-registry.md](cluster-registry.md).
+See [cluster-registry.md](../platform/cluster-registry.md).
 
 ---
 
@@ -276,37 +276,37 @@ Developer                Portal                Gitea              Cluster
 
 | Document | Description |
 |----------|-------------|
-| [architecture.md](architecture.md) | Auth model, hub-spoke topology, Pinniped integration |
-| [deployment.md](deployment.md) | Helm chart, container builds, production deployment |
-| [container.md](container.md) | Docker build, multi-stage image |
-| [environment-variables.md](environment-variables.md) | All backend config vars |
-| [local-development.md](local-development.md) | Dev setup, local catalog, scaffold testing |
-| [release-workflow.md](release-workflow.md) | Versioning, changelog, git-cliff |
+| [architecture.md](../concepts/architecture.md) | Auth model, hub-spoke topology, Pinniped integration |
+| [deployment.md](./deployment.md) | Helm chart, container builds, production deployment |
+| [container.md](../platform/container.md) | Docker build, multi-stage image |
+| [environment-variables.md](./environment-variables.md) | All backend config vars |
+| [local-development.md](../development/local-development.md) | Dev setup, local catalog, scaffold testing |
+| [release-workflow.md](../development/release-workflow.md) | Versioning, changelog, git-cliff |
 
 ### Features
 
 | Document | Description |
 |----------|-------------|
-| [service-catalog.md](service-catalog.md) | Entity kinds, relationships, data model |
-| [catalog-user-guide.md](catalog-user-guide.md) | YAML field reference, annotation keys, examples |
-| [golden-path-git-flow.md](golden-path-git-flow.md) | Branch model, CI pipeline, promotion flow |
-| [lifecycle-webhook.md](lifecycle-webhook.md) | ArgoCD webhook for automatic lifecycle promotion, trust chain, validation |
-| [documentation-strategy.md](documentation-strategy.md) | ADR, RFC, Runbook strategy and rendering |
-| [cluster-registry.md](cluster-registry.md) | Multi-cluster discovery and status |
+| [service-catalog.md](../catalog/service-catalog.md) | Entity kinds, relationships, data model |
+| [catalog-user-guide.md](../catalog/catalog-user-guide.md) | YAML field reference, annotation keys, examples |
+| [golden-path-git-flow.md](../scaffolding/golden-path-git-flow.md) | Branch model, CI pipeline, promotion flow |
+| [lifecycle-webhook.md](../scaffolding/lifecycle-webhook.md) | ArgoCD webhook for automatic lifecycle promotion, trust chain, validation |
+| [documentation-strategy.md](../catalog/documentation-strategy.md) | ADR, RFC, Runbook strategy and rendering |
+| [cluster-registry.md](../platform/cluster-registry.md) | Multi-cluster discovery and status |
 
 ### API
 
 | Document | Description |
 |----------|-------------|
-| [api-reference.md](api-reference.md) | REST API endpoints, request/response formats |
+| [api-reference.md](../api/api-reference.md) | REST API endpoints, request/response formats |
 
 ### Strategy & Roadmap
 
 | Document | Description |
 |----------|-------------|
-| [ROADMAP.md](../ROADMAP.md) | Release history, current branch status, versioned plans (v0.3.0 → v0.5.0+), architecture decisions |
-| [platform-engineering-rationale.md](platform-engineering-rationale.md) | Why Crossplane + Portal + Golden Path: tradeoffs, complexity analysis, business case, proving the model |
-| [cross-environment-promotion.md](cross-environment-promotion.md) | Enterprise feature design: per-environment config, lifecycle-driven promotion, ArgoCD+Pinniped status |
+| [ROADMAP.md](../../ROADMAP.md) | Release history, current branch status, versioned plans (v0.3.0 → v0.5.0+), architecture decisions |
+| [platform-engineering-rationale.md](../concepts/platform-engineering-rationale.md) | Why Crossplane + Portal + Golden Path: tradeoffs, complexity analysis, business case, proving the model |
+| [cross-environment-promotion.md](../scaffolding/cross-environment-promotion.md) | Enterprise feature design: per-environment config, lifecycle-driven promotion, ArgoCD+Pinniped status |
 
 ---
 

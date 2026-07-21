@@ -286,7 +286,7 @@ stopped.
 
 Built-in excludes (always skipped): `.git`, `node_modules`, `__pycache__`, `.next`, `vendor`.
 
-See [docs/darlane.md](./darlane.md#wxops-darlane-sync--live-file-sync) for the full reference.
+See [docs/darlane.md](../darlane/darlane.md#wxops-darlane-sync--live-file-sync) for the full reference.
 
 ### `wxops darlane push <service>`
 

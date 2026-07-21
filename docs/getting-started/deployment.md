@@ -316,13 +316,13 @@ stringData:
     -----END CERTIFICATE-----
 ```
 
-See [cluster-registry.md](./cluster-registry.md) for the full annotation schema and CA bundle options.
+See [cluster-registry.md](../platform/cluster-registry.md) for the full annotation schema and CA bundle options.
 
 ---
 
 ## Step 5 — Deploy the portal
 
-The portal ships as a single Docker image (`Dockerfile` at repo root) combining nginx, the Go backend, and the Next.js SSR server under supervisord. See [container.md](./container.md) for the internal design.
+The portal ships as a single Docker image (`Dockerfile` at repo root) combining nginx, the Go backend, and the Next.js SSR server under supervisord. See [container.md](../platform/container.md) for the internal design.
 
 ```yaml
 apiVersion: apps/v1

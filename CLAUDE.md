@@ -19,23 +19,23 @@ security constraints, and conventions that are NOT obvious from the code alone.
 | Doc | Why |
 |-----|-----|
 | `ROADMAP.md` | What shipped (v0.1.0–v0.3.0), what's pending, what's next (v0.4.0+), architecture decisions |
-| `docs/architecture.md` | Auth model (Pinniped), hub-spoke topology, security boundaries |
-| `docs/platform-engineering-rationale.md` | Why Crossplane + Portal, tradeoffs, business case, proving the model |
+| `docs/concepts/architecture.md` | Auth model (Pinniped), hub-spoke topology, security boundaries |
+| `docs/concepts/platform-engineering-rationale.md` | Why Crossplane + Portal, tradeoffs, business case, proving the model |
 
 ### Read when touching specific areas
 
 | Area | Doc |
 |------|-----|
-| Scaffold / project creation | `docs/golden-path-git-flow.md` |
-| Darlane (per-env debug pods, XR schema) | `docs/darlane.md` |
-| `wxops` CLI (commands, auth, local build) | `docs/cli.md` |
-| Lifecycle promotion / cache webhook | `docs/lifecycle-webhook.md` |
-| Catalog entities | `docs/service-catalog.md`, `docs/catalog-user-guide.md` |
-| RFC, ADR, Runbook | `docs/documentation-strategy.md` |
-| Environment promotion (overlay model) | `docs/cross-environment-promotion.md` |
-| Deployment / infra | `docs/deployment.md`, `docs/environment-variables.md` |
-| Cluster features | `docs/cluster-registry.md` |
-| XTenantApp / XTenantDatabase / Vault (full spec schema, base vs overlay split, field mapping) | `docs/platform-features.md` |
+| Scaffold / project creation | `docs/scaffolding/golden-path-git-flow.md` |
+| Darlane (per-env debug pods, XR schema) | `docs/darlane/darlane.md` |
+| `wxops` CLI (commands, auth, local build) | `docs/cli/cli.md` |
+| Lifecycle promotion / cache webhook | `docs/scaffolding/lifecycle-webhook.md` |
+| Catalog entities | `docs/catalog/service-catalog.md`, `docs/catalog/catalog-user-guide.md` |
+| RFC, ADR, Runbook | `docs/catalog/documentation-strategy.md` |
+| Environment promotion (overlay model) | `docs/scaffolding/cross-environment-promotion.md` |
+| Deployment / infra | `docs/getting-started/deployment.md`, `docs/getting-started/environment-variables.md` |
+| Cluster features | `docs/platform/cluster-registry.md` |
+| XTenantApp / XTenantDatabase / Vault (full spec schema, base vs overlay split, field mapping) | `docs/platform/platform-features.md` |
 
 ## Security Constraints
 

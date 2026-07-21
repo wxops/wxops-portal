@@ -6,7 +6,7 @@ Catalog data lives in `gitops-infra/catalog/` in Gitea. The portal reads it on a
 
 ---
 
-> **Writing catalog YAML?** See [catalog-user-guide.md](catalog-user-guide.md) for the full field reference, all annotation keys, link types, and complete examples for every entity kind.
+> **Writing catalog YAML?** See [catalog-user-guide.md](./catalog-user-guide.md) for the full field reference, all annotation keys, link types, and complete examples for every entity kind.
 
 ## Entity Kinds
 

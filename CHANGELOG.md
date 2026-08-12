@@ -9,6 +9,16 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+## [0.5.0] — 2026-08-12
+
+### Documentation
+
+- Organize docs for entire portal project ([`f29033c`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/f29033cca8f7a541a0aac71473384f2d792d95cc))
+
+### Features
+
+- Integrate runtime observability into Portal with LGTM stack and ArgoCD Status for XRs and Application Synced ([`40ac926`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/40ac926e562e8fd7bdc3df7609a58ef4af2b1175))
+
 ## [0.4.3] — 2026-07-20
 
 ### Chores
@@ -103,6 +113,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+[0.5.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.5.0
 [0.4.3] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.3
 [0.4.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.2
 [0.4.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.1
@@ -116,5 +127,5 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 [0.1.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.2
 [0.1.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.1
 [0.1.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.0
-[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.4.3...HEAD
+[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.5.0...HEAD
 

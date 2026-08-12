@@ -71,6 +71,39 @@ or deletes. When `VAULT_ADDR` is empty, the Vault write step is skipped silently
 | `VAULT_TOKEN` | — | | Short-lived token with `wxops-portal` policy. Create with `vault token create -policy=wxops-portal -period=720h -orphan -renewable=true` and keep the accessor for renewal. |
 | `VAULT_KV_MOUNT` | `secret` | | KV v2 mount path. Secrets are written to `{VAULT_KV_MOUNT}/{team}/{appName}`. |
 
+### Runtime Observability
+
+Powers the Runtime tab on Component pages: live ArgoCD sync/health, Crossplane
+XR status, and deep links into Grafana. See
+[docs/platform/observability.md](../platform/observability.md) for the selectors,
+the RBAC prerequisite, and known limitations.
+
+These are **runtime** variables read by the Go backend and shipped to the browser
+inside the API response — unlike `NEXT_PUBLIC_APP_VERSION` below, which is baked
+into the image at build time. Changing a dashboard URL is therefore a Deployment
+env edit, not a CI rebuild.
+
+| Variable | Default | Required | Description |
+|---|---|---|---|
+| `ARGOCD_URL` | — | | ArgoCD base URL — `https://argocd.example.com`. When empty, the ArgoCD button is hidden. |
+| `ARGOCD_NAMESPACE` | `argocd` | | Namespace holding `Application` CRs. Reading them requires a `RoleBinding` for the tenant group in this namespace. |
+| `LGTM_GRAFANA_URL` | — | | Grafana base URL. All signal links are Grafana Explore URLs, so this alone enables logs/traces/metrics/profiles. When empty, every signal link is hidden. |
+| `LGTM_LOKI_DATASOURCE` | `Loki` | | Loki datasource name or uid. |
+| `LGTM_TEMPO_DATASOURCE` | `Tempo` | | Tempo datasource name or uid. |
+| `LGTM_PROMETHEUS_DATASOURCE` | `prometheus` | | Prometheus datasource uid — lowercase in kube-prometheus-stack. |
+| `LGTM_PYROSCOPE_DATASOURCE` | `Pyroscope` | | Pyroscope datasource name or uid. |
+| `ALERTMANAGER_URL` | — | | Enables the active-alerts panel on the Runtime tab. In-cluster address for kube-prometheus-stack: `http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093`. When empty the feature is off and the panel is hidden. |
+
+The Grafana/LGTM values above are **only used to build URLs** — the portal never
+calls Grafana, Loki, Tempo or Pyroscope; your browser follows the links using
+your own Grafana session.
+
+`ALERTMANAGER_URL` is different: setting it makes the portal query Alertmanager
+server-side, which is its **only egress destination outside Gitea, Vault, the
+OIDC issuer and the Kubernetes APIs**. It is opt-in, read-only, and bounded by
+a 5s timeout. Operators enabling it should add the matching rule to the egress
+NetworkPolicy — see [security-assurance.md](../security/security-assurance.md) §4b.
+
 ### CLI Download Proxy
 
 The portal serves CLI binary downloads at `GET /api/v1/cli/download/:platform` so
@@ -144,15 +177,11 @@ Frontend variables fall into two categories with fundamentally different lifecyc
 
 | Variable | Build-arg name | Default | Description |
 |---|---|---|---|
-| `NEXT_PUBLIC_ARGOCD_URL` | `NEXT_PUBLIC_ARGOCD_URL` | _(empty)_ | Full URL of your ArgoCD instance (e.g. `https://argocd.wxops.cloud`). When set, entity detail pages render a linked ArgoCD button. When empty the button is hidden. Set via the org-level Gitea Actions variable `ARGOCD_URL`. |
 | `NEXT_PUBLIC_APP_VERSION` | `APP_VERSION` | `0.0.0` | Semver string baked into the portal UI (topbar version badge). CI derives it from the git tag (`v0.3.1` → `0.3.1`) and passes it as `APP_VERSION`. **`frontend/package.json` is intentionally NOT updated by CI** — changing the package version invalidates the Next.js/Turbopack build cache and causes a full recompile on the next local dev restart. |
 
 **Dockerfile wiring** (Stage 2):
 
 ```dockerfile
-ARG NEXT_PUBLIC_ARGOCD_URL=""
-ENV NEXT_PUBLIC_ARGOCD_URL=$NEXT_PUBLIC_ARGOCD_URL
-
 ARG APP_VERSION="0.0.0"
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 
@@ -172,8 +201,18 @@ RUN npm run build
   uses: docker/build-push-action@v6
   with:
     build-args: |
-      NEXT_PUBLIC_ARGOCD_URL=${{ vars.ARGOCD_URL }}
       APP_VERSION=${{ env.APP_VERSION }}
 ```
 
-**Local development:** both variables default to empty / `0.0.0` when running `npm run dev`. The ArgoCD button is hidden when `NEXT_PUBLIC_ARGOCD_URL` is empty, and the version badge is simply absent from the topbar dropdown when `NEXT_PUBLIC_APP_VERSION` is unset.
+**Local development:** the version badge is simply absent from the topbar
+dropdown when `NEXT_PUBLIC_APP_VERSION` is unset.
+
+> **Removed in v0.5.0 — `NEXT_PUBLIC_ARGOCD_URL`.** ArgoCD's URL is now the
+> runtime backend variable `ARGOCD_URL` (see *Runtime Observability* above),
+> served inside API responses instead of baked into the bundle. Operators
+> repoint ArgoCD with a Deployment env edit rather than a CI rebuild. The
+> org-level Gitea Actions variable `ARGOCD_URL` is no longer read at build time
+> and can be removed from the workflow.
+>
+> Prefer this pattern for any new URL: a `NEXT_PUBLIC_*` build arg seals the
+> value into the image, so every change costs a rebuild.

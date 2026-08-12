@@ -772,7 +772,11 @@ func (h *ScaffoldHandler) GetProjectConfig(c *gin.Context) {
 	}
 
 	// Also try to read the XTenantDatabase config (optional — may not exist).
-	result := gin.H{"app": app}
+	//
+	// argocdUrl ships here rather than as a NEXT_PUBLIC_* build arg so the whole
+	// portal reads one runtime variable (ARGOCD_URL); the frontend hides the
+	// button when it is empty. Same reasoning as vaultAddr in GetPromoStatus.
+	result := gin.H{"app": app, "argocdUrl": h.cfg.ArgoCDURL}
 	dbPath := fmt.Sprintf("tenants-apps/%s/%s/base/xtenant-database.yaml", team, appName)
 	var dbData []byte
 	if h.cfg.ScaffoldLocalDir != "" {

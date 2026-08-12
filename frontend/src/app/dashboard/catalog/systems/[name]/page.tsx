@@ -77,12 +77,14 @@ const lifecycleBorderAccent: Record<string, string> = {
 const docTypeBadge: Record<string, string> = {
   rfc:           "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400",
   adr:           "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  runbook:       "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
   documentation: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
 };
 
 const docTypeBorderAccent: Record<string, string> = {
   rfc:           "border-l-violet-500",
   adr:           "border-l-blue-500",
+  runbook:       "border-l-orange-500",
   documentation: "border-l-emerald-500",
 };
 
@@ -403,9 +405,18 @@ export default async function SystemDetailPage({
   const resources  = directMembers.filter((e) => e.kind === "Resource");
   const docs       = relatedDocs;
 
-  const rfcs          = docs.filter((d) => d.spec.docType === "rfc");
-  const adrs          = docs.filter((d) => d.spec.docType === "adr");
-  const documentation = docs.filter((d) => !d.spec.docType || d.spec.docType === "documentation");
+  const rfcs     = docs.filter((d) => d.spec.docType === "rfc");
+  const adrs     = docs.filter((d) => d.spec.docType === "adr");
+  const runbooks = docs.filter((d) => d.spec.docType === "runbook");
+
+  // Catch-all, deliberately: anything that is not an RFC, ADR or runbook lands
+  // here — including a docType this page does not know about yet. Matching on
+  // `documentation` alone meant a Doc with any other type was counted in
+  // docs.length but rendered by no section, so the tab showed a count with an
+  // empty body.
+  const documentation = docs.filter(
+    (d) => !["rfc", "adr", "runbook"].includes(d.spec.docType ?? ""),
+  );
 
   const displayName     = system?.metadata.title ?? system?.metadata.name ?? name;
   const baseMembers     = members.filter((e) => e.kind !== "Doc");
@@ -598,6 +609,16 @@ export default async function SystemDetailPage({
                     </p>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {adrs.map((d) => <DocCard key={d.metadata.name} doc={d} />)}
+                    </div>
+                  </div>
+                )}
+                {runbooks.length > 0 && (
+                  <div className="space-y-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-orange-600 dark:text-orange-400">
+                      Runbooks <span className="text-muted-foreground font-normal normal-case">({runbooks.length})</span>
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {runbooks.map((d) => <DocCard key={d.metadata.name} doc={d} />)}
                     </div>
                   </div>
                 )}

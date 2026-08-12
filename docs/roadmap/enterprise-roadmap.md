@@ -3,7 +3,7 @@
 > **Status:** Design / dev-ready spec. Nothing here is implemented yet.
 > **Scope:** Portal (`wxops-portal-v2`) + cross-references into `wxops-core`
 > (Crossplane packages) and `wxops-gitops-infrastructure`.
-> **Audience:** Platform engineers scoping the enterprise track (v0.6.0+).
+> **Audience:** Platform engineers scoping the enterprise track (unscheduled; begins after v0.7.0).
 
 This document turns the scattered "Backlog — Enterprise & Intelligence" items in
 [ROADMAP.md](../../ROADMAP.md) into development-ready specifications, and folds in the
@@ -43,22 +43,30 @@ fact from Git history, or (3) compute it on demand over the already-cached catal
 
 ## 1. Release framing
 
-| Release | Theme | Contents |
+> **Phases, not version numbers.** Everything below is unscheduled backlog,
+> gated on OSS adoption and real user demand rather than a date. Pinning these
+> to exact releases has already caused two renumbering passes as near-term
+> plans shifted, so the phases carry no version label. They begin after the
+> shipped and planned work in [ROADMAP.md](../../ROADMAP.md) — currently
+> v0.5.0 (Runtime Observability, shipped), v0.6.0 (Refactor & OSS Readiness),
+> v0.7.0 (Application & Delivery Metrics).
+
+| Phase | Theme | Contents |
 |---|---|---|
-| **v0.5.0** | Runtime Observability *(already planned)* | ArgoCD/Crossplane status via Pinniped, Alertmanager, LGTM deep links, catalog completeness, DORA-lite. Prerequisite for Track C scorecards. |
-| **v0.6.0** | **Enterprise: Governance & Trust** | Track A (Audit & Compliance) + Track C (Governance & Scorecards). These ship together — scorecards *consume* the compliance signals. |
-| **v0.7.0** | **Enterprise: Security & Cost** | Track B (Security & Supply Chain) + Track D (Cost / FinOps). Both are read-only ingest of external signals (SBOM, metrics). |
-| **v0.8.0** | **`XDarlane` XRD** | Promote Darlane from a `tenant-app` field to a standalone XRD. Portal manages multi-session workspace claims via GitOps. |
-| **v0.9.0** | **Guardian** | Scan / audit / AI-review sidecars on `XDarlane`. Portal surfaces findings. Depends on v0.8.0. |
+| **Prerequisite** | Runtime Observability *(shipped, v0.5.0)* | ArgoCD/Crossplane status via Pinniped, Alertmanager, LGTM deep links. Prerequisite for Track C scorecards. |
+| **Phase 1** | **Enterprise: Governance & Trust** | Track A (Audit & Compliance) + Track C (Governance & Scorecards). These ship together — scorecards *consume* the compliance signals. |
+| **Phase 2** | **Enterprise: Security & Cost** | Track B (Security & Supply Chain) + Track D (Cost / FinOps). Both are read-only ingest of external signals (SBOM, metrics). |
+| **Phase 3** | **`XDarlane` XRD** | Promote Darlane from a `tenant-app` field to a standalone XRD. Portal manages multi-session workspace claims via GitOps. |
+| **Phase 4** | **Guardian** | Scan / audit / AI-review sidecars on `XDarlane`. Portal surfaces findings. Depends on Phase 3. |
 
 The ordering is dependency-driven, not preference-driven:
 
 ```mermaid
 flowchart LR
-    A["v0.6.0<br/>Audit + Scorecards"] --> B["v0.7.0<br/>Security + Cost"]
+    A["Phase 1<br/>Audit + Scorecards"] --> B["Phase 2<br/>Security + Cost"]
     OBS["v0.5.0<br/>Observability"] --> A
-    A --> XD["v0.8.0<br/>XDarlane XRD"]
-    XD --> G["v0.9.0<br/>Guardian"]
+    A --> XD["Phase 3<br/>XDarlane XRD"]
+    XD --> G["Phase 4<br/>Guardian"]
     B -.->|SBOM feeds<br/>scan baseline| G
 ```
 
@@ -566,15 +574,15 @@ enforcement stays on the cluster, portal only displays.
 
 ## 9. Sequencing & dependencies
 
-1. **v0.5.0 Observability** (already planned) — lands ArgoCD/Crossplane status + posture
-   plumbing that Track A's compliance panel and Track C's scorecard both consume.
-2. **v0.6.0** — Track A first (audit middleware is small and unblocks the "trust" story),
+0. **Runtime Observability** (shipped, v0.5.0) — landed ArgoCD/Crossplane status +
+   posture plumbing that Track A's compliance panel and Track C's scorecard both consume.
+1. **Phase 1** — Track A first (audit middleware is small and unblocks the "trust" story),
    then Track C (scorecard consumes A's posture signal). Ship together.
-3. **v0.7.0** — Track B (needs the `syft` CI step first) + Track D (needs OpenCost
+2. **Phase 2** — Track B (needs the `syft` CI step first) + Track D (needs OpenCost
    deployed). Independent of each other; parallelizable.
-4. **v0.8.0 `XDarlane`** — wxops-core XRD + composition, then portal lifecycle + CLI.
-5. **v0.9.0 Guardian** — strictly after `XDarlane`; Phase 1→2→3 incrementally, with
-   Phase 2 reusing Track A's audit sink.
+3. **Phase 3 `XDarlane`** — wxops-core XRD + composition, then portal lifecycle + CLI.
+4. **Phase 4 Guardian** — strictly after `XDarlane`; its own internal stages 1→2→3
+   incrementally, with stage 2 reusing Track A's audit sink.
 
 ---
 

@@ -35,6 +35,8 @@ security constraints, and conventions that are NOT obvious from the code alone.
 | Environment promotion (overlay model) | `docs/scaffolding/cross-environment-promotion.md` |
 | Deployment / infra | `docs/getting-started/deployment.md`, `docs/getting-started/environment-variables.md` |
 | Cluster features | `docs/platform/cluster-registry.md` |
+| Runtime observability (ArgoCD/XR status, LGTM links, alerts, RBAC prereq) | `docs/platform/observability.md` |
+| Observability architecture (hub/spoke target design) | `docs/platform/observability-architecture.md` |
 | XTenantApp / XTenantDatabase / Vault (full spec schema, base vs overlay split, field mapping) | `docs/platform/platform-features.md` |
 
 ## Security Constraints
@@ -132,10 +134,39 @@ Never use `PORTAL_EXTERNAL_URL` (removed in v0.2.0).
 - Directory: `backend/`
 - Build: `cd backend && go build ./...`
 - Vet: `cd backend && go vet ./...`
+- Test: `cd backend && go test ./...`
 - Gitea client: `backend/internal/gitea/write.go` — all Gitea API methods
 - Handlers: `backend/internal/handlers/` — scaffold.go, catalog.go, clusters.go
 - Scaffold manifests: `backend/internal/scaffold/` — XTenantApp, ExternalSecret,
   kustomize, image_updater, catalog entities
+- Spoke cluster reads: go through `CredentialBroker.SpokeClientFor()` in
+  `backend/internal/handlers/credentials.go`. Never re-implement the token
+  exchange → refresh → Concierge flow; one broker is shared so the credential
+  cache is reused.
+
+#### Adding a new environment variable
+
+Three edits, in this order — skipping any of them leaves the variable
+undiscoverable:
+
+1. **`backend/internal/config/config.go`** — add the field with a `// NOTE:`
+   comment block, then the `getEnv("VAR", "default")` line in `Load()`.
+2. **`backend/.env.example`** — **append** to the existing numbered-section
+   format; never rewrite the file. Add the section number to the `# Sections:`
+   index at the top. Variables go in **commented out** with a realistic
+   `example.com` value and a `# VAR_NAME — what it does` note; only genuinely
+   required vars stay uncommented. The file embeds hand-written setup snippets
+   (the `vault token create` and `OIDCClientSecretRequest` commands) that a
+   rewrite would destroy.
+3. **`docs/getting-started/environment-variables.md`** — add the table row.
+
+**Prefer a runtime backend variable over a `NEXT_PUBLIC_*` build arg.**
+`NEXT_PUBLIC_*` values are baked into the JS bundle at image build time, so
+changing one forces a CI rebuild. Instead read the value on the Go side and ship
+it inside the API response the page already fetches — the precedent is
+`vaultAddr` in `GetPromoStatus`, `argocdUrl` in `GetProjectConfig` and
+`/environments`. `ARGOCD_URL` replaced `NEXT_PUBLIC_ARGOCD_URL` for this reason
+in v0.5.0. The frontend hides any control whose URL comes back empty.
 
 ### Frontend (Next.js)
 

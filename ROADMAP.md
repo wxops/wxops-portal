@@ -1,7 +1,7 @@
 # WxOps Portal — Roadmap
 
 > Living document. Updated as features ship.
-> Last updated: 2026-07-20
+> Last updated: 2026-08-11
 
 ---
 
@@ -214,6 +214,7 @@ Entity detail layout redesign, docs-as-drawer, and build-time version stamping.
 **CI workflow:**
 - `ARGOCD_URL` org-level variable documented in workflow header comment
 - `docker/build-push-action` receives `NEXT_PUBLIC_ARGOCD_URL` and `APP_VERSION` as build-args
+  — *superseded in v0.5.0: `ARGOCD_URL` became runtime backend config and the build-arg was removed*
 - Changelog commit message updated to `chore(release): update changelog for <tag>`
 
 ---
@@ -289,6 +290,12 @@ These are blocked on platform-side work, not portal development.
 |------|-------|-------------|
 | Template quality | Platform team | One solid Go template with working CI, health checks, Prometheus metrics. The portal reads and applies templates correctly; the template *content* itself needs to be production-grade. |
 | XTenantApp Composition | Platform team | Crossplane `Composition` (the CR that interprets an `XTenantApp` and provisions namespace, RBAC, networking, ingress). The portal generates the CR correctly; the Composition needs to reliably reconcile end-to-end before scaffold can be trusted in production. |
+| **Prometheus cardinality guards** | Platform team | `sampleLimit`, `targetLimit`, `labelLimit` are all `0` (unlimited) with `retention: 120h`. One high-cardinality label on one tenant service is a platform-wide incident. Highest-value/lowest-effort item in this table. |
+| **Alloy `cluster` label is hardcoded** | Platform team | `cluster = "kubeweekend"` is stamped statically in three places. Cosmetic with one cluster; load-bearing and *wrong* the moment a second cluster ships logs. Must be parameterised **before** hub-spoke, not after. |
+| **Ingest reachable from spokes** | Platform team | Loki/Tempo/Prometheus/Pyroscope are `ClusterIP` with no ingress, so a spoke's Alloy cannot reach them. Requires a deliberate decision (ingress+auth, private path, or hub gateway) — Loki runs `auth_enabled: false`, so a public endpoint would accept writes from anyone. |
+| **Loki has no tenant isolation** | Platform team | `auth_enabled: false` means every namespace's logs share one unpartitioned store. Grafana Editors can query across tenants; the portal's links are scoped by convention only. Disclosed in security-assurance.md §4c. |
+| Misleading `prometheus.io/scrape` example | Platform team | The `XTenantApp` example file shows those annotations commented out under `podAnnotations`, implying they work. Prometheus Operator ignores them without an `additionalScrapeConfig`, which does not exist. Remove or correct the example so nobody follows it. |
+| DCGM / GPU exporter | Platform team | No GPU exporter deployed, so GPU utilisation metrics do not exist. Pure deployment task — unrelated to application instrumentation. |
 
 > **Note — Template Quality vs XTenantApp Composition:**
 > These are *infrastructure* items, not portal feature work. Template Quality = the
@@ -352,10 +359,10 @@ These are blocked on platform-side work, not portal development.
 
 ---
 
-## Planned — v0.5.0: Runtime Observability
+## Shipped — v0.5.0: Runtime Observability
 
-Live environment status from ArgoCD and Crossplane via Pinniped, plus a lightweight
-observability surface that links to the existing LGTM stack rather than duplicating it.
+Live environment status from ArgoCD and Crossplane via Pinniped, plus deep links
+into the existing LGTM stack rather than duplicating it.
 
 > **Scope decision (2026-07-13):** The portal surfaces context, not dashboards.
 > Native log/metric/trace viewers are explicitly out of scope — Grafana's signal
@@ -366,13 +373,124 @@ observability surface that links to the existing LGTM stack rather than duplicat
 
 | Feature | Description |
 |---------|-------------|
-| ArgoCD status via Pinniped | Read ArgoCD Application CRs using user's K8s credentials (RBAC-scoped). Application name derived from `gitea/source-location` annotation + env suffix: `{team}-{appName}-{env}`. Shows sync status, health, deployed image, last deploy time. |
-| Crossplane XR status | Read XTenantApp/XTenantDatabase `.status.conditions` via same auth — provisioning state, sync status, connection details. |
-| Environment panel | Side-by-side env status card (sync, health, image tag, last deploy time) per overlay. Intended state from git, observed state from cluster — two sources, one view. |
-| Active alerts | Single Alertmanager API call per service — `GET /api/v2/alerts?filter={app="name"}`. Shows firing alerts with severity, duration, and runbook link. Resolved alerts shown for last 24h. This is the one observability metric worth surfacing natively: "is this service broken right now?" |
-| Grafana / Loki / Tempo deep links | Pre-scoped links built from catalog context: service name + namespace + team + env label selectors. One click → Grafana Explore with the right filter already set. Configured via `LGTM_GRAFANA_URL`, `LGTM_LOKI_URL`, `LGTM_TEMPO_URL` env vars; annotations on entities can override per-service. |
-| Catalog completeness score | Per-entity quality score: description, owner, tags, links, lifecycle, API spec. Scaffolded entities score well by default; most useful for manually registered or legacy entities. |
-| DORA-lite metrics | Deployment frequency (successful prod workflow runs / week) and lead time (PR open → merge → image tag) computed from data the portal already collects. |
+| ArgoCD status via Pinniped | Reads `Application` CRs in ns `argocd` with the user's own K8s credentials. Name derived from `gitea/source-location`: `{team}-{appName}-{env}`. Shows sync status, health, landed revision, and last operation phase. |
+| Crossplane XR status | Reads `XTenantApp` (cluster-scoped) via the same auth. Uses the composition's own `.status.ready`/`.status.created`/`url`/`image` write-back rather than Crossplane's `Ready` condition, which lags behind reality. |
+| Environment panel | Rewrote the Runtime tab: one row per environment per cluster with sync/health/provisioning chips, revision, image, live URL. Replaces the old Deployment-name-suffix guessing. Intended state from git, observed state from cluster. |
+| Grafana deep links | Logs (LogQL), traces (TraceQL), metrics (PromQL), and profiles, pre-scoped to namespace + app. Built from the label conventions Alloy actually emits. Entity-supplied names are sanitised to DNS-1123 so a crafted name cannot rewrite the query. |
+| Runtime configuration | `ARGOCD_URL`, `ARGOCD_NAMESPACE`, `LGTM_GRAFANA_URL`, `LGTM_*_DATASOURCE` read by the Go backend and shipped in the API payload — not `NEXT_PUBLIC_*` build args, so a URL change is a Deployment edit rather than a CI rebuild. |
+| Graceful degradation | Per-cell `forbidden` / `not-found` / `unreachable` states. A missing RBAC binding or an un-promoted environment renders as itself, never as an outage. |
+| CredentialBroker refactor | Extracted the token-exchange → refresh → Concierge flow out of `ClusterHandler` so every handler that reads a spoke shares one credential cache and one auth path. |
+| Active alerts | Opt-in Alertmanager read (`ALERTMANAGER_URL`). Firing alerts per service on the Runtime tab, critical-first, with severity, duration, pod and upstream runbook link. Hidden entirely when unconfigured. |
+| Session recovery | A 401 in the Runtime tab, Alerts card or Cluster tabs now renders "Session expired" with a **Sign in again** button that renews the Pinniped session and returns the user to the same page — no sign-out required. `/auth/login` gained an optional `return_to` path, stored server-side with the PKCE verifier and hardened against open redirects. |
+| First unit tests | `internal/observability`, `internal/alertmanager` and `internal/auth` ship the repo's first test packages — 25 tests covering link construction and per-environment scoping, query-injection sanitisation, alert filtering, the read-only/bounded HTTP contract, and open-redirect rejection on the return path. |
+
+**Prerequisite (platform):** two RBAC bindings per tenant in
+`wxops-gitops-infrastructure` — a `ClusterRoleBinding` to `tenant-platform-reader`
+(cluster-scoped composites cannot be reached by a namespaced binding) and a
+`RoleBinding` in ns `argocd` to `aggregate-argoproj-view`. Without them the panel
+degrades rather than failing.
+
+**Active alerts (simple version):** the Runtime tab shows what is firing for a
+service, read from Alertmanager. Since no alert rule carries an `app` label, the
+portal queries by `namespace` and narrows by matching the alert's `pod` label
+against the `{appName}-` prefix; namespace-scoped alerts (no `pod` label) are
+shown too. Read-only — one `GET`, no silencing or acknowledgement.
+
+**This is the one feature that changes assurance claim A4.** Alertmanager is the
+portal's only egress destination outside Gitea/Vault/OIDC/K8s, so it is opt-in
+(`ALERTMANAGER_URL`, empty by default), timeout- and result-bounded, and
+documented with its residual exposure — the read is *not* user-scoped, because
+Alertmanager has no Kubernetes RBAC. See
+[security-assurance.md](docs/security/security-assurance.md) §4b.
+
+**Grafana authentication documented:** Dex-only (basic-auth login form disabled),
+with `platform-team` → Admin and every other authenticated user → Editor so
+developers can use Explore. The honest limit is written down: the mapping is
+binary, Grafana OSS has no Team Sync, folder permissions scope dashboards not
+queries, and Loki runs `auth_enabled: false` — so observability data is shared
+across tenants even though the K8s API, Vault and Git are isolated. See
+security-assurance.md §4c.
+
+**Target architecture documented:** hub Grafana + spoke Alloy, in
+[observability-architecture.md](docs/platform/observability-architecture.md),
+explicitly marked as not-yet-implemented with the three blockers named
+(hardcoded Alloy `cluster` label, unreachable ingest endpoints from spokes, no
+Loki tenancy).
+
+See [docs/platform/observability.md](docs/platform/observability.md) for selectors,
+the RBAC prerequisite, and the platform limitations this surfaced (hardcoded Alloy
+`cluster` label, no ServiceMonitors for tenant workloads, OTLP logs/metrics not
+wired).
+
+---
+
+## Planned — v0.6.0: Refactor, Modularization & OSS Readiness
+
+**No new features.** This release makes the codebase something a stranger can
+read, contribute to, and trust — the prerequisite for opening the repos rather
+than a detour from it. Full plans:
+[refactor-and-hardening.md](docs/development/refactor-and-hardening.md) (the
+engineering gate) and
+[open-source-readiness.md](docs/development/open-source-readiness.md) (the
+launch checklist).
+
+### Measured baseline (2026-08-11)
+
+| Signal | State | Target |
+|---|---|---|
+| Tests | 25 passing, in 3 backend packages (`internal/observability`, `internal/alertmanager`, `internal/auth`) — added in v0.5.0 | Pure helpers + auth/RBAC + scaffold generation covered; CI-enforced |
+| Frontend tests | 0 | At least the BFF proxy shape and status mapping |
+| CLI tests | 0 | Namespace/deployment derivation covered |
+| Backend god-file | `handlers/catalog.go` 2,764 lines spanning 6 concerns | No file a reviewer opens first is >500 lines |
+| Frontend god-file | `promotion-panel.tsx` 2,708 lines | Split by step/concern |
+| CLI god-file | `internal/commands/darlane.go` 1,272 lines | Split; kill the `platform-team` namespace divergence with `debug.go` |
+| Core god-file | `kcl/tenant-app/main.k` 1,002 lines, Darlane logic woven through ~20 fields | Extract Darlane; add render-golden snapshots |
+| Error handling | ~200 inline `c.JSON(…, gin.H{"error": …})`, no shared helper, no error codes | One helper, typed codes |
+| Logging | 32 unstructured `log.Printf`, no request ID | Structured `slog` — also unblocks the audit story |
+| BFF duplication | 20+ `route.ts` files re-implementing identical cookie forwarding | One shared proxy helper |
+
+### Scope
+
+| Workstream | Description |
+|---|---|
+| Modularization | Split the four god-files by concern. This is the single biggest readability win and the thing a first-time reader hits immediately. |
+| Test foundation | Tests are the *permission slip* for outside contributions — without them, merging a stranger's PR is unsafe at any review depth. Start with pure helpers, auth/RBAC decisions, and scaffold manifest generation. |
+| Shared error + logging | One error helper with codes; `log.Printf` → structured `slog`. |
+| BFF proxy helper | Collapse the duplicated Route Handler boilerplate into one utility. |
+| CLI namespace bug | `debug.go` maps `platform-team` → ns `platform`; `darlane.go` omits it, producing the wrong namespace. A real behaviour bug that will bite a first adopter. |
+| Core render-golden snapshots | `validate`/`render`/`lint`/`kcl-check` exist but nothing guards a refactor against silent manifest drift. |
+| OSS hygiene | `LICENSE` (Apache-2.0), `README` (user-facing, not the vision doc), `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, issue templates — none exist in either repo today. |
+| Scrub | ~186 internal hostname occurrences across both repos; full-history secret scan (`gitleaks`/`trufflehog`) before anything is published. |
+| 10-minute demo | `make demo` against the existing `DEV_BYPASS_AUTH` + `CATALOG_LOCAL_DIR` affordances, with Darlane as the payoff. The single highest-leverage adoption artifact. |
+| Release + versioning | Tag `v0.6.0` as the first public-ready cut; confirm the release workflow produces clean artifacts from a public repo. |
+
+> **Why this sits between observability and metrics:** v0.5.0 proved the
+> architecture works end-to-end; v0.7.0 adds a large multi-repo feature. Doing
+> the split-and-test pass in between means the metrics work lands in a codebase
+> that can absorb it — and means the OSS launch is not gated behind a feature
+> release.
+
+---
+
+## Planned — v0.7.0: Application Metrics, Delivery Metrics & Catalog Quality
+
+Deferred from v0.5.0, then re-sequenced behind the v0.6.0 refactor. The
+application-metrics track is the largest piece and is **not portal-first** — it
+spans three repos, and doing it out of order produces a toggle that enables an
+empty scrape. Design and sequencing:
+[observability-architecture.md](docs/platform/observability-architecture.md#application-metrics--the-missing-layer).
+
+| Feature | Repo | Description |
+|---------|------|-------------|
+| Template instrumentation | `wxops-templates` | Real Prometheus client library per language + middleware emitting the contract metrics: `http_requests_total` (counter), `http_request_duration_seconds_bucket` (**histogram** — this is what makes P95/P99 possible), `http_requests_in_flight` (gauge). Today `/metrics` exists but hand-writes two runtime gauges with no client library, so scraping it returns almost nothing. |
+| ServiceMonitor emission | `wxops-core` | `monitoring: { enabled, port, path, interval }` on `XTenantApp` → a `ServiceMonitor` carrying `release: kube-prometheus-stack` (without it Prometheus silently ignores the monitor) and a `sampleLimit`. Also requires naming the Service port, which is currently unnamed. |
+| Monitoring toggle | Portal | Checkbox in the scaffold wizard + Edit Config, same tier as Darlane. Writes the XR field; never writes the manifest. |
+| Standard metrics dashboard | `wxops-gitops-infrastructure` | One Grafana dashboard keyed on the contract metric names — P95/P99, error rate, saturation — that works for every golden-path service with no per-team configuration. |
+| Catalog completeness score | Portal | Per-entity quality score: description, owner, tags, links, lifecycle, API spec. Scaffolded entities score well by default; most useful for manually registered or legacy entities. Once the metric contract exists, "exposes standard metrics" becomes a cheap scorecard row. |
+| DORA-lite metrics | Portal | Deployment frequency (successful prod workflow runs / week) and lead time (PR open → merge → image tag) computed from data the portal already collects. |
+| Dependency comparison | Portal | Cache dependency manifests by `owner/repo@ref` (tags are immutable, so they cache indefinitely; the default branch gets a short TTL) and server-render the card so it paints without a spinner. Adds a compare control that diffs the current branch against a selected release, showing only added / removed / bumped packages. Spec: [devex-integrations.md §4](docs/roadmap/devex-integrations.md). |
+| Per-service alert scoping | `wxops-gitops-infrastructure` | Alerts currently carry no `app` label, so the portal narrows by namespace + pod-name prefix. Adding `defaultRules.additionalRuleLabels` or tenant `PrometheusRule`s with an `app` label would make the match exact. |
+| Multi-cluster status | Portal + infra | Per-cluster ArgoCD Application status via hub-spoke, plus per-cluster observability endpoints in the cluster registry Secret schema. Blocked on the hub-spoke prerequisites below. |
 
 See [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md) for the promotion model that feeds into this observability layer.
 
@@ -383,8 +501,10 @@ See [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-env
 Not scheduled. Prioritized by real usage feedback.
 
 > **Dev-ready specs:** the items in this section are turned into a phased, code-grounded
-> development plan (release framing v0.6.0+, backend package/route surface, XDarlane XRD,
-> Guardian) in [docs/roadmap/enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md).
+> development plan (Phases 1–4, backend package/route surface, XDarlane XRD, Guardian)
+> in [docs/roadmap/enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md). Those
+> phases are deliberately unversioned — they begin after v0.7.0 and are gated on
+> adoption, not on a date.
 >
 > **Intelligence vision:** how system intelligence combines with Darlane for
 > diagnose-and-validate incident response (on-call triage, hotfix, deep analysis) is in
@@ -429,7 +549,6 @@ assigns responsibility for new joiners.
 | Feature | Description |
 |---------|-------------|
 | E2E scaffold test | Full scaffold → CI trigger → ArgoCD sync → lifecycle promotion cycle with real Gitea. Deferred until XTenantApp Composition is stable enough to run reliably. |
-| Multi-cluster status | Per-cluster ArgoCD Application status via hub-spoke |
 | Audit trail | SOC2-ready: who promoted what, when, with approval chain |
 | Scorecard / maturity | Production readiness (monitoring, docs, tests, SLOs) |
 | Cost tracking | Resource usage per environment from metrics API |

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wxops/wxops-portal-v2/internal/auth"
@@ -28,38 +26,20 @@ import (
 //  1. RFC 8693 token exchange against the Supervisor → cluster-scoped id_token
 //  2. TokenCredentialRequest to Concierge → short-lived mTLS client certificate
 type ClusterHandler struct {
-	registry   cluster.Registry
-	oidcClient *auth.OIDCClient
-	sm         *auth.SessionManager
-	// supervisorCAData is the base64-encoded PEM CA for the Pinniped Supervisor
-	// TLS endpoint (from OIDC_CA_BUNDLE / OIDC_CA_BUNDLE_FILE). Empty when the
-	// Supervisor uses a publicly trusted certificate.
-	// Used as --ca-bundle-data in the generated exec-credential kubeconfig so
-	// `pinniped login oidc` can verify the Supervisor — distinct from the spoke
-	// cluster CA that goes to --concierge-ca-bundle-data.
-	supervisorCAData string
-	// credCache caches short-lived Concierge mTLS credentials to avoid hitting
-	// the Supervisor and Concierge on every request.
-	// Key: "<sub>:<clusterID>"   Value: cachedCred
-	credCache sync.Map
+	registry cluster.Registry
+
+	// CredentialBroker owns the token-exchange → Concierge flow and the
+	// credential cache. It is embedded so h.oidcClient / h.supervisorCAData
+	// keep resolving, and shared with the observability handler so both borrow
+	// the user's identity through one code path.
+	*CredentialBroker
 }
 
-// cachedCred holds a ClusterCredential and its expiry for quick comparison.
-type cachedCred struct {
-	cred      *cluster.ClusterCredential
-	expiresAt time.Time
-}
-
-// NewClusterHandler constructs a ClusterHandler.
-// supervisorCA is the raw PEM of the Pinniped Supervisor's TLS CA (from
-// OIDC_CA_BUNDLE / OIDC_CA_BUNDLE_FILE). Pass nil when the Supervisor uses a
-// publicly trusted certificate.
-func NewClusterHandler(registry cluster.Registry, oidcClient *auth.OIDCClient, sm *auth.SessionManager, supervisorCA []byte) *ClusterHandler {
-	var supervisorCAData string
-	if len(supervisorCA) > 0 {
-		supervisorCAData = base64.StdEncoding.EncodeToString(supervisorCA)
-	}
-	return &ClusterHandler{registry: registry, oidcClient: oidcClient, sm: sm, supervisorCAData: supervisorCAData}
+// NewClusterHandler constructs a ClusterHandler around an existing broker.
+// The broker is shared (not owned) so its credential cache is reused across
+// every handler that reads from a spoke.
+func NewClusterHandler(registry cluster.Registry, broker *CredentialBroker) *ClusterHandler {
+	return &ClusterHandler{registry: registry, CredentialBroker: broker}
 }
 
 // ListClusters returns all registered spoke clusters.
@@ -869,128 +849,21 @@ func (h *ClusterHandler) resolveCluster(c *gin.Context) (*cluster.ClusterInfo, b
 	return cl, true
 }
 
-// buildSpokeClient resolves the cluster and creates an authenticated spoke
-// client for the current user, following the Pinniped-documented flow:
+// buildSpokeClient resolves the cluster from the :id path parameter and
+// creates a spoke client authenticated as the current user.
 //
-//  1. Check in-memory credential cache — if a valid mTLS cert exists with
-//     >2 minutes remaining, reuse it (zero extra round-trips).
-//  2. Cache miss: exchange the Supervisor access_token for a cluster-scoped
-//     id_token via RFC 8693 (ExchangeForClusterToken).
-//  3. If that exchange returns a 401 (access_token expired), perform an OIDC
-//     refresh_token grant to obtain a fresh access_token, persist the updated
-//     session to the cookie, then retry step 2 once.
-//  4. Present the cluster-scoped id_token to the Concierge impersonation proxy
-//     via TokenCredentialRequest → short-lived mTLS client certificate.
-//  5. Cache the new cert and build the spoke client.
-//
-// For clusters without Concierge (no Audience/JWTAuthenticatorName), the
-// Supervisor id_token is sent directly as a Bearer token.
+// The credential flow itself lives in CredentialBroker.SpokeClientFor; this
+// wrapper only adds path-parameter resolution and turns a broker error into
+// the HTTP response, so existing call sites keep their (client, ok) contract.
 func (h *ClusterHandler) buildSpokeClient(c *gin.Context) (*cluster.SpokeClient, bool) {
 	cl, ok := h.resolveCluster(c)
 	if !ok {
 		return nil, false
 	}
 
-	session := auth.GetSession(c)
-	if session == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
-		return nil, false
-	}
-
-	// ── Pinniped Concierge path ──────────────────────────────────────────────
-	if cl.Audience != "" && cl.JWTAuthenticatorName != "" {
-		if session.AccessToken == "" && session.RefreshToken == "" {
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "no tokens in session — re-login required"})
-			return nil, false
-		}
-
-		cacheKey := session.Sub + ":" + cl.ID
-		const certBuffer = 2 * time.Minute
-
-		// Step 1 — check credential cache.
-		var cred *cluster.ClusterCredential
-		if v, hit := h.credCache.Load(cacheKey); hit {
-			cc := v.(cachedCred)
-			if time.Until(cc.expiresAt) > certBuffer {
-				cred = cc.cred // cert still fresh — skip steps 2–4
-			}
-		}
-
-		if cred == nil {
-			// Step 2 — RFC 8693 token exchange: access_token → cluster-scoped id_token.
-			clusterToken, exchangeErr := h.oidcClient.ExchangeForClusterToken(
-				c.Request.Context(), session.AccessToken, cl.Audience)
-
-			if exchangeErr != nil && session.RefreshToken != "" {
-				// Step 3 — access_token stale: do OIDC refresh, then retry exchange.
-				newTok, newIDRaw, refreshErr := h.oidcClient.RefreshTokens(
-					c.Request.Context(), session.RefreshToken)
-				if refreshErr != nil {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"error": "session expired and token refresh failed — please log in again",
-					})
-					return nil, false
-				}
-
-				// Persist refreshed session so future requests don't re-refresh.
-				updatedIDToken := newIDRaw
-				if updatedIDToken == "" {
-					updatedIDToken = session.IDToken
-				}
-				updatedRT := newTok.RefreshToken
-				if updatedRT == "" {
-					updatedRT = session.RefreshToken
-				}
-				updated := &auth.Session{
-					Sub:          session.Sub,
-					Username:     session.Username,
-					Groups:       session.Groups,
-					IDToken:      updatedIDToken,
-					AccessToken:  newTok.AccessToken,
-					RefreshToken: updatedRT,
-					ExpiresAt:    newTok.Expiry,
-				}
-				auth.SetSession(c, updated)
-				if encoded, encErr := h.sm.Encode(updated); encErr == nil {
-					c.SetSameSite(http.SameSiteLaxMode)
-					c.SetCookie(auth.SessionCookieName, encoded, 8*3600, "/", "", false, true)
-				}
-				session = updated
-
-				// Retry exchange with the fresh access_token.
-				clusterToken, exchangeErr = h.oidcClient.ExchangeForClusterToken(
-					c.Request.Context(), newTok.AccessToken, cl.Audience)
-			}
-			if exchangeErr != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("token exchange: %v", exchangeErr)})
-				return nil, false
-			}
-
-			// Step 4 — TokenCredentialRequest → short-lived mTLS cert.
-			freshCred, credErr := cluster.RequestConciergeCredential(
-				c.Request.Context(), cl, clusterToken)
-			if credErr != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("concierge credential: %v", credErr)})
-				return nil, false
-			}
-
-			// Step 5 — cache the cert.
-			h.credCache.Store(cacheKey, cachedCred{cred: freshCred, expiresAt: freshCred.ExpirationTimestamp})
-			cred = freshCred
-		}
-
-		spokeClient, err := cluster.NewSpokeClientWithCert(cl, cred.ClientCertificateData, cred.ClientKeyData)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("build spoke client: %v", err)})
-			return nil, false
-		}
-		return spokeClient, true
-	}
-
-	// ── Fallback: direct Bearer token ────────────────────────────────────────
-	spokeClient, err := cluster.NewSpokeClient(cl, session.IDToken)
+	spokeClient, status, err := h.SpokeClientFor(c, cl)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build cluster client"})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return nil, false
 	}
 	return spokeClient, true

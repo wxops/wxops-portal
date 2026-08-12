@@ -23,10 +23,10 @@ ENV BACKEND_URL=$BACKEND_URL
 
 # ── Build-time public vars (baked into the JS bundle by next build) ��───────
 # CI passes these via --build-arg at release time.
-# NEXT_PUBLIC_ARGOCD_URL: org-level Actions variable ARGOCD_URL
+# ArgoCD's URL is deliberately NOT here: it is a runtime backend variable
+# (ARGOCD_URL) served inside API responses, so operators repoint it with a
+# Deployment env edit instead of rebuilding the image.
 # APP_VERSION:            stripped git tag (e.g. 0.3.0) set by the stamp step
-ARG NEXT_PUBLIC_ARGOCD_URL=""
-ENV NEXT_PUBLIC_ARGOCD_URL=$NEXT_PUBLIC_ARGOCD_URL
 ARG APP_VERSION="0.0.0"
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 

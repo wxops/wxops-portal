@@ -179,6 +179,8 @@ See [docs/development/local-development.md](docs/development/local-development.m
 | Lifecycle webhook (CI in gitops-infra → portal) | [docs/scaffolding/lifecycle-webhook.md](docs/scaffolding/lifecycle-webhook.md) |
 | Cross-environment promotion design | [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md) |
 | Cluster registry (K8s Secrets + clusters.json) | [docs/platform/cluster-registry.md](docs/platform/cluster-registry.md) |
+| Runtime observability (ArgoCD/Crossplane status, LGTM links, alerts) | [docs/platform/observability.md](docs/platform/observability.md) |
+| Observability architecture (hub Grafana, spoke Alloy) | [docs/platform/observability-architecture.md](docs/platform/observability-architecture.md) |
 | Documentation strategy (RFC, ADR, Runbook) | [docs/catalog/documentation-strategy.md](docs/catalog/documentation-strategy.md) |
 | Performance (cache layers, TTLs, polling, scaling) | [docs/concepts/performance.md](docs/concepts/performance.md) |
 | Enterprise roadmap & platform evolution (audit, security, scorecards, cost, XDarlane, Guardian) | [docs/roadmap/enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md) |

@@ -1,7 +1,8 @@
 # Refactor & Hardening Release — Quality Substrate for What's Next
 
-> **Status:** Plan. A behavior-preserving quality release, scoped *before* the
-> enterprise (v0.6.0+) and intelligence work begins.
+> **Status:** Plan — **this is the v0.6.0 release**. A behavior-preserving
+> quality pass, scoped *before* application metrics (v0.7.0) and the enterprise
+> and intelligence phases that follow it.
 > **Spans:** `wxops-portal-v2` (backend, frontend, CLI) and `wxops-core` (KCL
 > compositions). Core workstreams should be mirrored into `wxops-core/PLANS.md`
 > when execution starts.
@@ -233,7 +234,7 @@ their phase even though nothing in *this* release strictly requires them.
 | Not doing | Why |
 |---|---|
 | Rewrites | Everything here is extraction + dedup + tests. A rewrite trades known debt for unknown bugs. |
-| New features | The whole point is a clean base *before* features. Feature work resumes at v0.6.0. |
+| New features | The whole point is a clean base *before* features. Feature work resumes at v0.7.0 (application metrics). |
 | Architecture changes | Stateless, GitOps, no-cluster-writes, Vault-write-only stay exactly as they are. |
 | Breaking API/output changes | Response shapes and manifest output are preserved; the error `code` is additive only. |
 | Chasing 100% coverage | Establish a floor and ratchet. The goal is a net under the refactors, not a vanity number. |

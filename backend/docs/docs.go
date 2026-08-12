@@ -362,6 +362,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/catalog/entities/{kind}/{name}/alerts": {
+            "get": {
+                "description": "Alerts currently firing for this application, read from Alertmanager. Returns enabled=false when Alertmanager is not configured.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Active alerts for an entity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/catalog/entities/{kind}/{name}/ci": {
             "get": {
                 "security": [
@@ -533,6 +588,61 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {}
+            }
+        },
+        "/api/v1/catalog/entities/{kind}/{name}/environments": {
+            "get": {
+                "description": "Live ArgoCD sync/health and Crossplane XR status per environment, plus Grafana deep links. Read with the caller's own Kubernetes RBAC.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Runtime environment status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/api/v1/catalog/entities/{kind}/{name}/packages": {
@@ -1216,7 +1326,7 @@ const docTemplate = `{
         },
         "/auth/callback": {
             "get": {
-                "description": "Exchanges the authorization code for tokens, validates the id_token, and writes an encrypted session cookie.",
+                "description": "Exchanges the authorization code for tokens, validates the id_token, and writes an encrypted session cookie.\nNever returns a JSON error body: every failure redirects to /login?error=\u003ccode\u003e where code is one of invalid_request, expired or server. The underlying OIDC error is deliberately not exposed.",
                 "tags": [
                     "auth"
                 ],
@@ -1239,18 +1349,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "302": {
-                        "description": "Redirect to dashboard",
+                        "description": "Redirect to /login?error=\u003ccode\u003e on any failure",
                         "schema": {
                             "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
                         }
                     }
                 }
@@ -1258,16 +1359,39 @@ const docTemplate = `{
         },
         "/auth/login": {
             "get": {
-                "description": "Redirects the browser to the Pinniped Supervisor authorization endpoint to begin the PKCE flow.",
+                "description": "Redirects the browser to the Pinniped Supervisor authorization endpoint to begin the PKCE flow.\nBoth query parameters are optional and are stored server-side with the PKCE verifier, so neither can be altered between the authorization redirect and the callback.",
                 "tags": [
                     "auth"
                 ],
                 "summary": "Start OIDC login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CLI loopback callback; must target 127.0.0.1",
+                        "name": "redirect_uri",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Same-origin path to land on after login; anything else falls back to /dashboard",
+                        "name": "return_to",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "302": {
                         "description": "Redirect to OIDC provider",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "redirect_uri did not target 127.0.0.1 (CLI flow only)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }

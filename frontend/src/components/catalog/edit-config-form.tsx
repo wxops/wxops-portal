@@ -53,7 +53,9 @@ const INITIAL_STATE: WizardState = {
   extraLabels: [],
 };
 
-const ARGOCD_URL = process.env.NEXT_PUBLIC_ARGOCD_URL ?? "";
+// ArgoCD's URL arrives with the config payload (backend ARGOCD_URL) rather than
+// being baked in at build time, so operators can repoint it with a Deployment
+// env edit instead of a CI rebuild.
 
 const PHASES = [
   { id: "edit" as const, label: "Edit Config" },
@@ -67,6 +69,7 @@ export function EditConfigForm({ team, appName, groups, entityKind }: EditConfig
   const [originalYAML, setOriginalYAML] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [argocdUrl, setArgocdUrl] = useState("");
   const [phase, setPhase] = useState<Phase>("edit");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<{ status?: string } | null>(null);
@@ -86,6 +89,7 @@ export function EditConfigForm({ team, appName, groups, entityKind }: EditConfig
           throw new Error(data?.error ?? `HTTP ${res.status}`);
         }
         const config = await res.json();
+        setArgocdUrl(config.argocdUrl ?? "");
         const parsed = parseXTenantApp(config);
         const initialState = { ...INITIAL_STATE, ...parsed, team, appName };
         setState(initialState);
@@ -207,9 +211,12 @@ export function EditConfigForm({ team, appName, groups, entityKind }: EditConfig
           >
             Back to Entity
           </Link>
-          {ARGOCD_URL && (
+          {argocdUrl && (
+            // Applications are named {team}-{app}-{env}, so there is no single
+            // app to link to from this env-agnostic page — search the prefix to
+            // list every environment instead.
             <a
-              href={`${ARGOCD_URL}/applications/${team}-${appName}`}
+              href={`${argocdUrl}/applications?search=${encodeURIComponent(`${team}-${appName}`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted/50"

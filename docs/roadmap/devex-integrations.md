@@ -1,13 +1,13 @@
-# DevEx Integrations — CVE Management, Test Visibility, Productivity Signals
+# DevEx Integrations — CVE, Tests, Productivity Signals, Dependency Comparison
 
 > **Status:** Dev-ready spec. Extends [enterprise-roadmap.md](enterprise-roadmap.md)
-> Track B (Security & Supply Chain) and Track C (Governance & Scorecards) with three
+> Track B (Security & Supply Chain) and Track C (Governance & Scorecards) with four
 > concrete developer-experience features.
 > **Invariant preserved throughout:** the portal stays a
 > [passive reflector](../security/security-assurance.md) — read-only to clusters,
 > advisory, human-gated. These features add *visibility and suggestion*, never new power.
 
-Three integrations, one thread: **turn signals the platform already produces (or can
+Four integrations, one thread: **turn signals the platform already produces (or can
 cheaply produce) into developer-facing feedback that improves security posture, quality,
 and flow — without the portal taking any action a human did not approve.**
 
@@ -16,9 +16,11 @@ flowchart LR
     CI["CI / Guardian scan"] -->|SBOM + Trivy findings| F1["1 · CVE Management"]
     CI -->|test reports| F2["2 · Test Visibility"]
     GIT["Git + catalog + scorecards"] --> F3["3 · Productivity Signals"]
+    GIT -->|manifests at a ref| F4["4 · Dependency Comparison"]
     F1 --> POST["Stronger posture"]
     F2 --> POST
     F3 --> POST
+    F4 --> POST
     POST --> DEV(["Developer sees what to improve — and decides"])
 ```
 
@@ -204,15 +206,132 @@ GET /api/v1/catalog/groups/:team/health    team-health trends (team/service scop
 
 ---
 
+## 4. Dependency Comparison — instant render, diff against a release
+
+*Portal-only. No new data source, no CI prerequisite. Pairs with §1 — the same
+manifests CVE findings attach to.*
+
+### Problem
+
+Two separate complaints, one cause.
+
+**It renders slowly for data that barely moves.** `PackagesCard` is
+`"use client"` + `useEffect`, so it shows a spinner on every visit.
+`GetEntityPackages` (`internal/handlers/catalog.go`) has **no cache**, and
+`DiscoverPackages` probes four known filenames in the repo root *and* in every
+non-skipped subdirectory — up to `4 × (1 + N)` Gitea file reads per page view.
+Dependency manifests change when someone merges a bump, perhaps weekly. The
+portal re-derives them on every page load.
+
+**You cannot ask what changed between releases.** `GetRepoFile` takes no `ref`
+and always reads the default branch, so "which dependencies moved since v0.4.1?"
+has no answer in the portal — the developer goes to Gitea and reads two `go.mod`
+files side by side.
+
+### Design
+
+Four changes, in dependency order:
+
+1. **Thread a `ref` through the read path.** `GetRepoFile` and `DiscoverPackages`
+   take an optional ref; empty keeps today's default-branch behaviour. The
+   `?ref=` query parameter is already used elsewhere in `internal/gitea/write.go`,
+   so this follows an established pattern rather than inventing one.
+
+2. **Cache by `owner/repo@ref`, with two TTLs.** A tag is immutable — `v0.4.1`
+   resolves to the same tree forever — so it can be cached aggressively. The
+   default branch moves and gets a short TTL. This distinction is the whole
+   performance win: a compare against a release is a cache hit on the second
+   request and every request after.
+
+3. **Diff in Go, not in the browser.** `DiffManifests(base, head)` is a pure
+   function over two `[]PackageManifest` — no I/O, trivially unit-testable, and
+   it keeps the browser to one round-trip instead of two. It also avoids shipping
+   two full 200-package manifests to the client to diff there.
+
+4. **Server-render the default view; keep compare client-side.** The Component
+   detail page is already a server component, so the initial manifests can be
+   fetched during render and passed as props — the card paints with data instead
+   of a spinner. Wrap it in `<Suspense>` so a cold cache streams rather than
+   blocks, matching the dashboard treatment in v0.5.0. The compare dropdown stays
+   a client component talking to the diff endpoint.
+
+**Compare scope:** current default branch vs **one** selected release, chosen
+from `ListReleases` (which already exists and backs the Releases card). Not
+arbitrary pairs — "what changed since we shipped?" is the question people
+actually ask, and one dropdown is a far lighter control than two.
+
+**The diff shows only what changed** — added, removed, version-bumped — with
+unchanged packages reduced to a count. A Go service carrying 200 indirect
+dependencies produces three interesting rows; listing the other 197 buries them.
+
+### Portal surface
+
+```
+internal/gitea/write.go       GetRepoFile(ctx, owner, repo, path, ref)     + ref
+internal/gitea/packages.go    DiscoverPackages(ctx, c, owner, repo, ref)   + ref
+internal/gitea/packages.go    DiffManifests(base, head) []ManifestDiff     NEW — pure, tested
+internal/handlers/catalog.go  GetEntityPackages                            + ?ref=, + cache
+internal/handlers/catalog.go  GetEntityPackageDiff                         NEW
+```
+
+```
+GET /api/v1/catalog/entities/:kind/:name/packages?ref=v0.4.1
+GET /api/v1/catalog/entities/:kind/:name/packages/diff?base=v0.4.1
+```
+
+```json
+{
+  "base": "v0.4.1",
+  "head": "main",
+  "manifests": [{
+    "ecosystem": "go",
+    "file": "go.mod",
+    "unchanged": 197,
+    "changes": [
+      { "name": "github.com/gin-gonic/gin",     "status": "added",   "to": "1.10.0" },
+      { "name": "github.com/coreos/go-oidc/v3", "status": "changed", "from": "3.11.0", "to": "3.12.0" },
+      { "name": "old-lib/x",                    "status": "removed", "from": "2.1.0" }
+    ]
+  }]
+}
+```
+
+### Acceptance criteria
+
+- [ ] **`ref` is validated before it reaches a Gitea URL.** It is user-supplied
+      and gets interpolated into an API path, so it must be constrained to a safe
+      charset (or to the set `ListReleases` returned) — the same treatment
+      `SafeReturnPath` applies to `return_to`. A ref containing `../` or a query
+      separator must be rejected, not escaped-and-hoped.
+- [ ] Tag reads and default-branch reads use **different TTLs**; a tag is
+      immutable and must not be re-fetched on every compare.
+- [ ] The card renders with data on first paint — no spinner on a warm cache.
+- [ ] Omitting `ref` returns exactly today's behaviour, so existing callers and
+      the BFF route are unaffected.
+- [ ] `DiffManifests` has unit tests covering added / removed / changed / renamed
+      files and an empty base (a release predating the manifest).
+- [ ] A repo with no releases hides the compare control rather than erroring.
+- [ ] A manifest that exists on one side only is reported as wholly added or
+      removed, not silently skipped.
+- [ ] Still read-only: no new write path, no new egress destination.
+
+**Effort:** S–M. No CI prerequisite and no new dependency — the slowest part is
+already-existing Gitea reads, which this makes cheaper rather than more
+expensive.
+
+---
+
 ## How these strengthen the security story
 
-All three *increase security and quality visibility while adding zero portal power* —
+All four *increase security and quality visibility while adding zero portal power* —
 which is exactly the [passive-reflector](../security/security-assurance.md) posture:
 
 - CVE management **routes** findings and **suggests** fixes; the developer applies them
   via PR. The portal opens a project-repo issue at most — no cluster write, no auto-patch.
 - Test visibility **displays** CI output; it never runs or requires anything.
 - Productivity signals **mirror** existing data back to the team; they collect nothing new.
+- Dependency comparison **reads** manifests already in Git at two refs and subtracts one
+  from the other; it adds no data source and makes the existing reads cheaper.
 
 Each is read-mostly, advisory, human-gated, and RBAC-scoped — so none of them widens the
 blast radius the assurance doc defends.

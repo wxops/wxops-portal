@@ -110,6 +110,95 @@ Accepted
 - `spec.docStatus`: typically `accepted` (active) or `deprecated`
 - `spec.owner`: the team responsible for executing this runbook
 - `spec.relatedTo`: the component(s) or resource(s) this runbook operates on
+  — for a runbook scoped to **one** service (e.g. `runbook-database-failover`
+  for one team's database)
+
+**Platform-wide symptom runbooks** (e.g. "Pod OOMKilled", "ImagePullBackOff")
+are the exception: they apply to *any* workload exhibiting the symptom, not
+one component, so `relatedTo` points at the category `System` (below) rather
+than an arbitrary example service. Discovery is by `tags` and, forward-looking,
+by a `wxops.cloud/runbook-condition` annotation whose value matches a
+Kubernetes pod/container status `reason` (`OOMKilled`, `ImagePullBackOff`,
+`FailedScheduling`, …). The annotation is metadata only today; no code reads
+it yet. It exists so that a future feature that inspects pod status can look
+up "the runbook for this condition" without a schema migration.
+
+#### One collection Doc per category, not one Doc per symptom
+
+Symptom runbooks are **combined into a single Doc entity per category** —
+`runbook-kubernetes-workload-issues` under the `kubernetes-operations`
+category is the seed example in `wxops-gitops-infrastructure`. Each symptom
+gets its own `##` section inside that one file, not its own catalog entry.
+When a new symptom is identified, add a section to the existing collection;
+only start a new Doc entity when it belongs to a genuinely different
+category (e.g. a Vault-specific failure).
+
+This trades a small amount of retrieval precision for a much smaller catalog
+footprint as the library grows — with a dozen K8s symptoms covered, that's
+one Doc to browse and one `relatedTo` link on the System, not a dozen
+similarly-named entries. Retrieval still works at symptom granularity without
+per-symptom entities: keep the `wxops.cloud/runbook-condition` annotation
+**comma-separated with every symptom the collection covers**, and make sure
+each symptom's `##` heading contains that same condition string verbatim
+(e.g. `## OOMKilled`, not `## Memory Exhaustion`) — a human or a future
+agent finds the right section by a substring match on the heading text, the
+same key the annotation already carries.
+
+#### Categorizing platform runbooks
+
+#### Categorizing platform runbooks
+
+As the platform runbook library grows beyond Kubernetes pod-lifecycle issues
+— Vault, GitOps/ArgoCD, database, networking — group them with a **`System`
+entity per operational category**, not a new field. This reuses the exact
+mechanism the portal already renders (System detail pages already list their
+related Docs), so a category gets a real landing page — title, description,
+the "whole story" of what the category covers — for free.
+
+```yaml
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: kubernetes-operations
+  title: "Kubernetes Operations"
+  description: "Runbooks for pod-lifecycle failures — scheduling, image pulls, memory — that apply to any workload."
+spec:
+  owner: group:platform-team
+  domain: platform
+```
+
+Each runbook joins the category by adding the System to its `relatedTo`:
+
+```yaml
+spec:
+  relatedTo:
+    - system:default/kubernetes-operations
+```
+
+A new category (`vault-operations`, `gitops-operations`, …) is just another
+`System` entity plus this one line on each runbook that belongs to it — no
+schema change, no migration of existing runbooks into folders.
+
+#### Composing a specific runbook from a generic one
+
+A team's app-specific runbook does not repeat the platform-wide procedure —
+it points at it and adds only what's different for that service:
+
+```yaml
+spec:
+  relatedTo:
+    - component:default/payments-service
+    - doc:default/runbook-kubernetes-workload-issues   # apply the OOMKilled section first
+```
+
+Since symptoms live as sections inside a collection Doc rather than as their
+own entities, `relatedTo` points at the **collection**, and the content names
+the specific section: *"Apply the **OOMKilled** section of
+[Runbook: Kubernetes Workload Issues] first. Specific to `payments-service`:"*
+— then cover only the delta, e.g. which metric to check before doing generic
+memory analysis. This is intentionally additive, not a step-level override —
+if a team's procedure genuinely diverges rather than extends, that's a signal
+to write a new symptom section, not fork an existing one.
 
 **Markdown structure** (enforced in template):
 ```markdown
@@ -124,19 +213,63 @@ Accepted
 ## Procedure
 
 ### Step 1: <Action>
-<!-- Clear, copy-pasteable commands. No ambiguity. -->
+<!-- Clear, copy-pasteable commands. No ambiguity.
+     Any step that changes cluster state MUST go through the portal's GitOps
+     write path (Edit Config → PR) — never a raw `kubectl apply` / `patch` /
+     `scale`. This is not a style preference: it is the same read-only-to-
+     clusters boundary the whole security posture is built on (see
+     security-assurance.md). A runbook is diagnostic material for direct
+     kubectl use; only a PR is allowed to change what's running. -->
 
 ### Step 2: <Action>
 <!-- ... -->
 
 ## Verification
-<!-- How do you confirm the procedure worked? -->
+<!-- State an exact check: a command plus the precise expected output or
+     value, not a prose description like "should look healthy." A vague
+     verification is fine for a human skimming during an incident but
+     unusable for anything that needs to confirm the fix worked — including,
+     eventually, an agent (see system-intelligence.md Phase 2: Validate).
+     Example: "kubectl get pod <name> -o jsonpath='{.status.containerStatuses[0].restartCount}'
+     — value unchanged from the count recorded in Step 1 after 10 minutes." -->
 
 ## Rollback
 <!-- If something goes wrong, how do you undo it? -->
 
 ## Escalation
 <!-- Who to contact if this runbook doesn't resolve the issue -->
+```
+
+**Symptom-collection shape**: a category document (e.g.
+`runbook-kubernetes-workload-issues.md`) nests this exact structure one level
+deeper, once per symptom, under a shared `# Runbook: <Category>` title and one
+shared `## Prerequisites`:
+
+```markdown
+# Runbook: <Category>
+
+## Overview
+<!-- What's covered, and a bullet list of the symptom sections below -->
+
+## Prerequisites
+<!-- Shared across every symptom in this collection -->
+
+---
+
+## <ConditionName>          <!-- must contain the exact runbook-condition value -->
+<!-- symptom-specific framing, in place of a separate Overview -->
+
+### Procedure
+#### Step 1: <Action>
+...
+### Verification
+### Rollback
+### Escalation
+
+---
+
+## <NextConditionName>
+...
 ```
 
 ---

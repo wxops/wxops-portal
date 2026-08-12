@@ -135,6 +135,43 @@ type Config struct {
 	// so tenant developers don't need direct Gitea access.
 	GiteaPortalOwner string
 	GiteaPortalRepo  string
+
+	// Runtime observability — read at request time and shipped to the frontend
+	// inside the /environments and scaffold-config payloads, the same way
+	// GetPromoStatus returns VaultAddr. Deliberately NOT NEXT_PUBLIC_* build
+	// args: those are baked into the JS bundle at image build time, so changing
+	// a dashboard URL would require a CI rebuild. Operators change these with a
+	// Deployment env edit.
+	//
+	// ArgoCDURL replaced the NEXT_PUBLIC_ARGOCD_URL build arg in v0.5.0 for
+	// exactly that reason; the build arg and its CI wiring were removed.
+	//
+	// When ArgoCDURL / LGTMGrafanaURL are empty the corresponding links are
+	// returned as "" and the frontend hides the control.
+	ArgoCDURL       string // e.g. "https://argocd.example.com"
+	ArgoCDNamespace string // namespace holding Application CRs (default: "argocd")
+
+	// LGTMGrafanaURL is the only externally reachable observability endpoint —
+	// all signal links are Grafana Explore URLs, so Loki/Tempo/Pyroscope need
+	// datasource identifiers rather than their own base URLs.
+	LGTMGrafanaURL           string
+	LGTMLokiDatasource       string // default "Loki"
+	LGTMTempoDatasource      string // default "Tempo"
+	LGTMPrometheusDatasource string // default "prometheus"
+	LGTMPyroscopeDatasource  string // default "Pyroscope"
+
+	// AlertmanagerURL enables the "is this service alerting right now?" panel.
+	//
+	// Unlike every other observability value above, this one is *called*, not
+	// just linked — it is the portal's only egress destination outside Gitea,
+	// Vault, the OIDC issuer and the Kubernetes APIs. It is therefore opt-in:
+	// empty disables the feature entirely. Operators enabling it must also add
+	// Alertmanager to the egress NetworkPolicy documented in
+	// docs/security/security-assurance.md §3.
+	//
+	// In-cluster address for kube-prometheus-stack:
+	//   http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093
+	AlertmanagerURL string
 }
 
 // Load reads configuration from environment variables.
@@ -195,6 +232,17 @@ func Load() *Config {
 		GiteaBotEmail:            getEnv("GITEA_BOT_EMAIL", ""),
 		GiteaPortalOwner:         getEnv("GITEA_PORTAL_OWNER", ""),
 		GiteaPortalRepo:          getEnv("GITEA_PORTAL_REPO", "wxops-portal-v2"),
+
+		ArgoCDURL:       getEnv("ARGOCD_URL", ""),
+		ArgoCDNamespace: getEnv("ARGOCD_NAMESPACE", "argocd"),
+
+		LGTMGrafanaURL:           getEnv("LGTM_GRAFANA_URL", ""),
+		LGTMLokiDatasource:       getEnv("LGTM_LOKI_DATASOURCE", "Loki"),
+		LGTMTempoDatasource:      getEnv("LGTM_TEMPO_DATASOURCE", "Tempo"),
+		LGTMPrometheusDatasource: getEnv("LGTM_PROMETHEUS_DATASOURCE", "prometheus"),
+		LGTMPyroscopeDatasource:  getEnv("LGTM_PYROSCOPE_DATASOURCE", "Pyroscope"),
+
+		AlertmanagerURL: getEnv("ALERTMANAGER_URL", ""),
 	}
 }
 

@@ -134,3 +134,22 @@ Set `CLUSTERS_CONFIG_FILE=/path/to/clusters.json` or `CLUSTERS_CONFIG=<inline JS
 > Do not use `clusters.json` in production. It is read once at startup — cluster changes require a pod restart and cannot be updated via GitOps.
 
 See `backend/clusters.example.json` for a fully annotated example covering both Pinniped modes.
+
+---
+
+## Observability endpoints are not per-cluster (yet)
+
+The Secret schema above carries identity and Pinniped wiring, but **no
+observability endpoints**. Grafana and ArgoCD URLs are single, portal-wide
+settings (`LGTM_GRAFANA_URL`, `ARGOCD_URL`), so every registered cluster links to
+the same Grafana.
+
+This matches the current deployment — one observability stack — but it is a real
+limitation for a multi-cluster estate. Compounding it, the log collector
+currently stamps a hardcoded `cluster` label, so Loki links cannot distinguish
+clusters even if separate Grafanas existed.
+
+Making this per-cluster means adding annotations (e.g.
+`wxops.cloud/grafana-url`) to the Secret schema and threading them through the
+`/environments` response. See
+[observability.md](observability.md#known-limitations).

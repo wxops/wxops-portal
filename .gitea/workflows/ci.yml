@@ -13,8 +13,6 @@ on:
 #   NODE_VERSION  default: 20            Node LTS managed centrally
 #   REGISTRY      default: ghcr.io       switch the registry once for every repo
 #   RUNNER_LABEL  default: ubuntu-latest use a self-hosted runner label here if needed
-#   ARGOCD_URL    e.g. https://argocd.wxops.cloud  injected as NEXT_PUBLIC_ARGOCD_URL
-#                 at build time; leave unset to hide ArgoCD links in the UI
 #
 # Repo-level  → Gitea: Repository > Settings > Actions > Variables
 #   GO_CACHE_PATH   default: backend/go.sum             monorepo: Go module is in subdir
@@ -28,6 +26,13 @@ on:
 #
 # NOT pipeline variables — runtime app config injected via K8s Secrets at deploy time
 #   OIDC_CLIENT_SECRET, SESSION_SECRET, GITEA_TOKEN, OIDC_ISSUER_URL, …
+#   ARGOCD_URL, LGTM_GRAFANA_URL, LGTM_*_DATASOURCE
+#
+#   ARGOCD_URL used to be an org-level Actions variable injected at build time as
+#   NEXT_PUBLIC_ARGOCD_URL. It became runtime backend config in v0.5.0 and must
+#   NOT be re-added as a build-arg: a NEXT_PUBLIC_* value is sealed into the JS
+#   bundle, so repointing ArgoCD would need a full image rebuild instead of a
+#   Deployment env edit. Same reasoning for every LGTM_* value.
 #
 env:
   GO_VERSION:     ${{ vars.GO_VERSION     || '1.23' }}
@@ -154,7 +159,6 @@ jobs:
             ${{ env.REGISTRY }}/wxops-portal-v2:${{ github.ref_name }}
             ${{ env.REGISTRY }}/wxops-portal-v2:latest
           build-args: |
-            NEXT_PUBLIC_ARGOCD_URL=${{ vars.ARGOCD_URL }}
             APP_VERSION=${{ env.APP_VERSION }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/wxops-portal-v2:cache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/wxops-portal-v2:cache,mode=max

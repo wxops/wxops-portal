@@ -106,8 +106,12 @@ func New(cfg *config.Config) (*Server, error) {
 	// HTTP handlers.
 	healthH := handlers.NewHealthHandler()
 	authH := handlers.NewAuthHandler(oidcClient, sm, cfg)
-	clusterH := handlers.NewClusterHandler(registry, oidcClient, sm, cfg.OIDCCABundle)
+	// One broker, shared by every handler that reads from a spoke cluster, so
+	// the Concierge credential cache is reused rather than duplicated.
+	broker := handlers.NewCredentialBroker(oidcClient, sm, cfg.OIDCCABundle)
+	clusterH := handlers.NewClusterHandler(registry, broker)
 	catalogH := handlers.NewCatalogHandler(catalogStore, specFetcher, gc, cfg)
+	obsH := handlers.NewObservabilityHandler(catalogStore, registry, broker, cfg)
 	cliH := handlers.NewCLIHandler(cfg)
 
 	// Vault client — optional, used by scaffold to write .env secrets.
@@ -210,6 +214,8 @@ func New(cfg *config.Config) (*Server, error) {
 			cat.GET("/entities/:kind/:name/packages", catalogH.GetEntityPackages)
 			cat.GET("/entities/:kind/:name/versions", catalogH.GetEntityVersions)
 			cat.GET("/entities/:kind/:name/promostatus", catalogH.GetPromoStatus)
+			cat.GET("/entities/:kind/:name/environments", obsH.GetEnvironments)
+			cat.GET("/entities/:kind/:name/alerts", obsH.GetEntityAlerts)
 			cat.GET("/entities/:kind/:name/overlay/:env", catalogH.GetOverlayConfig)
 			cat.POST("/entities/:kind/:name/promote", catalogH.PromoteLifecycle)
 			cat.POST("/entities/:kind/:name/darlane", catalogH.SetupDarlane)

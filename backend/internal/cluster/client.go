@@ -274,3 +274,64 @@ func (c *SpokeClient) ListResourceQuotas(ctx context.Context, namespace string) 
 	}
 	return json.RawMessage(body), nil
 }
+
+// Sentinel errors for the runtime-observability reads.
+//
+// These two cases must be told apart by the caller: a 403 means the cluster's
+// RBAC prerequisite has not been applied yet (an operator action), while a 404
+// means the application simply is not deployed to that environment (a normal,
+// expected state). Rendering them the same way would make an un-provisioned
+// environment look broken.
+var (
+	ErrForbidden = fmt.Errorf("forbidden")
+	ErrNotFound  = fmt.Errorf("not found")
+)
+
+// classify maps an API server status code onto the sentinels above.
+func classify(status int, body []byte) error {
+	switch status {
+	case http.StatusOK:
+		return nil
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return ErrForbidden
+	case http.StatusNotFound:
+		return ErrNotFound
+	default:
+		return fmt.Errorf("kubernetes API returned %d: %s", status, body)
+	}
+}
+
+// GetArgoApplication returns the raw ArgoCD Application JSON.
+//
+// Application CRs live in ArgoCD's own namespace (argocd), not in the tenant
+// namespace where the workload runs — reading them therefore needs a
+// RoleBinding in that namespace, which is why ErrForbidden is surfaced
+// distinctly. Name follows the ApplicationSet convention {team}-{app}-{env}.
+func (c *SpokeClient) GetArgoApplication(ctx context.Context, namespace, name string) (json.RawMessage, error) {
+	path := fmt.Sprintf("/apis/argoproj.io/v1alpha1/namespaces/%s/applications/%s", namespace, name)
+	body, status, err := c.get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if err := classify(status, body); err != nil {
+		return nil, err
+	}
+	return json.RawMessage(body), nil
+}
+
+// GetXTenantApp returns the raw Crossplane XTenantApp JSON.
+//
+// XTenantApp is a Crossplane v2 composite with scope: Cluster, so there is no
+// namespace path segment — reading it requires a ClusterRoleBinding rather than
+// a namespaced RoleBinding.
+func (c *SpokeClient) GetXTenantApp(ctx context.Context, name string) (json.RawMessage, error) {
+	path := fmt.Sprintf("/apis/platform.wxops.cloud/v1alpha1/xtenantapps/%s", name)
+	body, status, err := c.get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if err := classify(status, body); err != nil {
+		return nil, err
+	}
+	return json.RawMessage(body), nil
+}

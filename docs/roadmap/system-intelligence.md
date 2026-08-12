@@ -1,9 +1,10 @@
 # System Intelligence — A Darlane-Native Approach to Incident Response
 
 > **Status:** Vision + dev-ready framing. Nothing here is implemented yet.
-> **Depends on:** `XDarlane` XRD (v0.8.0), Guardian (v0.9.0), Runtime Observability
-> (v0.5.0), and the stateless audit trail (v0.6.0) — see
-> [enterprise-roadmap.md](enterprise-roadmap.md).
+> **Depends on:** `XDarlane` XRD (Phase 3), Guardian (Phase 4), Runtime Observability
+> (shipped, v0.5.0), and the stateless audit trail (Phase 1) — see
+> [enterprise-roadmap.md](enterprise-roadmap.md) for the phase model. Phases are
+> deliberately unversioned: they are unscheduled backlog gated on adoption.
 > **Audience:** Platform engineers and anyone deciding how far W'xOps should go
 > toward autonomous operations.
 
@@ -281,12 +282,12 @@ Intelligence is the capstone, not the foundation. It composes existing/planned w
 
 | Dependency | From | Why intelligence needs it |
 |---|---|---|
-| **Runtime Observability** | v0.5.0 | The signal inputs — ArgoCD/Crossplane status, Alertmanager alerts, LGTM deep links. |
-| **`XDarlane` XRD** | v0.8.0 | Per-agent, TTL-bound, multi-session workspace claims — the safe execution substrate. |
-| **Guardian** | v0.9.0 | Scan + audit + in-cluster AI review wrapping every agent session. |
-| **Audit trail (Track A)** | v0.6.0 | Attributable, SIEM-bound record of every agent action, correlated with Git. |
+| **Runtime Observability** | shipped (v0.5.0) | The signal inputs — ArgoCD/Crossplane status, Alertmanager alerts, LGTM deep links. |
+| **`XDarlane` XRD** | Phase 3 | Per-agent, TTL-bound, multi-session workspace claims — the safe execution substrate. |
+| **Guardian** | Phase 4 | Scan + audit + in-cluster AI review wrapping every agent session. |
+| **Audit trail (Track A)** | Phase 1 | Attributable, SIEM-bound record of every agent action, correlated with Git. |
 | **MCP surface** | new | The context+action API the model consumes; inherits Pinniped RBAC + audit. |
-| **Scorecards + blast radius (Track C)** | v0.6.0 | Blast-radius and readiness signals that sharpen diagnosis. |
+| **Scorecards + blast radius (Track C)** | Phase 1 | Blast-radius and readiness signals that sharpen diagnosis. |
 
 **Architectural stance to hold throughout:** W'xOps ships the *substrate* — the MCP
 surface, the validation harness, the twin, the audit — and stays **model-agnostic and

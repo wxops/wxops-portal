@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { requireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { CountUpNumber } from "@/components/ui/count-up-number";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Server,
   Users,
@@ -119,18 +121,27 @@ async function fetchCLIVersion(cookie: string): Promise<string> {
   }
 }
 
-export default async function DashboardPage() {
-  const session     = await requireSession();
+/**
+ * The only part of the page that needs catalog and cluster data.
+ *
+ * Split out so <Suspense> can stream it. The catalog walk hits Gitea whenever
+ * the 5-minute cache is cold and the cluster count is a live Kubernetes call
+ * through Pinniped; awaiting either in the page body would hold the entire
+ * shell — hero, quick start, identity panel — on a blank screen.
+ */
+async function StatCards({
+  groups,
+  isPlatformTeam,
+}: {
+  groups: string[];
+  isPlatformTeam: boolean;
+}) {
   const cookieStore = await cookies();
   const rawCookie   = cookieStore.get("wxops_session")?.value ?? "";
 
-  const groups        = session.groups ?? [];
-  const isPlatformTeam = groups.includes(PLATFORM_TEAM);
-
-  const [catalog, clusterCount, cliVersion] = await Promise.all([
+  const [catalog, clusterCount] = await Promise.all([
     fetchCatalogStats(rawCookie, groups, isPlatformTeam),
     fetchClusterCount(rawCookie),
-    fetchCLIVersion(rawCookie),
   ]);
 
   const statCards = [
@@ -179,6 +190,57 @@ export default async function DashboardPage() {
       hoverBorder: "group-hover:border-wxops-indigo/40",
     },
   ];
+
+  return (
+    <>
+      {statCards.map((s) => (
+        <Link key={s.label} href={s.href} className="group block">
+          <div className={cn(
+            "rounded-xl border bg-card p-5 h-full transition-all duration-200",
+            s.hoverBorder,
+            s.glowClass,
+          )}>
+            <div className={cn("inline-flex rounded-lg p-2 mb-4", s.bg)}>
+              <s.icon className={cn("h-5 w-5", s.color)} />
+            </div>
+            <p className="text-3xl font-bold tracking-tight tabular-nums">
+              <CountUpNumber value={s.value} />
+            </p>
+            <p className="text-sm font-medium mt-0.5">{s.label}</p>
+            <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
+          </div>
+        </Link>
+      ))}
+    </>
+  );
+}
+
+/** Fills the stat-card grid cells while StatCards resolves. */
+function StatCardsSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-[8.5rem] rounded-xl" />
+      ))}
+    </>
+  );
+}
+
+/**
+ * CLI version badge — one small backend call, streamed so it never delays the
+ * identity panel it sits inside.
+ */
+async function CliVersionBadge() {
+  const cookieStore = await cookies();
+  const rawCookie   = cookieStore.get("wxops_session")?.value ?? "";
+  return <>{await fetchCLIVersion(rawCookie)}</>;
+}
+
+export default async function DashboardPage() {
+  const session = await requireSession();
+
+  const groups         = session.groups ?? [];
+  const isPlatformTeam = groups.includes(PLATFORM_TEAM);
 
   const quickActions = [
     {
@@ -255,25 +317,11 @@ export default async function DashboardPage() {
       </div>
 
       {/* ── Stats row ────────────────────────────────────────────────── */}
+      {/* Streamed: everything else on this page paints without waiting for it. */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Link key={s.label} href={s.href} className="group block">
-            <div className={cn(
-              "rounded-xl border bg-card p-5 h-full transition-all duration-200",
-              s.hoverBorder,
-              s.glowClass,
-            )}>
-              <div className={cn("inline-flex rounded-lg p-2 mb-4", s.bg)}>
-                <s.icon className={cn("h-5 w-5", s.color)} />
-              </div>
-              <p className="text-3xl font-bold tracking-tight tabular-nums">
-                <CountUpNumber value={s.value} />
-              </p>
-              <p className="text-sm font-medium mt-0.5">{s.label}</p>
-              <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
-            </div>
-          </Link>
-        ))}
+        <Suspense fallback={<StatCardsSkeleton />}>
+          <StatCards groups={groups} isPlatformTeam={isPlatformTeam} />
+        </Suspense>
       </div>
 
       {/* ── Quick start ──────────────────────────────────────────────── */}
@@ -462,7 +510,9 @@ export default async function DashboardPage() {
             </div>
             <span className="text-xs font-semibold flex-1">wxops CLI</span>
             <span className="text-[10px] font-mono font-semibold text-wxops-indigo bg-wxops-indigo/10 border border-wxops-indigo/20 rounded-full px-1.5 py-0.5">
-              {cliVersion}
+              <Suspense fallback={<Skeleton className="h-2.5 w-8 inline-block align-middle" />}>
+                <CliVersionBadge />
+              </Suspense>
             </span>
             <a
               href="https://docs.wxops.cloud/docs/cli/overview"

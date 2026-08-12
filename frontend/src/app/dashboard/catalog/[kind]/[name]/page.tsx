@@ -9,6 +9,7 @@ import { EntityActions } from "@/components/catalog/entity-actions";
 import { EntityNavBar } from "@/components/catalog/entity-nav-bar";
 import { DocsDrawer } from "@/components/catalog/docs-drawer";
 import { RuntimeStatusCard } from "@/components/catalog/runtime-status-card";
+import { AlertsCard } from "@/components/catalog/alerts-card";
 import { CIStatusCard } from "@/components/catalog/ci-status-card";
 import { ReleasesCard } from "@/components/catalog/releases-card";
 import { PackagesCard } from "@/components/catalog/packages-card";
@@ -493,10 +494,6 @@ export default async function EntityDetailPage({
 
   // ── Build tab list ────────────────────────────────────────────────────────
 
-  const team = entity.spec.owner?.includes(":")
-    ? entity.spec.owner.split(":")[1]
-    : entity.spec.owner ?? "";
-
   const tabs: EntityTab[] = [
     // Overview — lifecycle + environments + merged About section (Components only)
     ...(entity.kind === "Component" ? [{
@@ -516,7 +513,11 @@ export default async function EntityDetailPage({
     ...(hasScaffoldInfo && entity.kind === "Component" ? [{
       id: "runtime" as const,
       children: (
-        <RuntimeStatusCard appName={entity.metadata.name} team={team} />
+        <div className="space-y-4">
+          {/* Alerts first: "is this broken right now?" outranks "what is deployed?" */}
+          <AlertsCard entityKind={entity.kind} entityName={entity.metadata.name} />
+          <RuntimeStatusCard entityKind={entity.kind} entityName={entity.metadata.name} />
+        </div>
       ),
     }] : []),
 

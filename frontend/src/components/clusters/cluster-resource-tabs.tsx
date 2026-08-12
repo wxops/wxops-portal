@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PodDetailDrawer } from "@/components/clusters/pod-detail-drawer";
+import { SessionExpired, isSessionExpired } from "@/components/ui/session-expired";
 
 const REFRESH_INTERVAL = 30;
 
@@ -66,6 +67,9 @@ type Tab = "pods" | "deployments" | "services";
 type ResourceState = {
   loading: boolean;
   error: string;
+  // Distinct from `error`: a 401 is recoverable in place via re-login, so it
+  // gets its own affordance rather than a dead-end message.
+  expired: boolean;
   pods: PodInfo[];
   deployments: DeploymentInfo[];
   services: ServiceInfo[];
@@ -76,15 +80,17 @@ type ResourceAction =
   | { type: "pods"; items: PodInfo[] }
   | { type: "deployments"; items: DeploymentInfo[] }
   | { type: "services"; items: ServiceInfo[] }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "expired" };
 
 function resourceReducer(state: ResourceState, action: ResourceAction): ResourceState {
   switch (action.type) {
     case "loading":      return { ...state, loading: true, error: "" };
-    case "pods":         return { ...state, loading: false, pods: action.items };
-    case "deployments":  return { ...state, loading: false, deployments: action.items };
-    case "services":     return { ...state, loading: false, services: action.items };
+    case "pods":         return { ...state, loading: false, expired: false, pods: action.items };
+    case "deployments":  return { ...state, loading: false, expired: false, deployments: action.items };
+    case "services":     return { ...state, loading: false, expired: false, services: action.items };
     case "error":        return { ...state, loading: false, error: action.message };
+    case "expired":      return { ...state, loading: false, error: "", expired: true };
   }
 }
 
@@ -222,9 +228,9 @@ export function ClusterResourceTabs({ clusterId, reloadKey = 0 }: Props) {
   const [namespaces, setNamespaces] = useState<string[]>([]);
   const [namespace, setNamespace] = useState<string>("default");
   const [resources, dispatchResource] = useReducer(resourceReducer, {
-    loading: false, error: "", pods: [], deployments: [], services: [],
+    loading: false, error: "", expired: false, pods: [], deployments: [], services: [],
   });
-  const { loading, error, pods, deployments, services } = resources;
+  const { loading, error, expired, pods, deployments, services } = resources;
 
   const [quotas, setQuotas] = useState<QuotaInfo[]>([]);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -239,9 +245,16 @@ export function ClusterResourceTabs({ clusterId, reloadKey = 0 }: Props) {
     };
     const endpoint = endpointMap[tab];
     fetch(`/api/v1/clusters/${clusterId}/${endpoint}?namespace=${encodeURIComponent(namespace)}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        // 401 means the Pinniped session can no longer be exchanged for cluster
+        // credentials — surface it as recoverable rather than as a fetch error.
+        if (isSessionExpired(r.status)) return { __expired: true } as const;
+        return r.json();
+      })
       .then((data) => {
-        if (data.error) {
+        if (data.__expired) {
+          dispatchResource({ type: "expired" });
+        } else if (data.error) {
           dispatchResource({ type: "error", message: data.error as string });
         } else if (tab === "pods") {
           dispatchResource({ type: "pods", items: data.pods ?? [] });
@@ -382,7 +395,12 @@ export function ClusterResourceTabs({ clusterId, reloadKey = 0 }: Props) {
               Loading…
             </div>
           )}
-          {!loading && error && <p className="text-sm text-destructive px-5 pb-4">{error}</p>}
+          {!loading && expired && (
+            <div className="px-5 pb-4">
+              <SessionExpired resource="cluster resources" compact />
+            </div>
+          )}
+          {!loading && !expired && error && <p className="text-sm text-destructive px-5 pb-4">{error}</p>}
 
           {/* ── Pods ─────────────────────────────────────────────────────── */}
           {tab === "pods" && !error && (

@@ -41,6 +41,9 @@ plus a `development/` bucket for contributor-facing material.
 |---|---|
 | [Platform Features](platform/platform-features.md) | XTenantApp / XTenantDatabase / Vault spec schema, base vs overlay |
 | [Cluster Registry](platform/cluster-registry.md) | Spoke discovery via labelled K8s Secrets |
+| [Runtime Observability](platform/observability.md) | ArgoCD + Crossplane status, Grafana deep links, active alerts, RBAC prerequisite |
+| [Observability Architecture](platform/observability-architecture.md) | Hub Grafana + spoke Alloy target design, and what blocks multi-cluster today |
+| [Multi-Cluster Authentication](platform/multi-cluster-authentication.md) | Deferred design — zero-static-secret M2M credentials for ArgoCD via exec plugin |
 | [Container](platform/container.md) | nginx, supervisord, Dockerfile design |
 
 ## Darlane
@@ -69,7 +72,7 @@ plus a `development/` bucket for contributor-facing material.
 |---|---|
 | [Enterprise Roadmap](roadmap/enterprise-roadmap.md) | Dev-ready specs: audit, security, scorecards, cost, XDarlane, Guardian |
 | [System Intelligence](roadmap/system-intelligence.md) | Darlane-native incident response — diagnose + validate in a safe twin for on-call & hotfix |
-| [DevEx Integrations](roadmap/devex-integrations.md) | CVE management (Trivy → issue → patch), test visibility, team productivity signals |
+| [DevEx Integrations](roadmap/devex-integrations.md) | CVE management (Trivy → issue → patch), test visibility, team productivity signals, dependency comparison across releases |
 
 ## Development
 

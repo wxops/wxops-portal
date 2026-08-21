@@ -27,9 +27,20 @@ export function parseXTenantApp(response: any): Partial<WizardState> {
     value: e.value ?? "",
   }));
 
-  const podAnnotations = Object.entries(params.podAnnotations ?? {}).map(
-    ([key, value]) => ({ key, value: String(value) }),
-  );
+  // Legacy prometheus.io/* pod annotations predate spec.parameters.monitoring
+  // (v0.5.1). They never scraped anything, but existing bases still carry them.
+  // Translate them into the monitoring block and keep them out of the
+  // user-editable annotation list, so the next save migrates the app instead of
+  // preserving dead config alongside the real monitor.
+  const rawAnnotations: Record<string, unknown> = params.podAnnotations ?? {};
+  const legacyScrape = String(rawAnnotations["prometheus.io/scrape"] ?? "") === "true";
+  const legacyPath = rawAnnotations["prometheus.io/path"];
+
+  const podAnnotations = Object.entries(rawAnnotations)
+    .filter(([key]) => !key.startsWith("prometheus.io/"))
+    .map(([key, value]) => ({ key, value: String(value) }));
+
+  const monitoring = params.monitoring ?? {};
 
   // Parse database config if present
   const dbParams = dbConfig?.spec?.parameters ?? {};
@@ -50,6 +61,8 @@ export function parseXTenantApp(response: any): Partial<WizardState> {
     livenessPath: probes.liveness?.path ?? "",
     readinessPath: probes.readiness?.path ?? "",
     rolloutType: params.rolloutStrategy?.type ?? "RollingUpdate",
+    monitoringEnabled: monitoring.enabled ?? legacyScrape,
+    metricsPath: monitoring.path ?? (legacyPath ? String(legacyPath) : "/metrics"),
     envVars: envVars.length > 0 ? envVars : [],
     podAnnotations: podAnnotations.length > 0 ? podAnnotations : [],
     extraLabels: extraLabels.length > 0 ? extraLabels : [],

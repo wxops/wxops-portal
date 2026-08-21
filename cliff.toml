@@ -41,6 +41,18 @@ https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/{{ relea
 
 trim = false
 
+# Repo link is hardcoded inline above (3 occurrences: body commit link, footer
+# release tag link, footer compare link) rather than templated — [remote.*]
+# makes git-cliff perform a live API call and abort generation if it fails
+# (wrong host, no token, offline; verified directly), which this project has
+# no need for.
+#
+# THIS FILE IS THE GITEA VERSION. Gitea is frozen as the legacy record for
+# v0.1.0–v0.5.0. From v0.6.0, GitHub (github.com/wxops/wxops-portal — see
+# charts/Chart.yaml) becomes the only live release target. When that cutover
+# happens: swap all 3 gitea.xeusnguyen.xyz URLs above to the GitHub one and
+# regenerate CHANGELOG.md fresh — do not do it piecemeal.
+
 [git]
 conventional_commits = true
 filter_unconventional = false

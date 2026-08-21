@@ -12,7 +12,7 @@ import { RuntimeStatusCard } from "@/components/catalog/runtime-status-card";
 import { AlertsCard } from "@/components/catalog/alerts-card";
 import { CIStatusCard } from "@/components/catalog/ci-status-card";
 import { ReleasesCard } from "@/components/catalog/releases-card";
-import { PackagesCard } from "@/components/catalog/packages-card";
+import { DependenciesCard } from "@/components/catalog/dependencies-card";
 import { PromotionPanel } from "@/components/catalog/promotion-panel";
 import { EntityTabs } from "@/components/catalog/entity-tabs";
 import type { EntityTab } from "@/components/catalog/entity-tabs";
@@ -44,6 +44,41 @@ async function fetchEntity(
   }
 }
 
+interface PackagesResponse {
+  manifests: {
+    ecosystem: string;
+    file: string;
+    packages: { ecosystem: string; name: string; version: string; direct: boolean; dev: boolean }[];
+    truncated: boolean;
+    total: number;
+  }[];
+  templateId: string;
+}
+
+// Server-side fetch, same shape as fetchEntity — deliberately not the
+// "use client" + useEffect + spinner pattern the other pipeline-tab cards
+// use, so the Dependencies card's default view renders with the rest of the
+// page instead of popping in after a client round-trip.
+async function fetchPackages(
+  cookie: string,
+  kind: string,
+  name: string,
+): Promise<PackagesResponse> {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/v1/catalog/entities/${kind}/${name}/packages`,
+      {
+        headers: { Cookie: `wxops_session=${cookie}` },
+        cache: "no-store",
+      },
+    );
+    if (!res.ok) return { manifests: [], templateId: "" };
+    return await res.json();
+  } catch {
+    return { manifests: [], templateId: "" };
+  }
+}
+
 const lifecycleBadge: Record<string, string> = {
   experimental: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
   development:  "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
@@ -51,6 +86,16 @@ const lifecycleBadge: Record<string, string> = {
   production:   "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   deprecated:   "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
+
+// Score bands, not exact-match like lifecycleBadge — completeness is a ratio,
+// not a fixed enum.
+function completenessBadgeClass(score: number, max: number): string {
+  if (max === 0) return "bg-muted text-muted-foreground";
+  const ratio = score / max;
+  if (ratio >= 0.8) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+  if (ratio >= 0.5) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+  return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+}
 
 export default async function EntityDetailPage({
   params,
@@ -79,7 +124,19 @@ export default async function EntityDetailPage({
   const userSession    = await getSession();
   const userGroups     = userSession?.groups ?? [];
 
-  const { entity, error } = await fetchEntity(sessionCookie, kind, name);
+  // Fired alongside fetchEntity, not after it — packages only need kind/name,
+  // not the entity itself. Whether the result is actually used (hasSourceRepo)
+  // isn't known until the entity resolves, but starting the request early
+  // avoids stacking two sequential Gitea round trips on the page's critical path.
+  const packagesPromise: Promise<PackagesResponse> =
+    kind === "Component"
+      ? fetchPackages(sessionCookie, kind, name)
+      : Promise.resolve({ manifests: [], templateId: "" });
+
+  const [{ entity, error }, packagesResult] = await Promise.all([
+    fetchEntity(sessionCookie, kind, name),
+    packagesPromise,
+  ]);
 
   if (error || !entity) {
     const isNotFound = !entity || error?.includes("not found");
@@ -492,6 +549,10 @@ export default async function EntityDetailPage({
     </div>
   ) : null;
 
+  const packagesData = hasSourceRepo && entity.kind === "Component"
+    ? packagesResult
+    : { manifests: [], templateId: "" };
+
   // ── Build tab list ────────────────────────────────────────────────────────
 
   const tabs: EntityTab[] = [
@@ -528,7 +589,12 @@ export default async function EntityDetailPage({
         <div className="grid gap-4 sm:grid-cols-3">
           <CIStatusCard entityKind={entity.kind} entityName={entity.metadata.name} />
           <ReleasesCard entityKind={entity.kind} entityName={entity.metadata.name} />
-          <PackagesCard entityKind={entity.kind} entityName={entity.metadata.name} />
+          <DependenciesCard
+            entityKind={entity.kind}
+            entityName={entity.metadata.name}
+            manifests={packagesData.manifests}
+            templateId={packagesData.templateId}
+          />
         </div>
       ),
     }] : []),
@@ -623,6 +689,19 @@ export default async function EntityDetailPage({
               {lifecycle && (
                 <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium", badgeClass)}>
                   {lifecycle}
+                </span>
+              )}
+              {entity.completenessScore && (
+                <span
+                  title={`Completeness: ${Object.entries(entity.completenessScore.checks)
+                    .map(([k, ok]) => `${ok ? "✓" : "✗"} ${k}`)
+                    .join(", ")}`}
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                    completenessBadgeClass(entity.completenessScore.score, entity.completenessScore.max),
+                  )}
+                >
+                  {entity.completenessScore.score}/{entity.completenessScore.max} complete
                 </span>
               )}
               {entity.spec.type && (

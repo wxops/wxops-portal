@@ -3,7 +3,7 @@
 > **Status:** Design / dev-ready spec. Nothing here is implemented yet.
 > **Scope:** Portal (`wxops-portal-v2`) + cross-references into `wxops-core`
 > (Crossplane packages) and `wxops-gitops-infrastructure`.
-> **Audience:** Platform engineers scoping the enterprise track (unscheduled; begins after v0.7.0).
+> **Audience:** Platform engineers scoping the enterprise track (unscheduled; begins after v0.6.0).
 
 This document turns the scattered "Backlog — Enterprise & Intelligence" items in
 [ROADMAP.md](../../ROADMAP.md) into development-ready specifications, and folds in the
@@ -48,8 +48,8 @@ fact from Git history, or (3) compute it on demand over the already-cached catal
 > to exact releases has already caused two renumbering passes as near-term
 > plans shifted, so the phases carry no version label. They begin after the
 > shipped and planned work in [ROADMAP.md](../../ROADMAP.md) — currently
-> v0.5.0 (Runtime Observability, shipped), v0.6.0 (Refactor & OSS Readiness),
-> v0.7.0 (Application & Delivery Metrics).
+> v0.5.0 (Runtime Observability, shipped), v0.5.1 (Observability Completion),
+> v0.6.0 (Refactor & OSS Readiness). Nothing is versioned beyond that.
 
 | Phase | Theme | Contents |
 |---|---|---|

@@ -42,10 +42,11 @@ type SpecFetcher interface {
 
 // CatalogHandler serves catalog entity endpoints.
 type CatalogHandler struct {
-	store       *catalog.Store
-	specFetcher SpecFetcher    // nil in local-dev mode
-	giteaClient *gitea.Client  // nil when Gitea is not configured
-	cfg         *config.Config // nil when write path is disabled
+	store         *catalog.Store
+	specFetcher   SpecFetcher    // nil in local-dev mode
+	giteaClient   *gitea.Client  // nil when Gitea is not configured
+	cfg           *config.Config // nil when write path is disabled
+	manifestCache *gitea.ManifestCache
 
 	portalLabelID   int64
 	portalLabelOnce sync.Once
@@ -54,7 +55,10 @@ type CatalogHandler struct {
 // NewCatalogHandler constructs a CatalogHandler.
 // gc and cfg may be nil — the write endpoint (UpdateEntity) will return 503.
 func NewCatalogHandler(store *catalog.Store, fetcher SpecFetcher, gc *gitea.Client, cfg *config.Config) *CatalogHandler {
-	return &CatalogHandler{store: store, specFetcher: fetcher, giteaClient: gc, cfg: cfg}
+	return &CatalogHandler{
+		store: store, specFetcher: fetcher, giteaClient: gc, cfg: cfg,
+		manifestCache: gitea.NewManifestCache(),
+	}
 }
 
 // isValidWebhookToken checks the Authorization header for a valid Bearer token
@@ -193,7 +197,27 @@ func (h *CatalogHandler) ListEntities(c *gin.Context) {
 		visible = visible[start:end]
 	}
 
-	c.JSON(http.StatusOK, gin.H{"entities": visible, "total": total, "page": page, "limit": limit})
+	c.JSON(http.StatusOK, gin.H{"entities": withScores(visible), "total": total, "page": page, "limit": limit})
+}
+
+// entityResponse embeds Entity so its fields stay top-level in the JSON
+// response, plus a completeness score computed on read — never stored,
+// never invalidated, no Store or schema change needed.
+type entityResponse struct {
+	catalog.Entity
+	CompletenessScore catalog.CompletenessScore `json:"completenessScore"`
+}
+
+func withScore(e catalog.Entity) entityResponse {
+	return entityResponse{Entity: e, CompletenessScore: catalog.ComputeCompletenessScore(&e)}
+}
+
+func withScores(entities []catalog.Entity) []entityResponse {
+	out := make([]entityResponse, len(entities))
+	for i, e := range entities {
+		out[i] = withScore(e)
+	}
+	return out
 }
 
 // entityMatchesSearch reports whether entity e contains lq (lowercased query)
@@ -254,7 +278,7 @@ func (h *CatalogHandler) GetEntity(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, entity)
+	c.JSON(http.StatusOK, withScore(*entity))
 }
 
 // GetEntitySpec returns the raw OpenAPI/AsyncAPI spec for an API entity.
@@ -1042,8 +1066,10 @@ func (h *CatalogHandler) resolveEntityRepo(c *gin.Context) (string, string, *cat
 // @Description  Returns recent Gitea Actions workflow runs for the entity's source repo.
 // @Tags         catalog
 // @Produce      json
-// @Param        kind  path  string  true  "Entity kind"
-// @Param        name  path  string  true  "Entity name"
+// @Param        kind   path   string  true   "Entity kind"
+// @Param        name   path   string  true   "Entity name"
+// @Param        page   query  int     false  "Page number (default 1)"
+// @Param        limit  query  int     false  "Runs per page, max 50 (default 5)"
 // @Success      200  {object}  map[string]any
 // @Security     CookieAuth
 // @Router       /api/v1/catalog/entities/{kind}/{name}/ci [get]
@@ -1057,7 +1083,16 @@ func (h *CatalogHandler) GetEntityCI(c *gin.Context) {
 		return
 	}
 
-	runs, err := h.giteaClient.ListWorkflowRuns(c.Request.Context(), owner, repo, 5)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "5"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 50 {
+		limit = 5
+	}
+
+	runs, err := h.giteaClient.ListWorkflowRuns(c.Request.Context(), owner, repo, page, limit)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -1074,8 +1109,10 @@ func (h *CatalogHandler) GetEntityCI(c *gin.Context) {
 // @Description  Returns Gitea Releases and container images from the Package Registry.
 // @Tags         catalog
 // @Produce      json
-// @Param        kind  path  string  true  "Entity kind"
-// @Param        name  path  string  true  "Entity name"
+// @Param        kind   path   string  true   "Entity kind"
+// @Param        name   path   string  true   "Entity name"
+// @Param        page   query  int     false  "Releases page number (default 1)"
+// @Param        limit  query  int     false  "Releases per page, max 50 (default 10)"
 // @Success      200  {object}  map[string]any
 // @Security     CookieAuth
 // @Router       /api/v1/catalog/entities/{kind}/{name}/releases [get]
@@ -1090,12 +1127,24 @@ func (h *CatalogHandler) GetEntityReleases(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	releases, err := h.giteaClient.ListReleases(ctx, owner, repo, 10)
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 50 {
+		limit = 10
+	}
+
+	releases, err := h.giteaClient.ListReleases(ctx, owner, repo, page, limit)
 	if err != nil {
 		releases = []gitea.Release{}
 	}
 
-	// Fetch container images and filter by repo name.
+	// Container images aren't paginated: results are cross-owner and filtered
+	// down to this repo afterward, so "page 2" of all-org images could
+	// legitimately contain zero images for this repo.
 	allPackages, _ := h.giteaClient.ListContainerPackages(ctx, owner, 20)
 	var images []gitea.ContainerPackage
 	for _, p := range allPackages {
@@ -1241,7 +1290,7 @@ func (h *CatalogHandler) GetEntityPackages(c *gin.Context) {
 		return
 	}
 
-	manifests, err := gitea.DiscoverPackages(c.Request.Context(), h.giteaClient, owner, repo)
+	manifests, err := gitea.DiscoverPackagesCached(c.Request.Context(), h.giteaClient, h.manifestCache, owner, repo, "", false)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -1253,6 +1302,55 @@ func (h *CatalogHandler) GetEntityPackages(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"manifests": manifests, "templateId": templateID})
+}
+
+// GetEntityPackagesCompare diffs the default branch's dependency manifests
+// against a release tag's, returning only what changed.
+//
+// @Summary      Compare dependencies against a release
+// @Description  Diffs the default branch's manifests against a release tag's — added, removed, and version-bumped packages only.
+// @Tags         catalog
+// @Produce      json
+// @Param        kind  path   string  true  "Entity kind"
+// @Param        name  path   string  true  "Entity name"
+// @Param        ref   query  string  true  "Release tag to compare against (from the entity's own releases list)"
+// @Success      200  {object}  map[string]any
+// @Security     CookieAuth
+// @Router       /api/v1/catalog/entities/{kind}/{name}/packages/compare [get]
+func (h *CatalogHandler) GetEntityPackagesCompare(c *gin.Context) {
+	ref := c.Query("ref")
+	if ref == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "?ref= is required"})
+		return
+	}
+
+	owner, repo, _, err := h.resolveEntityRepo(c)
+	if err != nil {
+		return
+	}
+	if h.giteaClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Gitea not configured"})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Default branch — short TTL, may have moved since the last read.
+	base, err := gitea.DiscoverPackagesCached(ctx, h.giteaClient, h.manifestCache, owner, repo, "", false)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	// The compared-against tag — immutable, cached indefinitely.
+	head, err := gitea.DiscoverPackagesCached(ctx, h.giteaClient, h.manifestCache, owner, repo, ref, true)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+
+	diff := gitea.DiffPackages(base, head)
+	c.JSON(http.StatusOK, gin.H{"ref": ref, "diff": diff})
 }
 
 // GetDocContent returns the raw markdown content for a Doc entity.

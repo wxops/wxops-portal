@@ -123,18 +123,20 @@ func NewImageUpdater(req *CreateProjectRequest, giteaURL, gitopsRepoURL string) 
 					},
 				},
 				{
-					// Staging — semver RC strategy; tracks vX.Y.Z-rcN crane re-tags.
+					// Staging — newest-build strategy; tracks vX.Y.Z-rcN crane
+					// re-tags via allowTags, same shape as dev's dev-* match.
 					NamePattern: appPrefix + "-staging",
 					CommonUpdateSettings: CommonUpdateSettings{
-						UpdateStrategy: "semver",
+						UpdateStrategy: "newest-build",
 						PullSecret:     "pullsecret:argocd/regcred",
 						ForceUpdate:    true,
+						AllowTags:      `regexp:^v?(?:0\.[1-9]\d*|[1-9]\d*\.\d+)\.\d+-rc\d+$`,
 						IgnoreTags:     []string{"latest", "cache"},
 					},
 					Images: []AppImage{
 						{
 							Alias:     "application",
-							ImageName: imageBase + ":x-0",
+							ImageName: imageBase,
 							ManifestTargets: ManifestTargets{
 								Kustomize: KustomizeTarget{Name: imageBase},
 							},

@@ -1,7 +1,7 @@
 # Multi-Cluster Authentication — Zero-Static-Secret M2M for ArgoCD
 
 > **Status: deferred, not scheduled.** Nothing in this document is implemented
-> or planned for v0.6.0 / v0.7.0. It is written down now because the credential
+> or planned for v0.5.1 / v0.6.0. It is written down now because the credential
 > machinery it depends on already exists in the portal, and because the design
 > touches security claims the OSS release leads with — so the reasoning should
 > be on record before anyone starts building.
@@ -262,9 +262,10 @@ with: the read-path portal continues to hold zero standing credentials, while
 the broker stays small, separately scaled, independently auditable, and its
 availability requirements do not drag the dashboard along with them.
 
-Sequencing: this is **post-v0.7.0 at the earliest**. It lands directly on the
-security assurance claims being published with the OSS release, and reworking
-those mid-launch would be poor timing. The dependency order is fixed regardless:
+Sequencing: this is **post-OSS at the earliest** — after v0.6.0. It lands
+directly on the security assurance claims being published with the OSS release,
+and reworking those mid-launch would be poor timing. The dependency order is
+fixed regardless:
 
 1. **Hub SA issuer verifiable from spokes** — infrastructure, gates everything.
 2. **Second `JWTAuthenticator` per spoke** for machine identities, plus

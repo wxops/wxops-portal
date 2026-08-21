@@ -79,12 +79,16 @@ export function buildAdvanced(s: WizardState): Record<string, unknown> {
   if (annEntries?.length) {
     annEntries.forEach((p) => { ann[p.key] = p.value; });
   }
-  if (s.monitoringEnabled) {
-    ann["prometheus.io/scrape"] = "true";
-    if (s.containerPort) ann["prometheus.io/port"] = String(s.containerPort);
-    ann["prometheus.io/path"] = s.metricsPath || "/metrics";
-  }
   if (Object.keys(ann).length > 0) out.podAnnotations = ann;
+
+  // Mirrors scaffold.NewXTenantAppBase in the Go builder — keep the two in step.
+  // port is omitted deliberately: the composition falls back to containerPort.
+  if (s.monitoringEnabled) {
+    out.monitoring = cleanUndefined({
+      enabled: true,
+      path: s.metricsPath || undefined,
+    });
+  }
 
   return out;
 }

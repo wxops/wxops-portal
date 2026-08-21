@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Tag, Package, Loader2, ExternalLink, Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Tag, Package, Loader2, ExternalLink, Copy, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ReleasePicker } from "@/components/catalog/release-picker";
 
 interface ReleasesCardProps {
   entityKind: string;
@@ -84,8 +87,6 @@ export function ReleasesCard({ entityKind, entityName }: ReleasesCardProps) {
   const [releases, setReleases] = useState<Release[]>([]);
   const [images, setImages] = useState<ContainerImage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAllReleases, setShowAllReleases] = useState(false);
-  const [showAllImages, setShowAllImages] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -149,9 +150,7 @@ export function ReleasesCard({ entityKind, entityName }: ReleasesCardProps) {
   }
 
   const latest = releases[0];
-  const olderReleases = releases.slice(1);
   const previewImages = sortedImages.slice(0, 1);
-  const restImages = sortedImages.slice(1);
 
   return (
     <Card>
@@ -194,45 +193,14 @@ export function ReleasesCard({ entityKind, entityName }: ReleasesCardProps) {
           </div>
         )}
 
-        {/* Older releases — collapsed */}
-        {olderReleases.length > 0 && (
-          <div className="space-y-1.5">
-            {showAllReleases && olderReleases.map((r) => (
-              <a
-                key={r.tag_name}
-                href={r.html_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-xs hover:bg-muted/30 rounded-md px-2 py-1.5 transition-colors"
-              >
-                <span className="font-mono font-medium text-foreground">{r.tag_name}</span>
-                {r.prerelease && (
-                  <span className="text-[9px] rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 px-1 py-0.5">pre</span>
-                )}
-                <span className="text-muted-foreground ml-auto">{formatDate(r.created_at)}</span>
-              </a>
-            ))}
-            <button
-              onClick={() => setShowAllReleases(!showAllReleases)}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full justify-center"
-            >
-              {showAllReleases ? (
-                <><ChevronUp className="h-3 w-3" /> Hide previous releases</>
-              ) : (
-                <><ChevronDown className="h-3 w-3" /> Show {olderReleases.length} previous release{olderReleases.length !== 1 ? "s" : ""}</>
-              )}
-            </button>
-          </div>
-        )}
-
-        {/* Container images — show 1 by default */}
-        {images.length > 0 && (
+        {/* Latest container image — preview only */}
+        {previewImages.length > 0 && (
           <div className="space-y-1.5 border-t border-border pt-3">
             <div className="flex items-center gap-1.5">
               <Package className="h-3.5 w-3.5 text-muted-foreground" />
               <p className="text-xs font-medium text-muted-foreground">Container Images</p>
             </div>
-            {[...previewImages, ...(showAllImages ? restImages : [])].map((img, i) => {
+            {previewImages.map((img, i) => {
               const env = tagEnv(img.version);
               const meta = env ? ENV_META[env] : null;
               return (
@@ -258,20 +226,62 @@ export function ReleasesCard({ entityKind, entityName }: ReleasesCardProps) {
                 </div>
               );
             })}
-            {restImages.length > 0 && (
-              <button
-                onClick={() => setShowAllImages(!showAllImages)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full justify-center"
-              >
-                {showAllImages ? (
-                  <><ChevronUp className="h-3 w-3" /> Show less</>
-                ) : (
-                  <><ChevronDown className="h-3 w-3" /> Show {restImages.length} more image{restImages.length !== 1 ? "s" : ""}</>
-                )}
-              </button>
-            )}
           </div>
         )}
+
+        <Dialog>
+          <DialogTrigger
+            render={
+              <Button variant="ghost" size="sm" className="w-full justify-center text-muted-foreground">
+                View all →
+              </Button>
+            }
+          />
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Releases — {entityName}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <ReleasePicker entityKind={entityKind} entityName={entityName} mode="browse" />
+              {sortedImages.length > 0 && (
+                <div className="space-y-1.5 border-t border-border pt-3">
+                  <div className="flex items-center gap-1.5">
+                    <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Container Images ({sortedImages.length})
+                    </p>
+                  </div>
+                  {sortedImages.map((img, i) => {
+                    const env = tagEnv(img.version);
+                    const meta = env ? ENV_META[env] : null;
+                    return (
+                      <div
+                        key={`${img.name}-${img.version}-${i}`}
+                        className={`flex items-center gap-2 rounded-md border border-border border-l-2 px-2.5 py-1.5 ${meta ? `${meta.border} ${meta.bg}` : ""}`}
+                      >
+                        {meta && (
+                          <span className={`shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${meta.text}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                            {meta.label}
+                          </span>
+                        )}
+                        <span className="font-mono text-xs text-foreground truncate flex-1">
+                          {img.name}:{img.version}
+                        </span>
+                        <CopyButton text={`docker pull ${img.name}:${img.version}`} />
+                        {img.html_url && (
+                          <a href={img.html_url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

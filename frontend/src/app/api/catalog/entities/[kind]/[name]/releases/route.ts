@@ -4,17 +4,18 @@ import { cookies } from "next/headers";
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ kind: string; name: string }> },
 ) {
   const { kind, name } = await params;
+  const qs = new URL(request.url).search;
   const cookieStore = await cookies();
   const session = cookieStore.get("wxops_session")?.value ?? "";
 
   let res: Response;
   try {
     res = await fetch(
-      `${BACKEND_URL}/api/v1/catalog/entities/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/releases`,
+      `${BACKEND_URL}/api/v1/catalog/entities/${encodeURIComponent(kind)}/${encodeURIComponent(name)}/releases${qs}`,
       {
         headers: { Cookie: `wxops_session=${session}` },
         cache: "no-store",

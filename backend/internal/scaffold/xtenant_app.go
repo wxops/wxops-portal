@@ -49,6 +49,7 @@ type XTenantAppParams struct {
 	Service         *ServiceSpec     `yaml:"service,omitempty"         json:"service,omitempty"`
 	Probes          *ProbesSpec      `yaml:"probes,omitempty"          json:"probes,omitempty"`
 	Ingress         *IngressSpec     `yaml:"ingress,omitempty"         json:"ingress,omitempty"`
+	Monitoring      *MonitoringSpec  `yaml:"monitoring,omitempty"      json:"monitoring,omitempty"`
 }
 
 type RepositorySpec struct {
@@ -158,6 +159,19 @@ type ProbeDetail struct {
 	Path             string `yaml:"path,omitempty"            json:"path,omitempty"`
 	PeriodSeconds    *int32 `yaml:"periodSeconds,omitempty"   json:"periodSeconds,omitempty"`
 	FailureThreshold *int32 `yaml:"failureThreshold,omitempty" json:"failureThreshold,omitempty"`
+}
+
+// MonitoringSpec maps to XTenantApp spec.parameters.monitoring, which the
+// composition turns into a real Prometheus Operator CRD.
+//
+// The portal writes only Enabled and Path. Everything else the XRD defaults:
+// kind resolves to ServiceMonitor because service.enabled defaults true, port
+// falls back to containerPort, and interval / scrapeTimeout / sampleLimit are
+// composition-owned guardrails tenants should not tune from the wizard.
+type MonitoringSpec struct {
+	Enabled bool   `yaml:"enabled"        json:"enabled"`
+	Path    string `yaml:"path,omitempty" json:"path,omitempty"`
+	Port    *int32 `yaml:"port,omitempty" json:"port,omitempty"`
 }
 
 type IngressSpec struct {
@@ -296,20 +310,24 @@ func NewXTenantApp(req *CreateProjectRequest, giteaURL string) *XTenantApp {
 	if req.RolloutType != "" && req.RolloutType != "RollingUpdate" {
 		app.Spec.Parameters.RolloutStrategy = &RolloutStrategy{Type: req.RolloutType}
 	}
-	// Monitoring → Prometheus pod annotations
+	// Monitoring → spec.parameters.monitoring, which the composition emits as a
+	// ServiceMonitor or PodMonitor. This replaced the prometheus.io/* pod
+	// annotations in v0.5.1: those are a Prometheus convention honoured only by a
+	// kubernetes_sd_config job with matching relabel rules, and this platform's
+	// kube-prometheus-stack has an empty additionalScrapeConfigs — so the toggle
+	// silently did nothing. See wxops-core docs/observability.md.
+	//
+	// Omitting the block entirely when the toggle is off is deliberate: the XRD
+	// defaults enabled to false, so Edit Config turning monitoring off produces a
+	// diff that removes the block rather than one that sets enabled: false.
 	if req.MonitorEnabled {
-		if app.Spec.Parameters.PodAnnotations == nil {
-			app.Spec.Parameters.PodAnnotations = make(map[string]string)
+		mon := &MonitoringSpec{Enabled: true}
+		if req.MetricsPath != "" {
+			mon.Path = req.MetricsPath
 		}
-		app.Spec.Parameters.PodAnnotations["prometheus.io/scrape"] = "true"
-		if req.ContainerPort != nil {
-			app.Spec.Parameters.PodAnnotations["prometheus.io/port"] = fmt.Sprintf("%d", *req.ContainerPort)
-		}
-		metricsPath := req.MetricsPath
-		if metricsPath == "" {
-			metricsPath = "/metrics"
-		}
-		app.Spec.Parameters.PodAnnotations["prometheus.io/path"] = metricsPath
+		// Port is left unset on purpose — the composition falls back to
+		// containerPort, so writing it here would only duplicate that.
+		app.Spec.Parameters.Monitoring = mon
 	}
 
 	// Plain env vars

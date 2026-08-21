@@ -78,4 +78,9 @@ export interface Entity {
     memberOf?: string[];
     email?: string;
   };
+  completenessScore?: {
+    score: number;
+    max: number;
+    checks: Record<string, boolean>;
+  };
 }

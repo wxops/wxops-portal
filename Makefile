@@ -113,7 +113,7 @@ changelog-preview: ## Preview unreleased changelog without writing
 	@which git-cliff > /dev/null || (echo "git-cliff not installed — see https://git-cliff.org/docs/installation" && exit 1)
 	git-cliff --unreleased --strip all
 
-release: ## Bump version, update changelog, commit and tag  [VERSION=vX.Y.Z overrides auto-bump]
+release: ## Bump version, update changelog + release notes, commit and tag  [VERSION=vX.Y.Z overrides auto-bump]
 	@which git-cliff > /dev/null || (echo "git-cliff not installed — see https://git-cliff.org/docs/installation" && exit 1)
 	$(eval NEXT := $(if $(VERSION),$(VERSION),$(shell git cliff --bumped-version 2>/dev/null)))
 	@if [ -z "$(NEXT)" ]; then \
@@ -124,14 +124,36 @@ release: ## Bump version, update changelog, commit and tag  [VERSION=vX.Y.Z over
 	    echo "  ERROR: '$(NEXT)' must match vX.Y.Z (e.g. VERSION=v1.2.0)"; \
 	    exit 1; \
 	fi
+	@if [ ! -f "release-notes/$(NEXT).md" ]; then \
+	    echo ""; \
+	    echo "  ERROR: release-notes/$(NEXT).md doesn't exist yet."; \
+	    echo "  CHANGELOG.md is the commit list — this is the human narrative of"; \
+	    echo "  what $(NEXT) is and why it matters. Write it first, then re-run:"; \
+	    echo "    cp release-notes/template.md release-notes/$(NEXT).md"; \
+	    echo ""; \
+	    exit 1; \
+	fi
 	@echo ""
 	@echo "  Current : $(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)"
 	@echo "  Next    : $(NEXT)$(if $(VERSION), [manual override],)"
 	@echo ""
+	@echo "  Before confirming, go update whatever's drifted — these all get"
+	@echo "  staged and committed together with CHANGELOG.md below, so this is"
+	@echo "  the one pass that catches it instead of piecemeal mid-development:"
+	@echo "    - ROADMAP.md      (flip landed features from Planned → Landed)"
+	@echo "    - README.md       (feature list, version references)"
+	@echo "    - docs/           (anything the release note points readers to)"
+	@echo ""
 	@read -p "  Tag as $(NEXT) and push? [y/N] " c && [ "$$c" = "y" ]
 	git cliff --tag $(NEXT) -o CHANGELOG.md
-	git add CHANGELOG.md
-	git commit -m "chore(release): prepare for $(NEXT)" || true
+	git add CHANGELOG.md release-notes/$(NEXT).md ROADMAP.md README.md docs/
+	@if git diff --cached --quiet; then \
+	    echo "→ Nothing to commit for $(NEXT) — CHANGELOG.md, release notes, and docs already up to date"; \
+	else \
+	    echo "→ Staged for $(NEXT):"; \
+	    git diff --cached --name-only | sed 's/^/    /'; \
+	    SKIP=no-commit-to-branch git commit -m "chore(release): prepare for $(NEXT)"; \
+	fi
 	git tag -a $(NEXT) -m "Release $(NEXT)"
 	@echo ""
 	@echo "  Created tag $(NEXT). Push with:"

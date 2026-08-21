@@ -1,0 +1,39 @@
+# Example: ArgoCD Image Updater CR for wxops-portal.
+#
+# NOT installed by this chart — copy this into your own GitOps repo if you
+# deploy via ArgoCD and want portal.image.tag bumped automatically on every
+# new release, instead of editing values.yaml by hand each time.
+#
+# Adjust before use:
+#   - applicationRefs.namePattern must match your actual ArgoCD Application name.
+#   - writeBackConfig.gitConfig.repository must point at YOUR GitOps repo, not
+#     this example's placeholder — Image Updater commits the bumped tag there.
+#   - The `git:secret:...` write-back method needs a Secret with git
+#     credentials at that path; see the ArgoCD Image Updater docs for the
+#     alternative `argocd` write-back method if you'd rather it write directly
+#     to the Application's parameters instead of a Git commit.
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: wxops-portal-updater
+  namespace: argocd
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd/git-creds"
+    gitConfig:
+      repository: https://your-gitops-repo.example.com/your-org/your-gitops-repo.git
+      branch: main
+  namespace: argocd
+  applicationRefs:
+    - namePattern: "wxops-portal"
+      images:
+        - alias: portal
+          imageName: "ghcr.io/wxops/wxops-portal"
+          commonUpdateSettings:
+            updateStrategy: "semver"
+            ignoreTags: ["latest", "cache"]
+            forceUpdate: true
+          manifestTargets:
+            helm:
+              name: "portal.image.repository"
+              tag: "portal.image.tag"

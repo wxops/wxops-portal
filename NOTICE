@@ -1,0 +1,88 @@
+W'xOps Portal
+Copyright 2026 Xeus Nguyen (W'xOps)
+
+This product includes software developed by Xeus Nguyen as part of the W'xOps
+platform project.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+--------------------------------------------------------------------------------
+
+W'xOps Portal is a compiled application. Unlike W'xOps Core, it **bundles and
+redistributes** the third-party components below — the Go binaries statically
+link their dependencies, and the frontend bundle embeds its npm packages. Each
+component remains governed by its own license; nothing in this repository alters
+those terms. Full license texts ship inside the distributed artifacts.
+
+Backend (Go)
+
+  gin-gonic/gin                 MIT           https://github.com/gin-gonic/gin
+  coreos/go-oidc                Apache-2.0    https://github.com/coreos/go-oidc
+  golang.org/x/oauth2           BSD-3-Clause  https://cs.opensource.google/go/x/oauth2
+  joho/godotenv                 MIT           https://github.com/joho/godotenv
+  swaggo/swag                   MIT           https://github.com/swaggo/swag
+  swaggo/gin-swagger            MIT           https://github.com/swaggo/gin-swagger
+  swaggo/files                  MIT           https://github.com/swaggo/files
+  gopkg.in/yaml.v3              MIT           https://github.com/go-yaml/yaml
+  k8s.io/api                    Apache-2.0    https://github.com/kubernetes/api
+  k8s.io/apimachinery           Apache-2.0    https://github.com/kubernetes/apimachinery
+  k8s.io/client-go              Apache-2.0    https://github.com/kubernetes/client-go
+
+CLI (Go)
+
+  spf13/cobra                   Apache-2.0    https://github.com/spf13/cobra
+  fsnotify/fsnotify             BSD-3-Clause  https://github.com/fsnotify/fsnotify
+
+Frontend (npm)
+
+  next                          MIT           https://github.com/vercel/next.js
+  react                         MIT           https://github.com/facebook/react
+  react-dom                     MIT           https://github.com/facebook/react
+  @base-ui/react                MIT           https://github.com/mui/base-ui
+  tailwindcss                   MIT           https://github.com/tailwindlabs/tailwindcss
+  tailwind-merge                MIT           https://github.com/dcastil/tailwind-merge
+  tw-animate-css                MIT           https://github.com/Wombosvideo/tw-animate-css
+  clsx                          MIT           https://github.com/lukeed/clsx
+  class-variance-authority      Apache-2.0    https://github.com/joe-bell/cva
+  lucide-react                  ISC           https://github.com/lucide-icons/lucide
+  sonner                        MIT           https://github.com/emilkowalski/sonner
+  next-themes                   MIT           https://github.com/pacocoursey/next-themes
+  mermaid                       MIT           https://github.com/mermaid-js/mermaid
+  react-markdown                MIT           https://github.com/remarkjs/react-markdown
+  remark-gfm                    MIT           https://github.com/remarkjs/remark-gfm
+  js-yaml                       MIT           https://github.com/nodeca/js-yaml
+  flexsearch                    Apache-2.0    https://github.com/nextapps-de/flexsearch
+  swagger-ui-dist               Apache-2.0    https://github.com/swagger-api/swagger-ui
+
+Container image
+
+  nginx                         BSD-2-Clause  https://github.com/nginx/nginx
+  supervisor                    BSD-derived   https://github.com/Supervisor/supervisor
+
+--------------------------------------------------------------------------------
+
+W'xOps Portal integrates with, but does not vendor or redistribute, the following
+platform components. Each remains governed by its own license.
+
+  Pinniped                      Apache-2.0    https://github.com/vmware-tanzu/pinniped
+  Crossplane                    Apache-2.0    https://github.com/crossplane/crossplane
+  Argo CD                       Apache-2.0    https://github.com/argoproj/argo-cd
+  HashiCorp Vault               BUSL-1.1      https://github.com/hashicorp/vault
+  Gitea                         MIT           https://github.com/go-gitea/gitea
+  Grafana                       AGPL-3.0      https://github.com/grafana/grafana
+  Prometheus                    Apache-2.0    https://github.com/prometheus/prometheus
+
+Trademarks and attribution: the "W'xOps" name and marks, and the name "Xeus
+Nguyen", are not licensed for use by redistributors except as required for
+reasonable and customary use in describing the origin of this work, per Section 6
+of the Apache License, Version 2.0. Neither may be used to endorse or promote
+derivative works without prior written permission.

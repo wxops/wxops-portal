@@ -7,6 +7,7 @@ import {
   HardDrive, AlertCircle, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SessionExpired, isSessionExpired } from "@/components/ui/session-expired";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -97,15 +98,24 @@ export function PodDetailDrawer({ clusterId, podName, namespace, onClose }: Prop
   const [detail, setDetail] = useState<PodDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Distinct from `error`: a 401 means the Pinniped session can no longer be
+  // exchanged for cluster credentials — recoverable in place via re-login,
+  // so it gets its own affordance rather than a dead-end error string.
+  const [expired, setExpired] = useState(false);
   const [activeContainer, setActiveContainer] = useState(0);
 
   const load = () => {
     setLoading(true);
     setError("");
+    setExpired(false);
     fetch(`/api/v1/clusters/${clusterId}/pods/${encodeURIComponent(podName)}?namespace=${encodeURIComponent(namespace)}`)
-      .then((r) => r.json())
-      .then((data: PodDetail & { error?: string }) => {
-        if (data.error) setError(data.error);
+      .then(async (r) => {
+        if (isSessionExpired(r.status)) return { __expired: true } as const;
+        return r.json();
+      })
+      .then((data: (PodDetail & { error?: string }) | { __expired: true }) => {
+        if ("__expired" in data) setExpired(true);
+        else if (data.error) setError(data.error);
         else { setDetail(data); setActiveContainer(0); }
         setLoading(false);
       })
@@ -195,14 +205,20 @@ export function PodDetailDrawer({ clusterId, podName, namespace, onClose }: Prop
             </div>
           )}
 
-          {!loading && error && (
+          {!loading && expired && (
+            <div className="px-5 py-4">
+              <SessionExpired resource="pod details" compact />
+            </div>
+          )}
+
+          {!loading && !expired && error && (
             <div className="flex items-start gap-2 px-5 py-4 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               {error}
             </div>
           )}
 
-          {!loading && detail && (
+          {!loading && !expired && detail && (
             <>
               {/* Container selector */}
               {detail.containers.length > 1 && (

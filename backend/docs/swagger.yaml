@@ -386,6 +386,15 @@ definitions:
       value:
         type: string
     type: object
+  scaffold.MonitoringSpec:
+    properties:
+      enabled:
+        type: boolean
+      path:
+        type: string
+      port:
+        type: integer
+    type: object
   scaffold.ProbeDetail:
     properties:
       enabled:
@@ -518,6 +527,11 @@ definitions:
         type: boolean
       livenessPath:
         type: string
+      metricsPath:
+        description: e.g. /metrics
+        type: string
+      monitoringEnabled:
+        type: boolean
       namespace:
         type: string
       podAnnotations:
@@ -576,6 +590,8 @@ definitions:
         type: array
       ingress:
         $ref: '#/definitions/scaffold.IngressSpec'
+      monitoring:
+        $ref: '#/definitions/scaffold.MonitoringSpec'
       namespace:
         type: string
       podAnnotations:
@@ -898,6 +914,14 @@ paths:
         name: name
         required: true
         type: string
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Runs per page, max 50 (default 5)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -1062,6 +1086,40 @@ paths:
       summary: Get package dependencies
       tags:
       - catalog
+  /api/v1/catalog/entities/{kind}/{name}/packages/compare:
+    get:
+      description: Diffs the default branch's manifests against a release tag's —
+        added, removed, and version-bumped packages only.
+      parameters:
+      - description: Entity kind
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: Entity name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Release tag to compare against (from the entity's own releases
+          list)
+        in: query
+        name: ref
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Compare dependencies against a release
+      tags:
+      - catalog
   /api/v1/catalog/entities/{kind}/{name}/promostatus:
     get:
       parameters:
@@ -1125,6 +1183,14 @@ paths:
         name: name
         required: true
         type: string
+      - description: Releases page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Releases per page, max 50 (default 10)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:

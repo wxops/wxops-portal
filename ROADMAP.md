@@ -1,7 +1,7 @@
 # WxOps Portal — Roadmap
 
 > Living document. Updated as features ship.
-> Last updated: 2026-08-11
+> Last updated: 2026-08-20
 
 ---
 
@@ -424,6 +424,48 @@ wired).
 
 ---
 
+## Landed — v0.5.1: Observability Completion
+
+> **Status:** Code-complete across all four repos. Not yet cut as a tagged
+> release.
+
+v0.5.0 delivered the *context* layer — status, deep links, alerts. This closed
+the remaining gap: the platform used to emit no application metrics, so
+latency, error rate and saturation were unanswerable. Finishing observability
+before the refactor means the OSS release ships a complete story rather than a
+partial one.
+
+**This was the first release that is not portal-first** — it spans three
+repos, and the order was a hard dependency chain, not a preference. Design and
+rationale:
+[observability-architecture.md](docs/platform/observability-architecture.md#application-metrics--the-missing-layer).
+
+| # | Feature | Repo | Description |
+|---|---------|------|-------------|
+| 1 | Template instrumentation | `wxops-templates` | Real Prometheus client library per language + middleware emitting the contract metrics: `http_requests_total` (counter), `http_request_duration_seconds_bucket` (**histogram** — this is what makes P95/P99 possible), `http_requests_in_flight` (gauge). `/metrics` previously hand-wrote two runtime gauges with no client library, so scraping it returned almost nothing. |
+| 2 | ServiceMonitor emission | `wxops-core` | `monitoring: { enabled, port, path, interval }` on `XTenantApp` → a `ServiceMonitor` (or `PodMonitor`) carrying `release: kube-prometheus-stack` (without it Prometheus silently ignores the monitor) and a `sampleLimit`. Ships without naming the Service port — the endpoint uses `targetPort` instead, a deliberate choice to avoid mutating a live composed resource. |
+| 3 | Monitoring toggle | Portal | Checkbox in the scaffold wizard + Edit Config, same tier as Darlane. Writes the XR field; never writes the manifest. |
+| 4 | Standard metrics dashboard | `wxops-gitops-infrastructure` | **One** Grafana dashboard keyed on the contract metric names — P95/P99, error rate, saturation — parameterized by `$namespace`/`$app`/`$env` so it works for every golden-path service with no per-team configuration. `$env` is a regex-derived variable off the `$app` naming suffix, not a real Prometheus label yet — the `ServiceMonitor` sets no `targetLabels`. The portal deep-links to it with variables pre-filled. |
+
+Also shipped, independent of that chain:
+
+| Feature | Repo | Description |
+|---------|------|-------------|
+| Catalog completeness score | Portal | Per-entity quality score: description, owner, tags, links, lifecycle, API spec. Computed on read, no schema or cache change. |
+| Dependency comparison | Portal | Cache dependency manifests by `owner/repo@ref` (tags are immutable, so they cache indefinitely; the default branch gets a short TTL) and server-render the card so it paints without a spinner. Adds a compare control that diffs the current branch against a selected release, showing only added / removed / bumped packages. |
+
+**Deferred to backlog, not shipped in v0.5.1** — both were originally scoped
+as "shippable in parallel" alongside the two above; research going into this
+release found both are blocked on a decision, not on engineering time, so
+they were pulled rather than rushed:
+
+| Feature | Repo | Why deferred |
+|---------|------|-------------|
+| DORA-lite metrics | Portal | Nothing in the codebase records a timestamped "reached production" event today — both existing mechanisms are current-state snapshots only. Lead time needs either an accepted proxy-timestamp approximation or new poll-and-diff infrastructure this codebase doesn't have. Deployment frequency alone is buildable without that decision. |
+| Per-service alert scoping | `wxops-gitops-infrastructure` | Confirmed `defaultRules.additionalRuleLabels` is the wrong mechanism — it's a single flat label applied cluster-wide, cannot vary per tenant. A real fix needs a new per-tenant `PrometheusRule` (mirroring the shipped `ServiceMonitor` pattern) plus a product decision on which alerts get per-tenant treatment. The portal-side matching change is small (~15-20 lines) once that's decided. |
+
+---
+
 ## Planned — v0.6.0: Refactor, Modularization & OSS Readiness
 
 **No new features.** This release makes the codebase something a stranger can
@@ -464,35 +506,33 @@ launch checklist).
 | 10-minute demo | `make demo` against the existing `DEV_BYPASS_AUTH` + `CATALOG_LOCAL_DIR` affordances, with Darlane as the payoff. The single highest-leverage adoption artifact. |
 | Release + versioning | Tag `v0.6.0` as the first public-ready cut; confirm the release workflow produces clean artifacts from a public repo. |
 
-> **Why this sits between observability and metrics:** v0.5.0 proved the
-> architecture works end-to-end; v0.7.0 adds a large multi-repo feature. Doing
-> the split-and-test pass in between means the metrics work lands in a codebase
-> that can absorb it — and means the OSS launch is not gated behind a feature
-> release.
+> **Why this is the last release before opening the repos:** v0.5.0 proved the
+> architecture works end-to-end and v0.5.1 completes the observability story, so
+> the code being published describes a finished capability rather than a partial
+> one. Everything after this is driven by what real adopters ask for.
 
 ---
 
-## Planned — v0.7.0: Application Metrics, Delivery Metrics & Catalog Quality
+## Beyond v0.6.0 — driven by adoption, not by a date
 
-Deferred from v0.5.0, then re-sequenced behind the v0.6.0 refactor. The
-application-metrics track is the largest piece and is **not portal-first** — it
-spans three repos, and doing it out of order produces a toggle that enables an
-empty scrape. Design and sequencing:
-[observability-architecture.md](docs/platform/observability-architecture.md#application-metrics--the-missing-layer).
+No further versions are planned. Once the repos are public, what ships next is
+decided by what real adopters ask for rather than by a roadmap written before
+anyone was using it.
 
-| Feature | Repo | Description |
-|---------|------|-------------|
-| Template instrumentation | `wxops-templates` | Real Prometheus client library per language + middleware emitting the contract metrics: `http_requests_total` (counter), `http_request_duration_seconds_bucket` (**histogram** — this is what makes P95/P99 possible), `http_requests_in_flight` (gauge). Today `/metrics` exists but hand-writes two runtime gauges with no client library, so scraping it returns almost nothing. |
-| ServiceMonitor emission | `wxops-core` | `monitoring: { enabled, port, path, interval }` on `XTenantApp` → a `ServiceMonitor` carrying `release: kube-prometheus-stack` (without it Prometheus silently ignores the monitor) and a `sampleLimit`. Also requires naming the Service port, which is currently unnamed. |
-| Monitoring toggle | Portal | Checkbox in the scaffold wizard + Edit Config, same tier as Darlane. Writes the XR field; never writes the manifest. |
-| Standard metrics dashboard | `wxops-gitops-infrastructure` | One Grafana dashboard keyed on the contract metric names — P95/P99, error rate, saturation — that works for every golden-path service with no per-team configuration. |
-| Catalog completeness score | Portal | Per-entity quality score: description, owner, tags, links, lifecycle, API spec. Scaffolded entities score well by default; most useful for manually registered or legacy entities. Once the metric contract exists, "exposes standard metrics" becomes a cheap scorecard row. |
-| DORA-lite metrics | Portal | Deployment frequency (successful prod workflow runs / week) and lead time (PR open → merge → image tag) computed from data the portal already collects. |
-| Dependency comparison | Portal | Cache dependency manifests by `owner/repo@ref` (tags are immutable, so they cache indefinitely; the default branch gets a short TTL) and server-render the card so it paints without a spinner. Adds a compare control that diffs the current branch against a selected release, showing only added / removed / bumped packages. Spec: [devex-integrations.md §4](docs/roadmap/devex-integrations.md). |
-| Per-service alert scoping | `wxops-gitops-infrastructure` | Alerts currently carry no `app` label, so the portal narrows by namespace + pod-name prefix. Adding `defaultRules.additionalRuleLabels` or tenant `PrometheusRule`s with an `app` label would make the match exact. |
-| Multi-cluster status | Portal + infra | Per-cluster ArgoCD Application status via hub-spoke, plus per-cluster observability endpoints in the cluster registry Secret schema. Blocked on the hub-spoke prerequisites below. |
+The directions already scoped, in rough order of how often they come up:
 
-See [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md) for the promotion model that feeds into this observability layer.
+| Direction | What it covers |
+|---|---|
+| **Security & compliance** | Audit trail (who promoted what, with approval chain), SBOM + CVE panel with fix-issue creation, policy coverage reporting. Specs in [enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md) Track B. |
+| **SRE & incident response** | Signal correlation across logs, metrics, traces and events in one window; validated-fix workflow in an isolated Darlane twin. Design in [system-intelligence.md](docs/roadmap/system-intelligence.md). |
+| **Intelligence layer** | Guardian scanning and audit around agent-driven sessions — the open wedge is the execution platform, the enterprise line is the AI review. See [open-source-readiness.md](docs/development/open-source-readiness.md) §A. |
+| **Developer experience** | CVE routing, test visibility, productivity signals, dependency comparison. Specs in [devex-integrations.md](docs/roadmap/devex-integrations.md). |
+| **Cross-tenant visibility** | "Consumed by" on API entities, "Used by" on Resources, blast-radius before deprecating a shared API. Catalog work — independent of everything above. |
+| **Multi-cluster** | Per-cluster ArgoCD status and per-cluster observability endpoints in the registry Secret schema. **Blocked on two prerequisites:** the collector's hardcoded `cluster` label must be parameterized before log links can be scoped per cluster, and headless M2M credentials are an open design ([multi-cluster-authentication.md](docs/platform/multi-cluster-authentication.md)). |
+| **Fleet sync-back & flexible delivery** | Propagating template improvements (security patches, CI fixes, new platform tooling) into already-scaffolded services without clobbering team-owned code, plus per-service delivery topology (full 3-env vs. shorter paths) without losing governance guarantees. Real, multi-piece effort — lock file, file-mutability classification, and a diff-and-PR bot are each separate decisions, not one feature. Idea captured in [fleet-sync-and-golden-path-evolution.md](docs/roadmap/fleet-sync-and-golden-path-evolution.md). |
+
+See [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md)
+for the promotion model these build on.
 
 ---
 
@@ -503,7 +543,7 @@ Not scheduled. Prioritized by real usage feedback.
 > **Dev-ready specs:** the items in this section are turned into a phased, code-grounded
 > development plan (Phases 1–4, backend package/route surface, XDarlane XRD, Guardian)
 > in [docs/roadmap/enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md). Those
-> phases are deliberately unversioned — they begin after v0.7.0 and are gated on
+> phases are deliberately unversioned — they begin after v0.6.0 and are gated on
 > adoption, not on a date.
 >
 > **Intelligence vision:** how system intelligence combines with Darlane for

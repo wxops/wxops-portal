@@ -446,6 +446,18 @@ const docTemplate = `{
                         "name": "name",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Runs per page, max 50 (default 5)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -687,6 +699,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/catalog/entities/{kind}/{name}/packages/compare": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "Diffs the default branch's manifests against a release tag's — added, removed, and version-bumped packages only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Compare dependencies against a release",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entity kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entity name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Release tag to compare against (from the entity's own releases list)",
+                        "name": "ref",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/catalog/entities/{kind}/{name}/promostatus": {
             "get": {
                 "security": [
@@ -793,6 +854,18 @@ const docTemplate = `{
                         "name": "name",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Releases page number (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Releases per page, max 50 (default 10)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2008,6 +2081,20 @@ const docTemplate = `{
                 }
             }
         },
+        "scaffold.MonitoringSpec": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                }
+            }
+        },
         "scaffold.ProbeDetail": {
             "type": "object",
             "properties": {
@@ -2213,6 +2300,13 @@ const docTemplate = `{
                 "livenessPath": {
                     "type": "string"
                 },
+                "metricsPath": {
+                    "description": "e.g. /metrics",
+                    "type": "string"
+                },
+                "monitoringEnabled": {
+                    "type": "boolean"
+                },
                 "namespace": {
                     "type": "string"
                 },
@@ -2298,6 +2392,9 @@ const docTemplate = `{
                 },
                 "ingress": {
                     "$ref": "#/definitions/scaffold.IngressSpec"
+                },
+                "monitoring": {
+                    "$ref": "#/definitions/scaffold.MonitoringSpec"
                 },
                 "namespace": {
                     "type": "string"

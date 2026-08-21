@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle, XCircle, AlertCircle, Clock, Loader2, ExternalLink, GitBranch, GitCommit, Tag, ChevronDown, ChevronUp, Timer } from "lucide-react";
+import { CheckCircle, XCircle, AlertCircle, Clock, Loader2, ExternalLink, GitBranch, GitCommit, Tag, Timer } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { CIRunsPanel } from "@/components/catalog/ci-runs-panel";
+import { useActiveEntityTab } from "@/components/catalog/entity-tabs";
 
 interface CIStatusCardProps {
   entityKind: string;
   entityName: string;
 }
 
-interface WorkflowRun {
+export interface WorkflowRun {
   id: number;
   display_title: string;
   status: string;
@@ -108,7 +112,7 @@ function StatusBadge({ status, conclusion }: { status: string; conclusion: strin
   );
 }
 
-function RunRow({ run }: { run: WorkflowRun }) {
+export function RunRow({ run }: { run: WorkflowRun }) {
   const ago = timeAgo(run.started_at || run.completed_at);
   const dur = run.completed_at ? duration(run.started_at, run.completed_at) : null;
   const isTag = isTagRun(run);
@@ -206,10 +210,16 @@ export function CIStatusCard({ entityKind, entityName }: CIStatusCardProps) {
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const mountedRef = useRef(true);
+  const active = useActiveEntityTab() === "pipeline";
 
+  // Gated on `active`: entity-tabs.tsx keeps this card mounted-but-hidden
+  // once the Pipeline tab has been visited, so without this the 30s poll
+  // would keep hitting the backend forever even while the user is on a
+  // different tab. Effect re-runs (and fires one immediate fetch) whenever
+  // `active` flips back to true, instead of waiting up to 30s for stale data.
   useEffect(() => {
+    if (!active) return;
     mountedRef.current = true;
 
     async function fetchCI() {
@@ -234,7 +244,7 @@ export function CIStatusCard({ entityKind, entityName }: CIStatusCardProps) {
     fetchCI();
     const interval = setInterval(fetchCI, 30_000);
     return () => { mountedRef.current = false; clearInterval(interval); };
-  }, [entityKind, entityName]);
+  }, [entityKind, entityName, active]);
 
   if (loading) {
     return (
@@ -284,7 +294,6 @@ export function CIStatusCard({ entityKind, entityName }: CIStatusCardProps) {
   }
 
   const latest = runs[0];
-  const rest = runs.slice(1);
 
   return (
     <Card>
@@ -298,22 +307,21 @@ export function CIStatusCard({ entityKind, entityName }: CIStatusCardProps) {
         <RunHistoryDots runs={runs} />
         <RunRow run={latest} />
 
-        {expanded && rest.map((run) => (
-          <RunRow key={run.id} run={run} />
-        ))}
-
-        {rest.length > 0 && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full justify-center pt-1"
-          >
-            {expanded ? (
-              <><ChevronUp className="h-3 w-3" /> Show less</>
-            ) : (
-              <><ChevronDown className="h-3 w-3" /> Show {rest.length} more run{rest.length !== 1 ? "s" : ""}</>
-            )}
-          </button>
-        )}
+        <Dialog>
+          <DialogTrigger
+            render={
+              <Button variant="ghost" size="sm" className="w-full justify-center text-muted-foreground">
+                View all runs →
+              </Button>
+            }
+          />
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>CI / CD runs — {entityName}</DialogTitle>
+            </DialogHeader>
+            <CIRunsPanel entityKind={entityKind} entityName={entityName} />
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

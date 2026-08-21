@@ -190,6 +190,44 @@ and rewrite the query.
 
 ---
 
+## Application metrics
+
+Landed in v0.5.1 — the metric contract, `ServiceMonitor`/`PodMonitor` emission, the
+scaffold wizard's Monitoring toggle, and the shared golden-path dashboard.
+
+**The contract.** Every golden-path template (Go, Node.js, Python) emits the same three
+metrics from a real Prometheus client library, not the old hand-rolled `/metrics`:
+
+| Metric | Type | Labels |
+|---|---|---|
+| `http_requests_total` | counter | `method`, `path`, `status` |
+| `http_request_duration_seconds` | histogram | `method`, `path` |
+| `http_requests_in_flight` | gauge | — |
+
+`path` is always the route *pattern* (`/healthz`), never the raw URL — Prometheus runs
+platform-wide with no cluster-wide cardinality limits, so a raw-path label degrades
+monitoring for every tenant, not just the offending service.
+
+**Turning it on.** The same Monitoring checkbox from the scaffold wizard and Edit Config
+now sets `spec.parameters.monitoring.enabled` on the `XTenantApp`. The composition emits
+a real `ServiceMonitor` (or `PodMonitor` when the workload has no Service) carrying the
+`release: kube-prometheus-stack` label Prometheus Operator selects on, plus a per-monitor
+`sampleLimit`. `prometheus.io/scrape` pod annotations are retired platform-wide — they
+never worked, since Prometheus Operator ignores them without an `additionalScrapeConfig`
+this stack has never run.
+
+**The dashboard.** One Grafana dashboard, keyed on the contract metric names — P95/P99
+latency, error rate, request rate, in-flight saturation — parameterized by
+`$namespace`/`$app`/`$env`.
+
+**`$env` is a naming convention, not a real label yet.** The `ServiceMonitor` sets no
+`targetLabels`, so environment isn't a scrapeable Prometheus label today — dev, staging
+and production share one namespace, distinguished only by an `appName` suffix. The
+dashboard's `$env` variable is regex-derived from that suffix. A real `environment` label
+is a tracked fast-follow, not yet done.
+
+---
+
 ## Known limitations
 
 Stated plainly, because a link that silently returns nothing is worse than one
@@ -198,11 +236,9 @@ you knew was approximate.
 | Limitation | Consequence | Fix |
 |---|---|---|
 | Alloy hardcodes `cluster = "kubeweekend"` in its log pipeline | Log links cannot be scoped per cluster in a multi-cluster estate | Parameterise the static label in the Alloy config |
-| No `ServiceMonitor`/`PodMonitor` exists for tenant workloads, and Prometheus only selects monitors carrying the kube-prometheus-stack release label | Metrics links show container CPU from cAdvisor, not application metrics. P95/P99 latency is impossible — nothing emits a histogram | The metric contract, ServiceMonitor emission, and cardinality policy are designed in [observability-architecture.md](observability-architecture.md#application-metrics--the-missing-layer) |
-| `prometheus.io/scrape` annotations do nothing (Prometheus Operator ignores them without an `additionalScrapeConfig`, which does not exist) | Setting them on `podAnnotations` fails silently — the `XTenantApp` example file makes them look supported | Use a `ServiceMonitor` instead; fix the misleading example in `wxops-core` |
-| Prometheus `sampleLimit` / `targetLimit` / `labelLimit` are all `0` (unlimited) | One high-cardinality label on one tenant service can degrade monitoring platform-wide | Set `sampleLimit` from the composition when emitting ServiceMonitors |
+| Prometheus `sampleLimit` is per-`ServiceMonitor` from the composition; `targetLimit` / `labelLimit` are still `0` cluster-wide | A tenant cannot raise their own sample cap, but a high-cardinality label from an unrelated cluster-wide target can still degrade monitoring platform-wide | Set `targetLimit`/`labelLimit` on the Prometheus CR itself if this becomes a real incident |
 | No GPU exporter (DCGM) deployed | GPU utilisation metrics do not exist | Deploy the DCGM exporter DaemonSet — platform task, unrelated to app instrumentation |
-| Alerts carry no `app` label | The portal narrows to one service by matching the `pod` label against the app's name prefix, not by an app label. A rule that fires without a `pod` label is shown as a namespace-wide alert. | Add `defaultRules.additionalRuleLabels` or tenant `PrometheusRule`s carrying `app` |
+| Alerts carry no `app` label | The portal narrows to one service by matching the `pod` label against the app's name prefix, not by an app label. A rule that fires without a `pod` label is shown as a namespace-wide alert. Deferred in v0.5.1 — see [ROADMAP.md](../../ROADMAP.md), `defaultRules.additionalRuleLabels` is confirmed the wrong mechanism (cluster-wide, cannot vary per tenant). | A new per-tenant `PrometheusRule` in `wxops-core`, mirroring the shipped `ServiceMonitor` pattern, plus a decision on which alerts get per-tenant treatment |
 | Alertmanager's receiver is `null` | Alerts are visible in the portal and Grafana but are not routed anywhere — no email, Slack, or paging | Configure a real receiver in `alertmanager.config` |
 | Only traces are wired through Alloy's OTLP pipeline (logs/metrics exporters are commented out) | OTLP logs and metrics sent to Alloy are dropped | Enable the exporters in the Alloy config |
 | Profiling requires the app to push to Pyroscope | Profile links open an empty view for uninstrumented services | Instrument the service |

@@ -1,0 +1,149 @@
+# wxops-portal — values for the shared `common` library chart (aliased `portal`
+# in Chart.yaml). See https://kubewekend.xeusnguyen.xyz/ for the full field
+# reference; only the fields this app actually needs are set below.
+#
+# Required before this will boot — see backend/.env.example for the full
+# reference of every variable and why it's needed:
+#   OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URI
+#   SESSION_SECRET
+# Provide the two secret values (OIDC_CLIENT_SECRET, SESSION_SECRET) via your
+# own Secret + `envFrom`, or see the `extraManifests` example at the bottom of
+# this file for a self-contained way to create one from `helm install --set`.
+
+portal:
+  enabled: true
+
+  fullnameOverride: wxops-portal
+
+  image:
+    repository: ghcr.io/wxops/wxops-portal
+    # NOT left empty to fall back to .Chart.AppVersion — verified that does
+    # NOT work here: `image.tag | default .Chart.AppVersion` lives inside the
+    # `common` dependency's own templates, where `.Chart` resolves to
+    # common's Chart.yaml (which has no appVersion), never this chart's. The
+    # release workflow bumps this value directly, in lockstep with
+    # Chart.yaml's version/appVersion, from the same git tag.
+    tag: "0.5.0"
+    pullPolicy: IfNotPresent
+
+  # No pull secret by default — the published image is public. Add one only
+  # if you're pulling from a private mirror.
+  imagePullSecrets: []
+
+  # The container's only exposed port is nginx on :80 — it fronts the Go
+  # backend (:8080) and Next.js (:3000) internally via supervisord. See
+  # docs/platform/container.md.
+  containerPorts:
+    - name: http
+      containerPort: 80
+      protocol: TCP
+
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 80
+    targetPort: http
+
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+      # cert-manager.io/cluster-issuer: letsencrypt
+    hosts:
+      - host: portal.example.com
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+    tls: []
+      # - secretName: wxops-portal-tls
+      #   hosts:
+      #     - portal.example.com
+
+  # Non-secret configuration. FRONTEND_URL must match exactly what the
+  # browser sends as Origin — used for CORS. OIDC_CLIENT_ID and
+  # OIDC_REDIRECT_URI are not secret; the client secret is not set here, see
+  # envFrom / extraManifests below.
+  env:
+    FRONTEND_URL: "https://portal.example.com"
+    OIDC_ISSUER_URL: "https://pinniped-supervisor.example.com"
+    OIDC_CLIENT_ID: "client.oauth.pinniped.dev-wxops-portal"
+    OIDC_REDIRECT_URI: "https://portal.example.com/auth/callback"
+    OIDC_SCOPES: "openid,groups,offline_access,username,pinniped:request-audience"
+    # Static cluster registry — the fastest path to a running portal with no
+    # hub-cluster RBAC setup. Point this at a mounted ConfigMap, or switch to
+    # Kubernetes Secret discovery instead (see rbac: below) once you have more
+    # than one or two clusters to register. See backend/.env.example §4.
+    CLUSTERS_CONFIG_FILE: "/etc/wxops/clusters.json"
+
+  # Bring your own Secret with the two required values (OIDC_CLIENT_SECRET,
+  # SESSION_SECRET) and reference it here — or use the extraManifests example
+  # at the bottom of this file to have the chart create one from --set.
+  envFrom: []
+    # - secretRef:
+    #     name: wxops-portal-secrets
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  probes:
+    port: http
+    # No startup delay worth gating on — matches the gitops-infra model.
+    disableProbes: ["startupProbe"]
+    livenessProbe:
+      httpGet:
+        path: /healthz
+    readinessProbe:
+      httpGet:
+        path: /readyz
+
+  serviceAccount:
+    create: true
+    name: wxops-portal
+
+  # Off by default — least privilege. Only needed for Kubernetes Secret-based
+  # cluster discovery (backend/.env.example §4, Option C), which most users
+  # won't need on day one since CLUSTERS_CONFIG_FILE above covers the common
+  # case. Flip this on once you outgrow the static config file.
+  rbac:
+    create: false
+    role:
+      kind: Role
+      rules:
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["get", "list", "watch"]
+    roleBinding:
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+      subjects:
+        - kind: ServiceAccount
+          name: wxops-portal
+
+  # Self-contained way to supply the two required secret values without a
+  # separate `kubectl create secret` step. `extraManifests` entries are
+  # rendered with `tpl` against the full values context, so the two
+  # {{ .Values... }} references below resolve against `secretValues` — set
+  # those two flat scalars at install time and this Secret + envFrom just
+  # work, e.g.:
+  #   helm install wxops-portal oci://ghcr.io/wxops/charts/wxops-portal \
+  #     --set portal.secretValues.oidcClientSecret=... \
+  #     --set portal.secretValues.sessionSecret=$(openssl rand -hex 32)
+  # Uncomment both this and envFrom above (pointed at the same Secret name)
+  # to use it. Left commented by default — a Secret with placeholder values
+  # would be worse than no Secret at all.
+  extraManifests: []
+    # - apiVersion: v1
+    #   kind: Secret
+    #   metadata:
+    #     name: wxops-portal-secrets
+    #   stringData:
+    #     OIDC_CLIENT_SECRET: "{{ .Values.portal.secretValues.oidcClientSecret }}"
+    #     SESSION_SECRET: "{{ .Values.portal.secretValues.sessionSecret }}"
+  secretValues: {}
+    # oidcClientSecret: ""
+    # sessionSecret: ""

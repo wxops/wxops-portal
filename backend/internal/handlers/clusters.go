@@ -417,7 +417,9 @@ func (h *ClusterHandler) GetPod(c *gin.Context) {
 			env = append(env, entry)
 		}
 
-		var envFrom []string
+		// make(..., 0, ...) rather than var: a nil slice marshals to JSON null,
+		// and the frontend calls .length on this unconditionally.
+		envFrom := make([]string, 0, len(ctr.EnvFrom))
 		for _, ef := range ctr.EnvFrom {
 			if ef.ConfigMapRef != nil {
 				envFrom = append(envFrom, "configmap:"+ef.ConfigMapRef.Name)

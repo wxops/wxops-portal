@@ -272,8 +272,6 @@ func (c *Client) listExistingFiles(ctx context.Context, owner, repo, ref string)
 	return files
 }
 
-
-
 // CreateOrUpdateFile creates or updates a file in a repository on a given branch.
 // If the file already exists, it performs a PUT with the current SHA (update).
 // If the file does not exist, it performs a POST (create).
@@ -588,12 +586,15 @@ type ContainerPackage struct {
 }
 
 // ListWorkflowRuns returns recent Gitea Actions workflow runs for a repo.
-func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo string, limit int) ([]WorkflowRun, error) {
+func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo string, page, limit int) ([]WorkflowRun, error) {
+	if page < 1 {
+		page = 1
+	}
 	if limit <= 0 {
 		limit = 5
 	}
-	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/actions/runs?limit=%d",
-		c.baseURL, owner, repo, limit)
+	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/actions/runs?limit=%d&page=%d",
+		c.baseURL, owner, repo, limit, page)
 
 	body, err := c.doRaw(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -645,12 +646,15 @@ func (c *Client) ListRepoTags(ctx context.Context, owner, repo string, limit int
 }
 
 // ListReleases returns releases for a repo.
-func (c *Client) ListReleases(ctx context.Context, owner, repo string, limit int) ([]Release, error) {
+func (c *Client) ListReleases(ctx context.Context, owner, repo string, page, limit int) ([]Release, error) {
+	if page < 1 {
+		page = 1
+	}
 	if limit <= 0 {
 		limit = 10
 	}
-	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/releases?limit=%d",
-		c.baseURL, owner, repo, limit)
+	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/releases?limit=%d&page=%d",
+		c.baseURL, owner, repo, limit, page)
 
 	body, err := c.doRaw(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -690,8 +694,18 @@ func (c *Client) ListContainerPackages(ctx context.Context, owner string, limit 
 // ListRepoDirs returns subdirectory names under a path in any repo.
 // Returns nil without error when the directory does not exist.
 func (c *Client) ListRepoDirs(ctx context.Context, owner, repo, dirPath string) ([]string, error) {
+	return c.ListRepoDirsAtRef(ctx, owner, repo, dirPath, "")
+}
+
+// ListRepoDirsAtRef is ListRepoDirs at a specific ref (branch, tag, or commit
+// SHA). An empty ref fetches the default branch — same as ListRepoDirs, which
+// is a thin wrapper over this.
+func (c *Client) ListRepoDirsAtRef(ctx context.Context, owner, repo, dirPath, ref string) ([]string, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/contents/%s",
 		c.baseURL, owner, repo, dirPath)
+	if ref != "" {
+		apiURL += "?ref=" + url.QueryEscape(ref)
+	}
 
 	body, err := c.doRaw(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -794,11 +808,11 @@ func (c *Client) CreateEmptyRepo(ctx context.Context, owner, name, description s
 	apiURL := fmt.Sprintf("%s/api/v1/orgs/%s/repos", c.baseURL, owner)
 
 	payload := map[string]any{
-		"name":            name,
-		"description":     description,
-		"private":         true,
-		"auto_init":       true,
-		"default_branch":  "develop",
+		"name":           name,
+		"description":    description,
+		"private":        true,
+		"auto_init":      true,
+		"default_branch": "develop",
 	}
 
 	body, err := c.doRaw(ctx, http.MethodPost, apiURL, payload)
@@ -813,10 +827,21 @@ func (c *Client) CreateEmptyRepo(ctx context.Context, owner, name, description s
 	return &info, nil
 }
 
-// GetRepoFile fetches a file from any repo (not just the client's default repo).
+// GetRepoFile fetches a file from any repo (not just the client's default repo),
+// at the default branch.
 func (c *Client) GetRepoFile(ctx context.Context, owner, repo, path string) ([]byte, error) {
+	return c.GetRepoFileAtRef(ctx, owner, repo, path, "")
+}
+
+// GetRepoFileAtRef fetches a file from any repo at a specific ref (branch,
+// tag, or commit SHA). An empty ref fetches the default branch — same as
+// GetRepoFile, which is a thin wrapper over this.
+func (c *Client) GetRepoFileAtRef(ctx context.Context, owner, repo, path, ref string) ([]byte, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/contents/%s",
 		c.baseURL, owner, repo, path)
+	if ref != "" {
+		apiURL += "?ref=" + url.QueryEscape(ref)
+	}
 
 	body, err := c.doRaw(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -827,7 +852,7 @@ func (c *Client) GetRepoFile(ctx context.Context, owner, repo, path string) ([]b
 		Content string `json:"content"`
 	}
 	if err := json.Unmarshal(body, &entry); err != nil {
-		return nil, fmt.Errorf("gitea: decode file %s/%s/%s: %w", owner, repo, path, err)
+		return nil, fmt.Errorf("gitea: decode file %s/%s/%s@%s: %w", owner, repo, path, ref, err)
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(

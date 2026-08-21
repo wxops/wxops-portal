@@ -31,6 +31,7 @@ interface Entity {
     docType?: string;
     docStatus?: string;
   };
+  completenessScore?: { score: number; max: number; checks: Record<string, boolean> };
 }
 
 async function fetchAllEntities(
@@ -261,6 +262,11 @@ function ComponentCard({ c }: { c: Entity }) {
                 {c.spec.lifecycle}
               </span>
             )}
+            {c.completenessScore && (
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${completenessBadgeClass(c.completenessScore.score, c.completenessScore.max)}`}>
+                {c.completenessScore.score}/{c.completenessScore.max}
+              </span>
+            )}
             {c.spec.owner && <span className="ml-auto">{c.spec.owner}</span>}
           </div>
         </CardContent>
@@ -295,6 +301,11 @@ function EntityCard({ entity }: { entity: Entity }) {
             {entity.spec.type && (
               <Badge variant="secondary" className="text-xs">{entity.spec.type}</Badge>
             )}
+            {entity.completenessScore && (
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${completenessBadgeClass(entity.completenessScore.score, entity.completenessScore.max)}`}>
+                {entity.completenessScore.score}/{entity.completenessScore.max}
+              </span>
+            )}
             {entity.spec.lifecycle && (
               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${LIFECYCLE_BADGE[entity.spec.lifecycle] ?? "bg-muted text-muted-foreground"}`}>
                 {entity.spec.lifecycle}
@@ -325,6 +336,15 @@ const LIFECYCLE_BADGE: Record<string, string> = {
   production:   "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   deprecated:   "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
+
+// Score bands, not exact-match like LIFECYCLE_BADGE — completeness is a ratio.
+function completenessBadgeClass(score: number, max: number): string {
+  if (max === 0) return "bg-muted text-muted-foreground";
+  const ratio = score / max;
+  if (ratio >= 0.8) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+  if (ratio >= 0.5) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+  return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+}
 
 const KIND_FILTERS = [
   { value: "", label: "All" },

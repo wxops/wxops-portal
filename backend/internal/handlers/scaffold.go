@@ -842,6 +842,8 @@ func (h *ScaffoldHandler) UpdateProjectConfig(c *gin.Context) {
 		CertManager: req.CertManager,
 		SSOAuth:     req.SSOAuth,
 		IngressEnabled:  req.IngressEnabled,
+		MonitorEnabled:  req.MonitorEnabled,
+		MetricsPath:     req.MetricsPath,
 		LivenessPath:    req.LivenessPath,
 		ReadinessPath:   req.ReadinessPath,
 		RolloutType:     req.RolloutType,

@@ -212,6 +212,7 @@ func New(cfg *config.Config) (*Server, error) {
 			cat.GET("/entities/:kind/:name/ci", catalogH.GetEntityCI)
 			cat.GET("/entities/:kind/:name/releases", catalogH.GetEntityReleases)
 			cat.GET("/entities/:kind/:name/packages", catalogH.GetEntityPackages)
+			cat.GET("/entities/:kind/:name/packages/compare", catalogH.GetEntityPackagesCompare)
 			cat.GET("/entities/:kind/:name/versions", catalogH.GetEntityVersions)
 			cat.GET("/entities/:kind/:name/promostatus", catalogH.GetPromoStatus)
 			cat.GET("/entities/:kind/:name/environments", obsH.GetEnvironments)

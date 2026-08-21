@@ -127,6 +127,8 @@ export function EditConfigForm({ team, appName, groups, entityKind }: EditConfig
         // certClusterIssuer omitted — set per-env in the Promote flow.
         ssoAuth: state.ssoAuth,
         ingressEnabled: state.ingressEnabled,
+        monitoringEnabled: state.monitoringEnabled,
+        metricsPath: state.monitoringEnabled ? state.metricsPath : undefined,
         livenessPath: state.livenessPath || undefined,
         readinessPath: state.readinessPath || undefined,
         rolloutType: state.rolloutType || undefined,

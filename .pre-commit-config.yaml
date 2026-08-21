@@ -25,8 +25,14 @@ repos:
 
   # ── Generic file quality ────────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
+      # Blocks `git commit` while checked out on main — catches the mistake
+      # before it even happens, not just before a push. Local safety net only:
+      # anyone without this hook installed, or using --no-verify, bypasses it.
+      # Real enforcement needs a server-side branch protection rule.
+      - id: no-commit-to-branch
+        args: [--branch, main]
       - id: trailing-whitespace
       - id: end-of-file-fixer
         exclude: |

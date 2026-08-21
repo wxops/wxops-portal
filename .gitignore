@@ -75,3 +75,7 @@ next-env.d.ts
 
 # cli build
 **/cli/bin/*
+
+# Helm dependency archive — resolved from charts/Chart.lock, not committed
+charts/charts/*.tgz
+charts/Chart.lock

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: wxops-portal
+description: A Helm chart for deploying the W'xOps Portal — an Internal Developer Portal for Kubernetes-native platform teams
+type: application
+version: 0.1.0
+appVersion: "0.5.0"
+home: https://github.com/wxops/wxops-portal
+sources:
+  - https://github.com/wxops/wxops-portal
+maintainers:
+  - name: Xeus Nguyen (W'xOps)
+dependencies:
+  - name: common
+    version: 0.3.2
+    repository: https://kubewekend.xeusnguyen.xyz/
+    alias: portal
+    condition: portal.enabled

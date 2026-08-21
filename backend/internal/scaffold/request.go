@@ -81,6 +81,9 @@ type UpdateConfigRequest struct {
 	SSOAuth        bool `json:"ssoAuth,omitempty"`
 	IngressEnabled bool `json:"ingressEnabled,omitempty"`
 
+	MonitorEnabled bool   `json:"monitoringEnabled,omitempty"`
+	MetricsPath    string `json:"metricsPath,omitempty"` // e.g. /metrics
+
 	LivenessPath    string `json:"livenessPath,omitempty"`
 	ReadinessPath   string `json:"readinessPath,omitempty"`
 	RolloutType     string `json:"rolloutType,omitempty"`

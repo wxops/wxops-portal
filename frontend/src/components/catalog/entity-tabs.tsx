@@ -1,12 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Activity, GitBranch, Layers, FileCode2, LayoutList, Server } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 export type EntityTabId = "overview" | "runtime" | "pipeline" | "promote" | "spec" | "details";
+
+// page.tsx is a Server Component, so the `tabs` array it builds (including
+// each tab's `children`) crosses into this Client Component as serialized
+// props — a function can't cross that boundary, only plain elements/data.
+// A tab's content that needs to know whether it's currently active (e.g. to
+// pause polling while off-screen) reads this Context instead, which is set
+// entirely client-side after the elements are already in the tree.
+const ActiveTabContext = createContext<EntityTabId | null>(null);
+
+export function useActiveEntityTab(): EntityTabId | null {
+  return useContext(ActiveTabContext);
+}
 
 const TAB_META: Record<EntityTabId, {
   label: string;
@@ -99,7 +111,11 @@ export function EntityTabs({ tabs, defaultTab }: EntityTabsProps) {
             tab.padding === "none" ? "" : "p-6",
           )}
         >
-          {visited.has(tab.id) && tab.children}
+          {visited.has(tab.id) && (
+            <ActiveTabContext.Provider value={tab.id === validActive ? tab.id : null}>
+              {tab.children}
+            </ActiveTabContext.Provider>
+          )}
         </div>
       ))}
     </div>

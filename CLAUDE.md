@@ -280,6 +280,23 @@ is absent.
   never from `entity.metadata.name`. Vault Resource entities are named
   `{appName}-vault` in the catalog, so the entity name is wrong for repo/Vault lookups.
 
+## Documentation Conventions
+
+Applies to prose paragraphs in `release-notes/`, `ROADMAP.md`, and `docs/` —
+markdown renders paragraphs as continuous regardless of source line breaks,
+so this is purely about the raw file being comfortable to read in an editor
+or terminal, not about rendered output.
+
+- **Wrap prose around ~100 characters per line, not ~78-80.** The tighter
+  wrap breaks lines too often and makes the source choppier to read than
+  necessary; a wider column reads more naturally without becoming a single
+  giant unwrapped line.
+- Applies to prose only — tables, code blocks, and list items keep their
+  natural length (a table row or a link-heavy bullet is often long regardless
+  of column target; don't force-wrap those).
+- When editing an existing doc, match this width for the paragraphs you
+  touch — no need to reflow an entire file just to fix one section.
+
 ## What NOT to Do
 
 - Don't add cluster write operations to the portal

@@ -9,6 +9,12 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+## [0.5.1] — 2026-08-21
+
+### Chores
+
+- Enhance the monitoring for xtenantapp and refactor to friendly UI ([`03cd202`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/03cd202a9d23227cacf7b303cda8863c9af935ac))
+
 ## [0.5.0] — 2026-08-12
 
 ### Documentation
@@ -113,6 +119,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ---
 
+[0.5.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.5.1
 [0.5.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.5.0
 [0.4.3] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.3
 [0.4.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.4.2
@@ -127,5 +134,5 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 [0.1.2] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.2
 [0.1.1] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.1
 [0.1.0] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/v0.1.0
-[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.5.0...HEAD
+[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/v0.5.1...HEAD
 

@@ -44,6 +44,7 @@ plus a `development/` bucket for contributor-facing material.
 | [Runtime Observability](platform/observability.md) | ArgoCD + Crossplane status, Grafana deep links, active alerts, RBAC prerequisite |
 | [Observability Architecture](platform/observability-architecture.md) | Hub Grafana + spoke Alloy target design, and what blocks multi-cluster today |
 | [Multi-Cluster Authentication](platform/multi-cluster-authentication.md) | Deferred design — zero-static-secret M2M credentials for ArgoCD via exec plugin |
+| [Ecosystem Tool Strategy](platform/ecosystem-tool-strategy.md) | Research notes — hub/spoke tool division, spoke CRD dependencies, lightweight tool alternatives |
 | [Container](platform/container.md) | nginx, supervisord, Dockerfile design |
 
 ## Darlane

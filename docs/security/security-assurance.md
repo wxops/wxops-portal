@@ -303,7 +303,7 @@ Illustrative, not a certification. Shows where the structural properties land.
 | Logical access (CC6.1 / A.9) | Single OIDC identity; K8s RBAC; role-gated actions; no local accounts. |
 | Transmission & egress (CC6.6–6.7 / A.13) | TLS to all dependencies; bounded, enforceable egress allowlist (§3). |
 | Change management (CC8.1 / A.14) | All changes are reviewed Git PRs; `git revert` is the rollback; PR reviewers are the approval chain. |
-| Monitoring (CC7.2 / A.12.4) | Structured audit events → SIEM (see [enterprise-roadmap.md](../roadmap/enterprise-roadmap.md) Track A); Git history is a second, immutable log. |
+| Monitoring (CC7.2 / A.12.4) | Structured audit events → SIEM (see [`../rfc/RFC-010-enterprise-audit-trail.md`](../rfc/RFC-010-enterprise-audit-trail.md)); Git history is a second, immutable log. |
 | Data at rest (A.8) | No portal database; secrets are write-only to Vault; sessions are client-side and encrypted. |
 
 ---
@@ -330,4 +330,4 @@ An auditor can confirm the core claims in minutes:
 - [../platform/observability.md](../platform/observability.md) — runtime status reads, selectors, and known limitations
 - [../platform/observability-architecture.md](../platform/observability-architecture.md) — hub/spoke target architecture and the Loki tenancy gap
 - [../darlane/darlane.md](../darlane/darlane.md) — Darlane's separate (developer-invoked, gated, audited) traffic model
-- [../roadmap/enterprise-roadmap.md](../roadmap/enterprise-roadmap.md) — the audit trail (Track A) that makes A7 continuously verifiable
+- [../rfc/RFC-010-enterprise-audit-trail.md](../rfc/RFC-010-enterprise-audit-trail.md) — the audit trail that makes A7 continuously verifiable

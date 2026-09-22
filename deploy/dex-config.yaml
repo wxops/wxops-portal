@@ -8,7 +8,7 @@ web:
 
 staticClients:
   - id: wxops-portal
-    name: WxOps Portal v2
+    name: WxOps Portal
     secret: wxops-portal-secret
     redirectURIs:
       # All-in-one image: nginx on :80, Next.js proxies /auth/callback → backend

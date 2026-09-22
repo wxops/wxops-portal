@@ -297,6 +297,43 @@ or terminal, not about rendered output.
 - When editing an existing doc, match this width for the paragraphs you
   touch — no need to reflow an entire file just to fix one section.
 
+## Roadmap & RFC Process
+
+Two places, two jobs. `ROADMAP.md` at the repo root is the one file checked for status — what shipped,
+what is planned, the architecture decisions, and the RFC index. `docs/rfc/RFC-NNN-*.md` holds the
+proposals themselves (features and design changes). `docs/roadmap/` was renamed to `docs/rfc/` on
+2026-09-26; it no longer exists, and `ROADMAP.md` is the only roadmap. The earlier standalone
+idea/vision documents (`enterprise-roadmap.md`, `system-intelligence.md`,
+`fleet-sync-and-golden-path-evolution.md`, `devex-integrations.md`) were removed on 2026-09-18 once
+their content was migrated into the RFC series.
+
+- **A new feature or design-change idea for the portal is proposed as an RFC, not a new standalone doc.**
+  Use the `[RFC]` issue template (`.github/ISSUE_TEMPLATE/rfc.md`) — its structure
+  (Summary/Motivation/Detailed Design/Drawbacks/Alternatives/Rollout Plan/Open Questions) matches
+  `docs/catalog/documentation-strategy.md`'s enforced RFC content template exactly, so an accepted issue
+  graduates into a `docs/rfc/RFC-NNN-*.md` file with the same headings, no restructuring needed. Start
+  from `docs/rfc/template.md`.
+- **An RFC's status changes only through an ADR.** An RFC stays `proposed` in `ROADMAP.md`'s RFC index
+  until the project decides. The decision is an ADR: discussed in an `[ADR]` issue
+  (`.github/ISSUE_TEMPLATE/adr.md`), then written up as `docs/adr/ADR-NNN-*.md` from
+  `docs/adr/template.md`, whose `Decides:` line names the RFC. When the ADR is accepted, in the same PR
+  the RFC's row in the index gets the new status (`accepted`, `declined` or `superseded`) and a link to
+  the ADR file in its Decision column, the RFC's own `Status:` and `Decision:` header lines are
+  updated to match, and the decision is added to `ROADMAP.md`'s Architecture Decisions table.
+- **Don't create a new non-RFC file directly under `docs/rfc/`** (other than `template.md`, the copy-me
+  starting point for a new RFC) for a feature idea, vision
+  document, or research note — even a well-organized one. If it's a decision to be made, it's an RFC.
+  If it's a settled decision, it belongs as a row in `ROADMAP.md`'s Architecture Decisions table. If
+  it's pure research/reference with no decision attached, it belongs elsewhere in `docs/` (e.g.
+  `docs/platform/`), not `docs/rfc/`.
+- **ADRs live in `docs/adr/`** as `ADR-NNN-*.md`, one decision each, immutable once accepted — a change
+  is a new ADR that supersedes the old one. This is for codebase-wide decisions about the portal itself;
+  a decision a tenant team would look up (a golden-path convention, a platform contract) is an ADR `Doc`
+  catalog entity per `documentation-strategy.md` instead. Don't add other files to `docs/adr/` besides
+  `template.md`. Every accepted ADR gets a row in `ROADMAP.md`'s Architecture Decisions table linking its
+  file; rows that predate `docs/adr/` have no file and stay as they are. The link runs both ways: the
+  ADR's `Decides:` line names the RFC, and the RFC index's Decision column names the ADR.
+
 ## What NOT to Do
 
 - Don't add cluster write operations to the portal

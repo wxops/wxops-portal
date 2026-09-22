@@ -229,7 +229,7 @@ to write a new symptom section, not fork an existing one.
      value, not a prose description like "should look healthy." A vague
      verification is fine for a human skimming during an incident but
      unusable for anything that needs to confirm the fix worked — including,
-     eventually, an agent (see system-intelligence.md Phase 2: Validate).
+     eventually, an agent (see RFC-009's maturity-phase discussion, Phase 2: Validate).
      Example: "kubectl get pod <name> -o jsonpath='{.status.containerStatuses[0].restartCount}'
      — value unchanged from the count recorded in Step 1 after 10 minutes." -->
 

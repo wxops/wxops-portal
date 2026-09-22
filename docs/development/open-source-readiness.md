@@ -5,8 +5,8 @@
 > enterprise layer lives *beside* it, private, added only when a real user asks.
 > **Companions:** [refactor-and-hardening.md](refactor-and-hardening.md) (the pre-launch
 > gate), [../security/security-assurance.md](../security/security-assurance.md) (the trust
-> story that gets 10× stronger in the open), [../roadmap/enterprise-roadmap.md](../roadmap/enterprise-roadmap.md)
-> (what stays enterprise).
+> story that gets 10× stronger in the open), [`RFC-010`](../rfc/RFC-010-enterprise-audit-trail.md)
+> and its siblings `RFC-011`–`RFC-012` (what stays enterprise).
 
 ## How to use this
 
@@ -286,5 +286,5 @@ green · §E 10-minute demo works · §F hygiene files present · §G license ch
 
 - [refactor-and-hardening.md](refactor-and-hardening.md) — the hardening gate (§D)
 - [../security/security-assurance.md](../security/security-assurance.md) — the trust story to headline (§H)
-- [../roadmap/enterprise-roadmap.md](../roadmap/enterprise-roadmap.md) — what stays enterprise (§A)
-- [../roadmap/system-intelligence.md](../roadmap/system-intelligence.md) — the "where it's going" annex, not a shipped claim
+- [`RFC-010`](../rfc/RFC-010-enterprise-audit-trail.md), [`RFC-011`](../rfc/RFC-011-governance-scorecards-team-health.md), [`RFC-012`](../rfc/RFC-012-supply-chain-security-cve-cost.md) — what stays enterprise (§A)
+- [`RFC-009`](../rfc/RFC-009-self-service-operations-portal-response.md) — the "where it's going" annex, not a shipped claim

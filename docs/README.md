@@ -67,13 +67,19 @@ plus a `development/` bucket for contributor-facing material.
 | [Permissions](security/permissions.md) | Role model, RBAC via Pinniped, action-to-role mapping |
 | [Security Assurance](security/security-assurance.md) | Evidence the portal is a passive reflector — no cluster writes, no traffic interception, bounded egress, assume-breach blast radius, reviewer checklist |
 
-## Roadmap
+## Roadmap and RFCs
 
-| Doc | What it covers |
-|---|---|
-| [Enterprise Roadmap](roadmap/enterprise-roadmap.md) | Dev-ready specs: audit, security, scorecards, cost, XDarlane, Guardian |
-| [System Intelligence](roadmap/system-intelligence.md) | Darlane-native incident response — diagnose + validate in a safe twin for on-call & hotfix |
-| [DevEx Integrations](roadmap/devex-integrations.md) | CVE management (Trivy → issue → patch), test visibility, team productivity signals, dependency comparison across releases |
+`ROADMAP.md` at the repo root is the only roadmap: shipped and planned work, architecture decisions,
+and the RFC index where each RFC's status is checked. The proposals themselves are
+[`docs/rfc/RFC-NNN-*.md`](rfc/), each following the RFC issue template's structure (Summary/Motivation/
+Detailed Design/Drawbacks/Alternatives/Rollout Plan/Open Questions); [`rfc/template.md`](rfc/template.md)
+is the copy-me starting point. An RFC's status changes only when
+an ADR records the decision and points back to it. ADRs are [`docs/adr/ADR-NNN-*.md`](adr/), started
+from [`adr/template.md`](adr/template.md); each names the RFC it decides, and the RFC index links back.
+
+This folder was `docs/roadmap/` until 2026-09-26. The standalone idea/vision docs it held earlier
+(`enterprise-roadmap.md`, `system-intelligence.md`, `fleet-sync-and-golden-path-evolution.md`,
+`devex-integrations.md`) are migrated into the RFC series (`RFC-006` through `RFC-014`) and removed.
 
 ## Development
 

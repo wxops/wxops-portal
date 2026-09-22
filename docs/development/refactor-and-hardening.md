@@ -7,8 +7,9 @@
 > **Spans:** `wxops-portal-v2` (backend, frontend, CLI) and `wxops-core` (KCL
 > compositions). Core workstreams should be mirrored into `wxops-core/PLANS.md`
 > when execution starts.
-> **Companion docs:** [enterprise-roadmap.md](../roadmap/enterprise-roadmap.md),
-> [system-intelligence.md](../roadmap/system-intelligence.md).
+> **Companion docs:** [`RFC-010`](../rfc/RFC-010-enterprise-audit-trail.md) (the audit trail this
+> unblocks), [`RFC-009`](../rfc/RFC-009-self-service-operations-portal-response.md) (the
+> structured-logging sink downstream of B4).
 
 ## Why this release, and why now
 
@@ -107,8 +108,8 @@ change, just relocation):
 **Now:** 29× `log.Printf`, no request id, no JSON.
 **Target:** standardize on `log/slog` with a JSON handler; add a Gin middleware that
 injects a request id (trace id) into the context and every log line. This is the exact
-sink the [audit trail](../roadmap/enterprise-roadmap.md) (Track A) and
-[system intelligence](../roadmap/system-intelligence.md) will emit into.
+sink the audit trail ([`RFC-010`](../rfc/RFC-010-enterprise-audit-trail.md)) and
+system intelligence ([`RFC-009`](../rfc/RFC-009-self-service-operations-portal-response.md)) will emit into.
 - [ ] Single logger constructed from config (level + format).
 - [ ] Every request carries a correlatable `traceId`.
 - [ ] `log.Printf` eliminated from `internal/`.
@@ -255,7 +256,8 @@ their phase even though nothing in *this* release strictly requires them.
 
 ## Reference
 
-- [../roadmap/enterprise-roadmap.md](../roadmap/enterprise-roadmap.md) — the audit trail (B4) and `XDarlane` (K2) that this release unblocks
-- [../roadmap/system-intelligence.md](../roadmap/system-intelligence.md) — the structured-logging sink downstream of B4
+- [`RFC-010`](../rfc/RFC-010-enterprise-audit-trail.md) — the audit trail (B4) this release unblocks
+- [`RFC-006`](../rfc/RFC-006-darlane-next.md) — `XDarlane` (K2) this release unblocks
+- [`RFC-009`](../rfc/RFC-009-self-service-operations-portal-response.md) — the structured-logging sink downstream of B4
 - [../concepts/architecture.md](../concepts/architecture.md) — the invariants this release preserves
 - `wxops-core/Makefile` — existing `validate`/`render`/`lint` targets that K1 extends

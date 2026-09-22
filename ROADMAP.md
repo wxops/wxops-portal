@@ -520,13 +520,13 @@ The directions already scoped, in rough order of how often they come up:
 
 | Direction | What it covers |
 |---|---|
-| **Security & compliance** | Audit trail (who promoted what, with approval chain), SBOM + CVE panel with fix-issue creation, policy coverage reporting. Specs in [enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md) Track B. |
-| **SRE & incident response** | Signal correlation across logs, metrics, traces and events in one window; validated-fix workflow in an isolated Darlane twin. Design in [system-intelligence.md](docs/roadmap/system-intelligence.md). |
+| **Security & compliance** | Audit trail (who promoted what, with approval chain), SBOM + CVE panel with fix-issue creation, policy coverage reporting. Specs in [`RFC-010`](docs/rfc/RFC-010-enterprise-audit-trail.md) and [`RFC-012`](docs/rfc/RFC-012-supply-chain-security-cve-cost.md). |
+| **SRE & incident response** | Signal correlation across logs, metrics, traces and events in one window; validated-fix workflow in an isolated Darlane twin. Design in [`RFC-009`](docs/rfc/RFC-009-self-service-operations-portal-response.md). |
 | **Intelligence layer** | Guardian scanning and audit around agent-driven sessions — the open wedge is the execution platform, the enterprise line is the AI review. See [open-source-readiness.md](docs/development/open-source-readiness.md) §A. |
-| **Developer experience** | CVE routing, test visibility, productivity signals, dependency comparison. Specs in [devex-integrations.md](docs/roadmap/devex-integrations.md). |
-| **Cross-tenant visibility** | "Consumed by" on API entities, "Used by" on Resources, blast-radius before deprecating a shared API. Catalog work — independent of everything above. |
-| **Multi-cluster** | Per-cluster ArgoCD status and per-cluster observability endpoints in the registry Secret schema. **Blocked on two prerequisites:** the collector's hardcoded `cluster` label must be parameterized before log links can be scoped per cluster, and headless M2M credentials are an open design ([multi-cluster-authentication.md](docs/platform/multi-cluster-authentication.md)). |
-| **Fleet sync-back & flexible delivery** | Propagating template improvements (security patches, CI fixes, new platform tooling) into already-scaffolded services without clobbering team-owned code, plus per-service delivery topology (full 3-env vs. shorter paths) without losing governance guarantees. Real, multi-piece effort — lock file, file-mutability classification, and a diff-and-PR bot are each separate decisions, not one feature. Idea captured in [fleet-sync-and-golden-path-evolution.md](docs/roadmap/fleet-sync-and-golden-path-evolution.md). |
+| **Developer experience** | CVE routing, test visibility, productivity signals, dependency comparison. Specs in [`RFC-011`](docs/rfc/RFC-011-governance-scorecards-team-health.md), [`RFC-012`](docs/rfc/RFC-012-supply-chain-security-cve-cost.md), and [`RFC-013`](docs/rfc/RFC-013-dependency-comparison-test-visibility.md). |
+| **Cross-tenant visibility** | "Consumed by" on API entities, "Used by" on Resources, blast-radius before deprecating a shared API. Catalog work — independent of everything above. Specs in [`RFC-011`](docs/rfc/RFC-011-governance-scorecards-team-health.md), which supersedes the detail formerly duplicated below. |
+| **Multi-cluster** | Per-cluster ArgoCD status and per-cluster observability endpoints in the registry Secret schema. **Blocked on two prerequisites:** the collector's hardcoded `cluster` label must be parameterized before log links can be scoped per cluster, and headless M2M credentials are an open design ([multi-cluster-authentication.md](docs/platform/multi-cluster-authentication.md), sequenced in [`RFC-004`](docs/rfc/RFC-004-multi-cluster-sequencing.md)). |
+| **Fleet sync-back & flexible delivery** | Propagating template improvements (security patches, CI fixes, new platform tooling) into already-scaffolded services without clobbering team-owned code, plus per-service delivery topology (full 3-env vs. shorter paths) without losing governance guarantees. Real, multi-piece effort — lock file, file-mutability classification, and a diff-and-PR bot are each separate decisions, not one feature. Specs in [`RFC-007`](docs/rfc/RFC-007-golden-path-template-sync.md) (sync-back) and [`RFC-014`](docs/rfc/RFC-014-configurable-delivery-topology.md) (delivery topology). |
 
 See [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md)
 for the promotion model these build on.
@@ -539,13 +539,16 @@ Not scheduled. Prioritized by real usage feedback.
 
 > **Dev-ready specs:** the items in this section are turned into a phased, code-grounded
 > development plan (Phases 1–4, backend package/route surface, XDarlane XRD, Guardian)
-> in [docs/roadmap/enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md). Those
+> across [`RFC-010`](docs/rfc/RFC-010-enterprise-audit-trail.md) (audit),
+> [`RFC-011`](docs/rfc/RFC-011-governance-scorecards-team-health.md) (governance/scorecards),
+> [`RFC-012`](docs/rfc/RFC-012-supply-chain-security-cve-cost.md) (security/cost), and
+> [`RFC-006`](docs/rfc/RFC-006-darlane-next.md) (`XDarlane`/Guardian sequencing). Those
 > phases are deliberately unversioned — they begin after v0.6.0 and are gated on
 > adoption, not on a date.
 >
 > **Intelligence vision:** how system intelligence combines with Darlane for
 > diagnose-and-validate incident response (on-call triage, hotfix, deep analysis) is in
-> [docs/roadmap/system-intelligence.md](docs/roadmap/system-intelligence.md).
+> [`RFC-009`](docs/rfc/RFC-009-self-service-operations-portal-response.md).
 
 ### Cross-Tenant Dependency Visibility
 
@@ -643,7 +646,9 @@ are ordered from easiest to adopt to most architecturally involved.
 
 ## Architecture Decisions
 
-Key decisions that shape all future work.
+Key decisions that shape all future work. A decision made after 2026-09-26 is an ADR file in
+[`docs/adr/`](docs/adr/) — its row here links that file. Earlier rows have no file; this table is
+their record. A decision that resolves an RFC also moves that RFC's row in the [RFC index](#rfc-index).
 
 | Decision | Resolution | Rationale |
 |----------|-----------|-----------|
@@ -686,3 +691,42 @@ Key decisions that shape all future work.
 | [docs/catalog/documentation-strategy.md](docs/catalog/documentation-strategy.md) | ADR, RFC, Runbook strategy |
 | [docs/catalog/service-catalog.md](docs/catalog/service-catalog.md) | Entity kinds, relationships |
 | [docs/catalog/catalog-user-guide.md](docs/catalog/catalog-user-guide.md) | YAML field reference, examples |
+
+---
+
+## RFC index
+
+RFCs live in [`docs/rfc/`](docs/rfc/), one file per proposal. **This table is where their status is
+checked.** An RFC stays `proposed` until the project decides it; the decision is recorded as an ADR
+that names the RFC, and only then does the row change. Status values: `proposed` → `accepted` /
+`declined` / `superseded`. The Decision column links the ADR file in [`docs/adr/`](docs/adr/) and reads
+`—` while nothing has been decided.
+
+To propose something new, open an `[RFC]` issue (`.github/ISSUE_TEMPLATE/rfc.md`); an accepted one
+graduates into `docs/rfc/RFC-NNN-*.md` with the same headings, starting from
+[`docs/rfc/template.md`](docs/rfc/template.md). To record a decision, open an `[ADR]`
+issue (`.github/ISSUE_TEMPLATE/adr.md`) naming the RFC; once accepted it is written up from
+[`docs/adr/template.md`](docs/adr/template.md). See `CLAUDE.md` for the standing rule.
+
+> **History.** `docs/rfc/` was `docs/roadmap/` until 2026-09-26. Before 2026-09-18 that folder also held
+> standalone idea/vision documents (`enterprise-roadmap.md`, `system-intelligence.md`,
+> `fleet-sync-and-golden-path-evolution.md`, `devex-integrations.md`); they were removed once their
+> content was migrated into the RFCs below, verified fragment-by-fragment.
+
+| RFC | Title | Status | Decision |
+|---|---|---|---|
+| [RFC-001](docs/rfc/RFC-001-manifest-rendering-and-template-ownership.md) | Manifest Rendering Strategy — Kustomize/Template Ownership | proposed | — |
+| [RFC-002](docs/rfc/RFC-002-system-documentation-knowledge-graph.md) | System Documentation as a Knowledge Layer | proposed | — |
+| [RFC-003](docs/rfc/RFC-003-catalog-entities-derived-not-user-defined.md) | Catalog Entities Are Derived, Not User-Defined | proposed | — |
+| [RFC-004](docs/rfc/RFC-004-multi-cluster-sequencing.md) | Multi-Cluster — Sequencing Three Blocker Tracks | proposed | — |
+| [RFC-005](docs/rfc/RFC-005-monitoring-stack-priorities.md) | Monitoring Stack — Prioritizing the Documented Gaps | proposed | — |
+| [RFC-006](docs/rfc/RFC-006-darlane-next.md) | Darlane — Current Model vs. `XDarlane` | proposed | — |
+| [RFC-007](docs/rfc/RFC-007-golden-path-template-sync.md) | Golden-Path Template Sync-Back | proposed | — |
+| [RFC-008](docs/rfc/RFC-008-unified-security-threat-model.md) | A Threat Model That Spans Core and Portal | proposed | — |
+| [RFC-009](docs/rfc/RFC-009-self-service-operations-portal-response.md) | Portal's Response to Self-Service Operations + Knowledge Architecture | proposed | — |
+| [RFC-010](docs/rfc/RFC-010-enterprise-audit-trail.md) | Enterprise Audit Trail | proposed | — |
+| [RFC-011](docs/rfc/RFC-011-governance-scorecards-team-health.md) | Governance, Scorecards & Team Health | proposed | — |
+| [RFC-012](docs/rfc/RFC-012-supply-chain-security-cve-cost.md) | Supply Chain Security, CVE Routing & Cost Visibility | proposed | — |
+| [RFC-013](docs/rfc/RFC-013-dependency-comparison-test-visibility.md) | Dependency Comparison Performance & Test Visibility | proposed | — |
+| [RFC-014](docs/rfc/RFC-014-configurable-delivery-topology.md) | Configurable Golden-Path Delivery Topology | proposed | — |
+| [RFC-015](docs/rfc/RFC-015-catalog-read-performance-tiers.md) | Catalog Read Performance — A Three-Tier Escalation Path | proposed | — |

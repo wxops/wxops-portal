@@ -12,21 +12,30 @@ on:
 # file is close to a 1:1 port. What actually changed, and why:
 #
 #   - secrets.GITEA_TOKEN → secrets.GITHUB_TOKEN. GitHub auto-issues one per run,
-#     scoped to this repo, same as Gitea did. No setup needed.
+#     scoped to this repo, and it carries the permissions granted by the top-level
+#     `permissions:` block below (capped by the organization's Actions policy).
 #   - Registry auth switched from a REGISTRY_USERNAME/PASSWORD PAT to the native
 #     GITHUB_TOKEN (username: github.actor). Standard for GHCR from a public repo
 #     — no PAT to create, store, or rotate. See the `release` job for the tradeoff
 #     if you ever need to push to a non-GHCR registry instead.
-#   - Image path is now computed as REGISTRY/IMAGE_NAME instead of a single
-#     hardcoded `ghcr.io/wxops` var, so it does not silently point at the wrong
-#     owner if this repo ends up under a different GitHub org or a personal
-#     account. Override either var below if you need something else.
-#   - REPO_ACCESS_TOKEN is UNCHANGED — same secret name, same purpose: pushing
-#     the changelog commit straight to main after a release tag, matching Gitea's
-#     behavior exactly. This *requires you to configure main's branch protection*
-#     to let that token's identity bypass required-PR-review, or this step fails
-#     on every single release. See the `release` job comment below before your
-#     first tag push.
+#   - Image path is computed as REGISTRY/IMAGE_NAME instead of a single hardcoded
+#     `ghcr.io/wxops` var, so it does not silently point at the wrong owner if this
+#     repo ends up under a different GitHub org or a personal account. Override
+#     either var below if you need something else. REGISTRY must stay the bare
+#     host (`ghcr.io`) — never `ghcr.io/<owner>`: the owner already comes from
+#     IMAGE_NAME (`<owner>/<repo>`), and an owner-qualified REGISTRY (this project's
+#     Gitea convention is `ghcr.io/wxops`) would double it.
+#   - REPO_ACCESS_TOKEN is REMOVED. It was a hand-managed PAT whose only job was
+#     pushing the changelog commit to main, and a missing or expired one failed the
+#     whole release job at checkout. Everything now runs on GITHUB_TOKEN with the
+#     repo permissions granted by the top-level `permissions:` block (`contents:
+#     write`, `packages: write`) — nothing to create, store, or rotate.
+#   - Packages are REPO-level, not org-level. The image is ghcr.io/<owner>/<repo> and
+#     the Helm chart is ghcr.io/<owner>/<repo>/charts/<chart> (it used to be the
+#     org-level ghcr.io/<owner>/charts). The `org.opencontainers.image.source` label
+#     on the image, and the `sources:` entry in Chart.yaml for the chart, link each
+#     package to this repository; a linked package inherits the repo's access, which
+#     is what lets GITHUB_TOKEN push to it with `packages: write`.
 #
 # ── Variable resolution ────────────────────────────────────────────────────────
 #
@@ -34,7 +43,7 @@ on:
 #                                  > Variables tab
 #   GO_CACHE_PATH   default: backend/go.sum              monorepo: Go module is in subdir
 #   NPM_CACHE_PATH  default: frontend/package-lock.json   monorepo: frontend is in subdir
-#   REGISTRY        default: ghcr.io                      switch registries here
+#   REGISTRY        default: ghcr.io                      switch registries here (bare host only)
 #   IMAGE_NAME      default: ${{ github.repository }}     override if publishing under a different name
 #
 # Organization variables (only if this repo lives under a GitHub org) →
@@ -45,14 +54,22 @@ on:
 #
 # Auto-injected by GitHub — no setup required
 #   secrets.GITHUB_TOKEN   scoped to this repo for the run's lifetime
-#   github.repository      owner/repo  (e.g. wxops/wxops-portal-v2)
+#   github.repository      owner/repo  (e.g. wxops/wxops-portal)
 #   github.ref_name        tag or branch name
 #   github.actor           user or bot who triggered the run
 #
-# Secrets you DO need to configure (repo Settings > Secrets and variables >
-# Actions > Secrets tab) before the `release` job can succeed:
-#   REPO_ACCESS_TOKEN   a token with push access to main, for the changelog
-#                        commit — see the note above and in the `release` job.
+# Secrets to configure: none.
+#
+# One-time GitHub settings the workflow depends on (it cannot set these itself):
+#   - Org Settings > Actions > General > Workflow permissions must let this repo's
+#     GITHUB_TOKEN have write access (the `permissions:` block below asks for
+#     `contents: write` and `packages: write`).
+#   - A package that ALREADY exists under the org (published earlier by hand, with a
+#     PAT, or at the old org-level path) is not linked to this repo, so GITHUB_TOKEN
+#     is refused with `permission_denied: write_package`. Fix once per package:
+#     Package settings > "Manage Actions access" > add this repository with the
+#     Write role (or connect the repository). New packages published by this
+#     workflow link themselves.
 #
 # NOT pipeline variables — runtime app config injected via K8s Secrets at deploy time
 #   OIDC_CLIENT_SECRET, SESSION_SECRET, GITEA_TOKEN, OIDC_ISSUER_URL, …
@@ -156,25 +173,12 @@ jobs:
     needs: [backend, frontend, cli]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      # REPO_ACCESS_TOKEN — a token with push access to main, used below to push
-      # the changelog commit. This is where the default GITHUB_TOKEN falls short:
-      # it CAN push commits, but it CANNOT bypass a "require pull request before
-      # merging" branch protection rule even with `contents: write` above — that
-      # restriction applies regardless of which token is pushing.
-      #
-      # Once main has branch protection (the normal state for a public OSS repo),
-      # you must either:
-      #   1. Add this token's identity to the ruleset's bypass list
-      #      (Settings > Rules > Rulesets > your ruleset > "Bypass list"), or
-      #   2. Mint a fine-grained PAT from a bot/machine account that has been
-      #      added to that bypass list, and store it as REPO_ACCESS_TOKEN.
-      # Skipping this makes the changelog-commit step below fail on every
-      # release — the Docker image and GitHub Release still publish fine either
-      # way, since they run before this step and don't depend on it.
+      # No `token:` here on purpose — checkout defaults to this run's GITHUB_TOKEN,
+      # which carries the `contents: write` granted at the top of this file. That is
+      # what the changelog push below uses, so there is no PAT/secret to manage.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # git-cliff needs full history to build the changelog
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
       # ── Derive APP_VERSION from the git tag ──────────────────────────────────
       # Strips the leading 'v' (v0.3.0 → 0.3.0) and saves to $GITHUB_ENV so
@@ -191,8 +195,10 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       # Native GITHUB_TOKEN auth — no PAT to create or rotate. This works because
-      # `permissions.packages: write` above scopes the token to push to this
-      # repo's GHCR namespace. If you ever need to push to a different registry
+      # `permissions.packages: write` above lets the token push, and the package is
+      # linked to THIS repository (the `org.opencontainers.image.source` label in the
+      # build step below), so it is governed by the repo's access rather than being
+      # a loose org-level package. If you ever need to push to a different registry
       # (Docker Hub, a private registry), swap this for the REGISTRY_USERNAME /
       # REGISTRY_PASSWORD secret pair the way the Gitea workflow did.
       - name: Log in to ${{ env.REGISTRY }}
@@ -212,6 +218,15 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           build-args: |
             APP_VERSION=${{ env.APP_VERSION }}
+          # `source` is the one that matters: GHCR reads it to link this package to the
+          # repository, which makes it a repo-level package that inherits the repo's
+          # access. Without it the image is an unlinked org-level package and a
+          # GITHUB_TOKEN push can be refused with `permission_denied: write_package`.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.licenses=Apache-2.0
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache,mode=max
 
@@ -248,8 +263,13 @@ jobs:
           helm dependency build charts/
           helm package charts/ --destination /tmp/helm-dist
 
+      # Pushed UNDER the repo's own path (ghcr.io/<owner>/<repo>/charts/<chart>), next
+      # to the image, not into an org-level `<owner>/charts` namespace. Helm records
+      # Chart.yaml's first `sources:` entry (this repo) as the OCI source annotation,
+      # which is what links the chart package to the repository the same way the
+      # `source` label does for the image.
       - name: Push chart
-        run: helm push /tmp/helm-dist/wxops-portal-${{ env.APP_VERSION }}.tgz oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+        run: helm push /tmp/helm-dist/wxops-portal-${{ env.APP_VERSION }}.tgz oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/charts
 
       # --- Update changelog ---------------------------------
       # cliff.toml's committed default points at the internal Gitea repo — that's
@@ -273,6 +293,12 @@ jobs:
       - name: Regenerate CHANGELOG.md
         run: git-cliff -o CHANGELOG.md
 
+      # Best-effort. GITHUB_TOKEN can push commits, but it cannot bypass a "require
+      # pull request before merging" rule on main — so on a protected main this push
+      # is refused. That must not sink the release (the CLI binaries and the GitHub
+      # Release are created AFTER this step), and nothing is lost: CHANGELOG.md is
+      # regenerated in full from git history on every release, so the next tag
+      # picks it up. The refusal shows as a warning annotation on the run.
       - name: Commit and push updated files
         run: |
           git config user.name  "W'xOps Platform Bot"
@@ -280,7 +306,7 @@ jobs:
           git add CHANGELOG.md
           if ! git diff --staged --quiet; then
             git commit -m "chore(release): update changelog for ${{ github.ref_name }}"
-            git push origin HEAD:main
+            git push origin HEAD:main || echo "::warning title=Changelog not pushed::Could not push CHANGELOG.md to main (branch protection, or main moved on since the tag). The release itself is unaffected; the next release regenerates the changelog."
           fi
 
       # ── Build CLI release binaries ───────────────────────────────────────────

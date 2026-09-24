@@ -130,7 +130,7 @@ portal:
   # {{ .Values... }} references below resolve against `secretValues` — set
   # those two flat scalars at install time and this Secret + envFrom just
   # work, e.g.:
-  #   helm install wxops-portal oci://ghcr.io/wxops/charts/wxops-portal \
+  #   helm install wxops-portal oci://ghcr.io/wxops/wxops-portal/charts/wxops-portal \
   #     --set portal.secretValues.oidcClientSecret=... \
   #     --set portal.secretValues.sessionSecret=$(openssl rand -hex 32)
   # Uncomment both this and envFrom above (pointed at the same Secret name)

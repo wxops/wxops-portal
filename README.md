@@ -1,221 +1,108 @@
 # W'xOps Portal
 
-An Internal Developer Portal (IDP) for Kubernetes-native platform teams. One OIDC login via Pinniped Supervisor covers every spoke cluster. Golden-path scaffolding turns a form submission into a provisioned service — Gitea repo, Vault mount, XTenantApp CRD, Kustomize overlays, ArgoCD Image Updater — all committed to `gitops-infra` as a PR.
+An Internal Developer Portal for Kubernetes-native platform teams: one login for every cluster, a
+golden path from a form to a running service, and a safe place to debug — with Git as the only way
+anything changes.
 
-## What it does
+**Built for:** Kubernetes · Gitea · Pinniped · ArgoCD · Crossplane · Vault
 
-- **Single sign-on across clusters** — log in once; every spoke cluster is accessible with the same Pinniped session. No per-cluster popups, no credential duplication.
-- **Service catalog** — browse all platform services, APIs, and infrastructure dependencies. Full-text search, kind and owner filters, lifecycle tabs, relationship graphs, OpenAPI rendering, RFC/ADR/Runbook linking. Global command palette (Ctrl+K / Cmd+K) for instant keyboard-driven entity lookup.
-- **Lifecycle promotion** — UI-driven promotion from `experimental` → `development` → `staging` → `production`. Creates Kustomize overlay PRs in `gitops-infra` for platform review; role-gated (developers → dev, managers/platform-team → staging/production). Includes deprecation with reason and removal PR.
-- **Golden-path scaffolding** — fill a wizard; the portal commits XTenantApp + XTenantDatabase + ExternalSecrets + Kustomize base manifests + catalog entities to `gitops-infra`; ArgoCD + Crossplane provision namespace, database, Vault mount, and Gitea repo automatically.
-- **Import existing repos** — register an existing Gitea project into the catalog without re-scaffolding.
-- **Config edit via PR** — update XTenantApp platform features (replicas, ingress, secrets, probes) through a diff-review UI that creates a gitops-infra PR.
-- **Documentation management** — create and edit RFC, ADR, and runbook Doc entities directly from the portal. Doc entities commit to `gitops-infra` instantly (no PR). Draft mode restricts visibility to the author; publishing makes the document visible to all.
-- **CI/CD and release visibility** — per-entity cards showing Gitea Actions runs, git releases, container images (color-coded by environment), package dependencies, and latest image tag per environment (dev/staging/production).
-- **Activity feed** — portal-managed PR history per team, filtered by role; lifecycle status per service. Session notifications for scaffold, import, and catalog update events.
-- **Cluster views** — namespace-scoped pods and deployments derived from Pinniped group membership (no cluster-admin required); WhoAmI identity; reload without page refresh; kubeconfig download.
-- **CLI** — `wxops` binary: `login`, `catalog list/get`, `debug`, `update`, and a full `darlane` command group (`sync`, `push`, `logs`, `restart`, `status`, `exec`, `port-forward`). `darlane sync` watches a local directory and streams changes into the Darlane pod in real time — colored startup summary, catalog pre-flight checks, tar probe with copy-paste `kubectl debug` hint for no-tar images, delete propagation, mount-path mismatch warning, rollout restart tip, and `--tail-logs` to stream pod output alongside sync events. `darlane push` runs a one-shot sync for CI pipelines. `darlane status` shows per-environment overlay, darlane flag, mount path, and image tag. `wxops update` downloads the latest binary from the portal and replaces the current executable in place — no Gitea access or manual download required. Authenticated binary downloads served through the portal (`/api/v1/cli/download/:platform`). Usable in CI/CD pipelines via `WXOPS_TOKEN` env var. Cross-platform binaries for Linux and macOS (amd64 / arm64).
+## Why W'xOps IDP
 
-## Architecture
+- **Read-only by design.** The portal never writes to a Kubernetes API, and its Vault client can only
+  create or update a secret — there is no code path that reads or deletes one.
+- **Git is the only write path.** Scaffolding, promotion, config edits and Darlane all end as commits
+  in `gitops-infra`, reconciled by ArgoCD. Promotion to staging and production is always a reviewed
+  pull request, and every change is a revertible commit.
+- **Your identity, your permissions.** One OIDC login through Pinniped Supervisor covers every
+  cluster. The portal acts as you, with a short-lived credential, so you see exactly what Kubernetes
+  RBAC allows — there is no second permission system to keep in sync.
+- **Stateless and small.** No database: sessions are encrypted cookies and the catalog lives in Git.
+  The whole portal ships as a single container image.
+- **A golden path, not a form to fill and forget.** One wizard produces the repo, secrets, manifests,
+  overlays, image automation and catalog entries together — and a service's lifecycle is derived from
+  what is actually merged, not from a dropdown.
+- **Darlane: debug beside production.** A parallel debug pod per environment that receives no traffic
+  by default, with your local code synced into it in real time by `wxops darlane sync`.
 
-### Request routing
+## What's inside
+
+| Area | What you get |
+|---|---|
+| **Service catalog** | Backstage-compatible entities (System, Component, API, Resource, Group, User, Doc) read from Git. Full-text search, a Ctrl+K command palette, dependency graphs, OpenAPI rendering, and RFC / ADR / runbook docs. → [Catalog guide](docs/catalog/catalog-user-guide.md) |
+| **Scaffolding** | A wizard that commits XTenantApp, XTenantDatabase, ExternalSecrets, Kustomize base and overlays, an ArgoCD Image Updater CR and catalog entities to `gitops-infra`. Existing Gitea repos can be imported without re-scaffolding. → [Golden-path flow](docs/scaffolding/golden-path-git-flow.md) |
+| **Lifecycle promotion** | `experimental` → `development` → `staging` → `production`, driven from the Component page. Developers promote to dev; managers and platform-team promote to staging and production. Includes deprecation. → [Promotion design](docs/scaffolding/cross-environment-promotion.md) |
+| **Darlane & CLI** | Per-environment debug pods, plus the `wxops` CLI: `login`, `catalog`, `debug`, `update`, and `darlane` (`sync`, `push`, `logs`, `restart`, `status`, `exec`, `port-forward`). Usable in CI via `WXOPS_TOKEN`. → [Darlane](docs/darlane/darlane.md) · [CLI](docs/cli/cli.md) |
+| **Runtime visibility** | ArgoCD sync/health and Crossplane status per environment, active alerts, and Grafana / Loki / Tempo links pre-scoped to the service. Plus CI runs, releases, container images and dependencies per entity. → [Observability](docs/platform/observability.md) |
+| **Cluster views** | Pods, deployments, services and quotas scoped by your group membership — no cluster-admin needed — and kubeconfig download. → [Architecture](docs/concepts/architecture.md) |
+
+## How it works
 
 ```mermaid
 flowchart LR
-    Browser(["Browser"])
-
-    subgraph img["Single Docker Image · supervisord"]
-        nginx["nginx\n:80"]
-        go["Go backend\n:8080 · Gin"]
-        nextjs["Next.js\n:3000 · App Router"]
-    end
-
-    subgraph platform["Platform"]
-        hub["Hub Cluster\nPinniped Supervisor\nwxops-system Secrets"]
-        spokes["Spoke Clusters\nPinniped Concierge\nJWTAuthenticator"]
-        gitea["Gitea\ngitops-infra · catalog"]
-        argocd["ArgoCD"]
-    end
-
-    Browser --> nginx
-    nginx -->|"/auth/* · /api/v1/*"| go
-    nginx -->|"/api/* · /*"| nextjs
-
-    go -->|"OIDC discovery\ntoken exchange"| hub
-    go -->|"K8s API\nuser credentials"| spokes
-    go -->|"catalog read\nPR write"| gitea
-    gitea -->|"webhook"| argocd
-    argocd -->|"reconcile"| spokes
+    Dev(["Developer"]) -->|"scaffold · promote · edit"| Portal["W'xOps Portal"]
+    Portal -->|"PR / commit — the only write path"| Git["Gitea · gitops-infra"]
+    Git -->|"webhook"| Argo["ArgoCD + Crossplane"]
+    Argo -->|"reconcile"| Clusters["Hub and spoke clusters"]
+    Clusters -.->|"read-only, as the logged-in user"| Portal
 ```
 
-All three processes run inside a **single Docker image** managed by supervisord. There is no separate frontend container — nginx, Go, and Next.js share one image and communicate on loopback.
+The portal writes to Git and reads from your clusters with *your* credential. ArgoCD and Crossplane do
+the applying. See [Architecture](docs/concepts/architecture.md) for the auth flow and hub-spoke
+topology, and the [Codebase overview](docs/development/codebase-overview.md) for how the code is laid
+out.
 
-### BFF Proxy pattern
+## What it will never do
 
-The frontend uses a Backend-for-Frontend (BFF) proxy to bridge the gap between browser-side JavaScript and the Go backend:
+- Write to a cluster, or delete a Vault secret, or read one back.
+- Show developers `gitops-infra` PR links — they see status, not the platform's internal repo.
+- Offer delete actions to tenant developers (platform-team only).
+- Replace the tools it links to: Gitea, ArgoCD, Grafana and Vault UI stay the source of truth for
+  their own data.
 
-- `BACKEND_URL` resolves to `http://127.0.0.1:8080` inside the container — the browser cannot reach this address directly
-- The `wxops_session` cookie is `HttpOnly` — browser JavaScript cannot read it, so it cannot attach it to direct Go API calls
-- `src/app/api/` contains Next.js Route Handlers that run server-side: they read the session cookie via `next/headers`, forward it to Go as a `Cookie:` header, and return the response. The browser only ever talks to Next.js.
+These are properties of the code, not policy — see [Security assurance](docs/security/security-assurance.md)
+for the evidence and how to check each claim yourself.
 
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant N as nginx
-    participant SC as Next.js Server Component
-    participant BFF as Next.js Route Handler<br/>(src/app/api/)
-    participant G as Go Backend :8080
+## Quick start
 
-    Note over SC,G: Path A — Server Component (catalog pages, cluster list)
-    SC->>G: GET /api/v1/… · Cookie: wxops_session=…
-    G-->>SC: JSON
-    SC-->>B: rendered HTML
-
-    Note over B,G: Path B — Client Component (wizard, cluster tabs, CI cards)
-    B->>N: GET /api/… · credentials: include
-    N->>BFF: forward
-    Note right of BFF: reads wxops_session<br/>via next/headers
-    BFF->>G: GET /api/v1/… · Cookie: wxops_session=…
-    G-->>BFF: JSON
-    BFF-->>B: JSON
-```
-
-Server Components (catalog pages, cluster list) bypass the BFF entirely — they run on the Next.js server and call `BACKEND_URL` directly at render time, forwarding the session cookie explicitly.
-
-### Frontend stack
-
-| Layer | Package | Role |
-|---|---|---|
-| Framework | Next.js 16 (App Router), React 19 | Server components, streaming, file-based routing |
-| UI primitives | `@base-ui/react` | Unstyled, accessible headless components |
-| Styling | Tailwind CSS v4 | All visual design — utility classes only, no CSS modules |
-| Variants | `class-variance-authority` | `cva()` for button/badge size and color variants |
-| Class merge | `clsx` + `tailwind-merge` → `cn()` | Safe Tailwind class composition |
-| Icons | `lucide-react` | SVG icon set — icons only, not a component library |
-| Toasts | `sonner` | Notification system |
-| Theme | `next-themes` | System-aware light/dark mode |
-| Fonts | Geist Sans + Geist Mono | Loaded via `next/font/google` |
-| Diagrams | `mermaid` v11 | Dependency graphs, sequence diagrams |
-| OpenAPI | `swagger-ui-dist` | Imperative UMD mount — no React wrapper or peer dep issues |
-| Markdown | `react-markdown` + `remark-gfm` | Doc viewer, RFC/ADR rendering |
-| YAML | `js-yaml` | OpenAPI spec parsing, edit-config YAML preview |
-
-The `src/components/ui/` directory contains **source files owned by this repo** — they wrap Base UI primitives with Tailwind styling. Use `npx shadcn@latest add <component>` to generate additional ones (the `shadcn` CLI is not in `package.json`; run it with `npx`).
-
-### Backend stack
-
-| Layer | Package | Role |
-|---|---|---|
-| Framework | `gin-gonic/gin` v1.10 | HTTP router, middleware, request binding |
-| OIDC / Auth | `coreos/go-oidc/v3` + `golang.org/x/oauth2` | PKCE flow with Pinniped Supervisor as the IdP |
-| Session | Custom AES-256-GCM encrypted cookie | Stateless — no Redis, no database; key is `SESSION_SECRET` |
-| Kubernetes | `k8s.io/client-go` v0.31 | Hub cluster Secret discovery + spoke cluster API calls |
-| YAML | `gopkg.in/yaml.v3` | Manifest generation, catalog entity parsing |
-| Config | `joho/godotenv` | `.env` file loader for local dev (real env vars win) |
-| Swagger | `swaggo/gin-swagger` + `swaggo/swag` | Annotation-driven spec generation — disabled by default |
-
-**Custom clients (no third-party SDK):**
-
-| Client | Package | Notes |
-|---|---|---|
-| Gitea | `internal/gitea/` | Plain HTTP + JSON against the Gitea REST API |
-| Vault | `internal/vault/` | KV v2 write-only — no Vault SDK; no reads or deletes |
-
-**Internal packages:**
-
-| Package | Responsibility |
-|---|---|
-| `internal/auth/` | OIDC client, AES-256-GCM session manager, `RequireSession` middleware |
-| `internal/catalog/` | Entity store with 5-min in-process cache; local-dir and Gitea readers |
-| `internal/cluster/` | Cluster registry (static JSON or K8s Secret discovery), Pinniped token exchange |
-| `internal/config/` | All env var loading via `config.Load()` — single source of truth |
-| `internal/gitea/` | Gitea API methods: repo CRUD, file commits, PR creation, CI/package queries |
-| `internal/handlers/` | Gin route handlers: `auth.go`, `catalog.go`, `clusters.go`, `scaffold.go`, `cli.go` |
-| `internal/scaffold/` | Manifest generators: XTenantApp, XTenantDatabase, ExternalSecret, Kustomize overlays, Image Updater CR, catalog entities |
-| `internal/server/` | Gin engine setup, route registration, CORS middleware |
-| `internal/vault/` | Vault KV v2 HTTP client — create/update only |
-
-### CLI stack (`cli/`)
-
-Standalone Go module (`github.com/wxops/wxops-cli`) — separate `go.mod`, cross-compiled for Linux and macOS (amd64 / arm64).
-
-| Layer | Package | Role |
-|---|---|---|
-| Commands | `spf13/cobra` v1.10 | Subcommand tree, flag parsing, help text |
-| File watching | `fsnotify/fsnotify` v1.7 | Cross-platform inotify/kqueue watcher for `darlane sync` |
-| Portal API | `internal/client/` | Plain HTTP + JSON client — shares the `wxops_session` cookie model |
-| Auth | `internal/client/credentials.go` | Token stored at `~/.wxops/credentials.json`; `WXOPS_TOKEN` env var for CI |
-| Session state | `~/.wxops/darlane-<service>-<env>.json` | Persists `--local`/`--remote`/`--exclude` across `sync`, `push`, `restart` |
-| Sync transport | `kubectl exec tar xf -` pipe | No daemon — tar pipe into the pod via `kubectl exec`; requires `tar` in the image |
-
-## Quick Start
+Run the portal locally against the bundled example catalog, with no identity provider:
 
 ```bash
 cp backend/.env.example backend/.env
-# Set OIDC_ISSUER_URL, OIDC_CLIENT_SECRET, SESSION_SECRET
-# For local dev without OIDC: DEV_BYPASS_AUTH=true
+# In backend/.env, set:
+#   DEV_BYPASS_AUTH=true                 # skip OIDC; log in automatically as a dev user
+#   SESSION_SECRET=<output of: openssl rand -hex 32>
 
-make up
-# portal: http://localhost
+make dev-backend     # Go API on :8080, serving the example catalog
+make dev-frontend    # Next.js on http://127.0.0.1:3000
 ```
 
-For local catalog testing without Gitea:
-```bash
-CATALOG_LOCAL_DIR=./internal/catalog/examples
-```
+The full setup — Docker Compose, static cluster config, a real Gitea catalog — is in
+[Local development](docs/development/local-development.md).
 
-See [docs/development/local-development.md](docs/development/local-development.md) for the full setup.
+## Deploy
+
+The portal runs as a single image, installed with the Helm chart in [`charts/`](charts/README.md).
+See the [Deployment guide](docs/getting-started/deployment.md) for the Pinniped, OIDC and RBAC
+prerequisites and the [Environment variables](docs/getting-started/environment-variables.md)
+reference.
 
 ## Documentation
 
-| Topic | File |
+Everything lives under [`docs/`](docs/README.md) — start with its index. Common entry points:
+
+| | |
 |---|---|
-| Architecture, auth sequence, hub-spoke topology | [docs/concepts/architecture.md](docs/concepts/architecture.md) |
-| Production deployment (RBAC, OIDCClient, steps 1–6) | [docs/getting-started/deployment.md](docs/getting-started/deployment.md) |
-| Environment variables reference | [docs/getting-started/environment-variables.md](docs/getting-started/environment-variables.md) |
-| **Service catalog — YAML user guide (all kinds, annotations, link types)** | [docs/catalog/catalog-user-guide.md](docs/catalog/catalog-user-guide.md) |
-| Service catalog — design rationale | [docs/catalog/service-catalog.md](docs/catalog/service-catalog.md) |
-| Golden-path git flow (branches, CI, imsage tags) | [docs/scaffolding/golden-path-git-flow.md](docs/scaffolding/golden-path-git-flow.md) |
-| Lifecycle webhook (CI in gitops-infra → portal) | [docs/scaffolding/lifecycle-webhook.md](docs/scaffolding/lifecycle-webhook.md) |
-| Cross-environment promotion design | [docs/scaffolding/cross-environment-promotion.md](docs/scaffolding/cross-environment-promotion.md) |
-| Cluster registry (K8s Secrets + clusters.json) | [docs/platform/cluster-registry.md](docs/platform/cluster-registry.md) |
-| Runtime observability (ArgoCD/Crossplane status, LGTM links, alerts) | [docs/platform/observability.md](docs/platform/observability.md) |
-| Observability architecture (hub Grafana, spoke Alloy) | [docs/platform/observability-architecture.md](docs/platform/observability-architecture.md) |
-| Documentation strategy (RFC, ADR, Runbook) | [docs/catalog/documentation-strategy.md](docs/catalog/documentation-strategy.md) |
-| Performance (cache layers, TTLs, polling, scaling) | [docs/concepts/performance.md](docs/concepts/performance.md) |
-| Enterprise roadmap & platform evolution (audit, security, scorecards, cost, XDarlane, Guardian) | [docs/roadmap/enterprise-roadmap.md](docs/roadmap/enterprise-roadmap.md) |
-| Local development | [docs/development/local-development.md](docs/development/local-development.md) |
-| Container design (nginx, supervisord, Dockerfile) | [docs/platform/container.md](docs/platform/container.md) |
-| CLI (`wxops` binary — login, catalog, debug, update, darlane) | [docs/cli/cli.md](docs/cli/cli.md) |
-| Darlane — per-environment parallel debug pods | [docs/darlane/darlane.md](docs/darlane/darlane.md) |
-| API reference | [docs/api/api-reference.md](docs/api/api-reference.md) |
-| Release workflow | [docs/development/release-workflow.md](docs/development/release-workflow.md) |
-| Roadmap & architecture decisions | [ROADMAP.md](ROADMAP.md) |
+| Getting started | [Introduction](docs/getting-started/introduction.md) · [Deployment](docs/getting-started/deployment.md) · [Environment variables](docs/getting-started/environment-variables.md) |
+| Concepts | [Architecture](docs/concepts/architecture.md) · [Platform engineering rationale](docs/concepts/platform-engineering-rationale.md) |
+| Using the portal | [Catalog guide](docs/catalog/catalog-user-guide.md) · [Golden-path flow](docs/scaffolding/golden-path-git-flow.md) · [Darlane](docs/darlane/darlane.md) · [CLI](docs/cli/cli.md) · [API reference](docs/api/api-reference.md) |
+| Security | [Security assurance](docs/security/security-assurance.md) · [Permissions](docs/security/permissions.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) · [Local development](docs/development/local-development.md) · [Codebase overview](docs/development/codebase-overview.md) · [Release workflow](docs/development/release-workflow.md) |
+| Direction | [ROADMAP.md](ROADMAP.md) — planned work and architecture decisions |
 
-## Roadmap
+## Project
 
-| Version | Goal | Status |
-|---|---|---|
-| v0.1.0 | Identity & multi-cluster SSO via Pinniped | `shipped` |
-| v0.1.1–v0.1.2 | CI/CD pipeline, operations readiness | `shipped` |
-| v0.1.3 | Full service catalog with relationship graphs | `shipped` |
-| v0.1.4 | Catalog UI & visualization refinements | `shipped` |
-| v0.2.0 | Golden-path scaffolding, CI/CD visibility, activity feed, cluster UX | `shipped` |
-| v0.2.1 | Scaffolding fixes (Image Updater naming, nginx routing, Vault update) | `shipped` |
-| v0.3.0 | Platform visibility — lifecycle promotion UI, FlexSearch command palette, catalog search, dark theme | `shipped` |
-| v0.3.1 | Portal UI polish — entity detail two-column layout, docs drawer, build-time version stamping | `shipped` |
-| v0.4.0 | CLI (`wxops` binary) + Darlane per-environment parallel debug pods + inner-loop tooling (Mirrord, `wxops darlane sync`) | `shipped` |
-| v0.4.1 | Cluster view kubectl companion (pod detail drawer, services, quotas); `darlane sync` reliability (delete propagation, initial sync, retry); darlane inner-loop DX (startup summary, pre-flight checks, `push`/`logs`/`restart`/`status` subcommands, `--tail-logs`, tar probe + `kubectl debug` hint) | `shipped` |
-| v0.4.2 | Add the route for CLI Versioning `GET /api/v1/cli/version` and update UI in overview for `CLI` and `docs-site` introduced | `shipped` |
-| v0.4.3 | `wxops update` — self-update command; downloads latest binary from the portal and replaces the current executable in place | `shipped` |
-| v0.5.0 | Runtime observability — ArgoCD/Crossplane XR status via Pinniped; Alertmanager active-alert surface; Grafana/Loki/Tempo deep links pre-scoped per service | `planned` |
+APIs and generated manifests can change between minor releases — the [changelog](CHANGELOG.md) and release notes call those out.
 
-See [ROADMAP.md](ROADMAP.md) for the full feature list and architecture decisions.
+Report a security issue through [SECURITY.md](SECURITY.md), not a public issue.
 
-## Portal Scope
-
-**The portal owns:** authentication, cluster visibility, service catalog, project scaffolding, config management via PR, kubeconfig download.
-
-**The portal links to, never replaces:** Gitea (source, docs, RFCs, ADRs), ArgoCD (deployment status), Grafana (metrics), Vault UI (secrets).
-
-**The portal never does:** direct cluster writes, Vault secret reads, gitops-infra URL exposure to developers, delete operations for tenant users.
+Licensed under [Apache-2.0](LICENSE); please read the [Code of Conduct](CODE_OF_CONDUCT.md).

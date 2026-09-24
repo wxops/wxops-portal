@@ -7,12 +7,15 @@ Built on top of the [`common`](https://kubewekend.xeusnguyen.xyz/) library chart
 ## Install
 
 ```bash
-helm install wxops-portal oci://ghcr.io/wxops/charts/wxops-portal --version 0.5.0 \
+helm install wxops-portal oci://ghcr.io/wxops/wxops-portal/charts/wxops-portal --version 0.5.0 \
   --namespace wxops-system --create-namespace \
   -f my-values.yaml
 ```
 
-There's no `helm repo add` step — this is an OCI-based chart, published alongside the container image to the same `ghcr.io/wxops` registry.
+There's no `helm repo add` step — this is an OCI-based chart, published under the repository's own
+packages: the container image is `ghcr.io/wxops/wxops-portal` and the chart sits beneath it at
+`ghcr.io/wxops/wxops-portal/charts/wxops-portal`. (Earlier releases were documented at the org-level
+`ghcr.io/wxops/charts/wxops-portal`; that path is no longer published to.)
 
 ## Before you install
 

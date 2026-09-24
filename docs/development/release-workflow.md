@@ -115,15 +115,21 @@ the wxops_session cookie format is no longer compatible."
 ```bash
 make release
 # Current: v0.2.0   Next: v0.3.0   Tag as v0.3.0? [y/N] y
-git push && git push --tags
+git push <remote> && git push <remote> v0.3.0
 ```
+
+`release-notes/<tag>.md` is **optional**. Without it, `make release` commits only `CHANGELOG.md` (plus
+any docs you touched) and CI builds the release body from `release-notes/template.md` (see §5). To write
+a narrative for a release, create the file before confirming — `make release` then commits it too.
 
 **Direct tag push** (CI writes CHANGELOG.md back to main)
 
 ```bash
 git tag -a v0.3.0 -m "Release v0.3.0"
-git push --tags
+git push <remote> v0.3.0
 ```
+
+Always push the tag **by name**, never `--tags` (see [below](#where-the-changelog-lives)).
 
 Both paths produce the same result. Use `make release` when working locally;
 use direct push in automated pipelines.
@@ -150,8 +156,10 @@ in the same file. It is done in the template rather than with `skip_tags` becaus
 `make release`. To move the boundary, change that regex and the header text.
 
 v0.1.0 – v0.5.1 were never published as GitHub Releases (the GitHub repository carries the full commit
-history but no tags for them), so the archive links commits, not releases. Do not `git push --tags` from
-a clone that still has the old tags: pushing `v*` tags is what triggers the release workflow.
+history but no tags for them), so the archive links commits, not releases. Push a release tag by name
+(`git push <remote> vX.Y.Z`), never `--tags`, to a remote that lacks the older tags: the whole batch
+arrives at once, and GitHub creates no push event when more than three tags are pushed together — so
+the release workflow would silently never start. (With three or fewer it would run once per old tag.)
 
 ---
 

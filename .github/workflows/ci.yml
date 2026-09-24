@@ -272,21 +272,11 @@ jobs:
         run: helm push /tmp/helm-dist/wxops-portal-${{ env.APP_VERSION }}.tgz oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/charts
 
       # --- Update changelog ---------------------------------
-      # cliff.toml's committed default points at the internal Gitea repo — that's
-      # what `make changelog` and the Gitea CI release job are supposed to
-      # produce, and it must stay that way. Patch it here, in this job only, so
-      # the CHANGELOG.md and release notes this workflow generates link at the
-      # public GitHub repo instead. github.repository (not a hardcoded value)
-      # so this stays correct even if the repo is renamed or transferred.
-      #
-      # This only touches the working tree — the "Commit and push" step below
-      # stages CHANGELOG.md alone, so the patched cliff.toml is never committed.
-      - name: Point changelog links at the public GitHub repo
-        run: |
-          sed -i \
-            "s#https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2#https://github.com/${{ github.repository }}#" \
-            cliff.toml
-
+      # cliff.toml already points at the public GitHub repo (its `$REPO` postprocessor),
+      # so the CHANGELOG.md and release notes generated here link to GitHub Releases and
+      # GitHub commits with no patching. It also holds the archive boundary: v0.1.0–v0.5.1
+      # live frozen in CHANGELOG-ARCHIVE.md and are never regenerated. If the repo is ever
+      # renamed or transferred, change the URL in cliff.toml — it is written there once.
       - name: Install git-cliff
         run: pip install git-cliff --break-system-packages
 

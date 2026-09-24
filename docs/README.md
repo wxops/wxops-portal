@@ -80,6 +80,7 @@ plus a `development/` bucket for contributor-facing material.
 | Doc | What it covers |
 |---|---|
 | [Local Development](development/local-development.md) | Local setup, dev bypass auth, local catalog testing |
+| [Codebase Overview](development/codebase-overview.md) | Process layout, BFF proxy, and the frontend / backend / CLI stacks and internal packages |
 | [Release Workflow](development/release-workflow.md) | CI release process, changelog generation |
 | [Refactor & Hardening](development/refactor-and-hardening.md) | Quality-substrate release plan — tests, structured logging, god-file decomposition (portal + core) |
 | [Open-Source Readiness](development/open-source-readiness.md) | Open-core split, scrub, hardening gate, 10-min demo, license, KubeCon listening tour |

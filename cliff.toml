@@ -1,9 +1,14 @@
 [changelog]
 header = """# Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented in this file, starting with **v0.5.2**.
 Versions follow [Semantic Versioning](https://semver.org/).
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
+
+- **v0.5.2 and later** — each version below links to its [GitHub Release]($REPO/releases),
+  which carries the release notes, the container image and the CLI binaries.
+- **v0.1.0 – v0.5.1** — archived and frozen in [CHANGELOG-ARCHIVE.md](CHANGELOG-ARCHIVE.md).
+  GitHub Releases begin at v0.5.2; those earlier versions were never published there.
 
 > This file is regenerated from git history by running `make changelog`.
 > Do not edit it manually.
@@ -11,8 +16,13 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 ---
 """
 
-body = """{% if version %}\
-## [{{ version | trim_start_matches(pat="v") }}] — {{ timestamp | date(format="%Y-%m-%d") }}
+# The first condition renders NOTHING for v0.1.0–v0.5.1 (the archive boundary — see the
+# note below the template). Everything else is the normal release layout.
+body = """\
+{% if version and version is matching("^v0[.]([0-4][.][0-9]+|5[.][01]([^0-9]|$))") %}\
+{% else %}\
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}]($REPO/releases/tag/{{ version }}) — {{ timestamp | date(format="%Y-%m-%d") }}
 {% else %}\
 ## [Unreleased]
 {% endif %}\
@@ -20,38 +30,31 @@ body = """{% if version %}\
 ### {{ group | upper_first }}
 
 {% for commit in commits %}\
-- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}{% if commit.breaking %} ⚠️ **BREAKING**{% endif %} ([`{{ commit.id | truncate(length=7, end="") }}`](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/commit/{{ commit.id }}))
+- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.message | upper_first }}{% if commit.breaking %} ⚠️ **BREAKING**{% endif %} ([`{{ commit.id | truncate(length=7, end="") }}`]($REPO/commit/{{ commit.id }}))
 {% endfor %}\
 {% endfor %}
-"""
-
-footer = """---
-
-{% for release in releases %}\
-{% if release.version %}\
-[{{ release.version | trim_start_matches(pat="v") }}] - \
-https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/releases/tag/{{ release.version }}
-{% endif %}\
-{% endfor %}\
-{% set latest = releases | filter(attribute="version") | first %}\
-{% if latest %}\
-[Unreleased] - https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/compare/{{ latest.version }}...HEAD
 {% endif %}\
 """
 
 trim = false
 
-# Repo link is hardcoded inline above (3 occurrences: body commit link, footer
-# release tag link, footer compare link) rather than templated — [remote.*]
-# makes git-cliff perform a live API call and abort generation if it fails
-# (wrong host, no token, offline; verified directly), which this project has
-# no need for.
-#
-# THIS FILE IS THE GITEA VERSION. Gitea is frozen as the legacy record for
-# v0.1.0–v0.5.0. From v0.6.0, GitHub (github.com/wxops/wxops-portal — see
-# charts/Chart.yaml) becomes the only live release target. When that cutover
-# happens: swap all 3 gitea.xeusnguyen.xyz URLs above to the GitHub one and
-# regenerate CHANGELOG.md fresh — do not do it piecemeal.
+# The repo URL is written once, as `$REPO`, in the header and body above and substituted
+# here — this project's public home. (`[remote.*]` is deliberately not used: it makes
+# git-cliff perform a live API call and abort generation if it fails — wrong host, no
+# token, offline; verified directly — which this project has no need for.)
+postprocessors = [
+  { pattern = '\$REPO', replace = "https://github.com/wxops/wxops-portal" },
+]
+
+# ARCHIVE BOUNDARY. v0.1.0–v0.5.1 are frozen in CHANGELOG-ARCHIVE.md and GitHub Releases
+# start at v0.5.2. The `is matching` test at the top of the body template is what keeps
+# them out of the generated file — in ONE place, so it holds for every caller (`make
+# changelog`, `make release`, and both CI release jobs) without a commit range on each
+# command line. It is done in the template, not with `skip_tags`, on purpose: `skip_tags`
+# drops those releases as far as git-cliff is concerned, and `git cliff --bumped-version`
+# then returns nothing while the newest tag is a skipped one — which would break
+# `make release`. (`ignore_tags` is no use either: it folds the old commits into the next
+# release.) To move the boundary, change that one regex and the header text.
 
 [git]
 conventional_commits = true

@@ -16,7 +16,7 @@ The CI pipeline fills them in at release time:
 
 | Placeholder | Replaced with |
 |---|---|
-| `{{CLIFF_NOTES}}` | Auto-generated commit list for this tag (from git-cliff) |
+| `{{CLIFF_NOTES}}` | Auto-generated commit list for this tag (from git-cliff). It opens with its own `## [x.y.z](release link) — date` heading followed by `###` groups, so don't put a heading above it |
 | `{{VERSION}}` | Tag name, e.g. `v1.2.0` |
 | `{{IMAGE}}` | Full registry image path, e.g. `ghcr.io/org/wxops-portal-v2` |
 
@@ -46,8 +46,6 @@ Custom narrative here — no commit list injected.
 
 Custom narrative here.
 
-## What's Changed
-
 {{CLIFF_NOTES}}
 
 ## Container image
@@ -64,5 +62,5 @@ do not resolve on a Gitea/GitHub release page. Use the `{{VERSION}}` placeholder
 links pinned to the correct tag:
 
 ```markdown
-[Architecture](https://gitea.xeusnguyen.xyz/platform-team/wxops-portal-v2/src/tag/{{VERSION}}/docs/architecture.md)
+[Architecture](https://github.com/wxops/wxops-portal/blob/{{VERSION}}/docs/concepts/architecture.md)
 ```

@@ -113,7 +113,7 @@ changelog-preview: ## Preview unreleased changelog without writing
 	@which git-cliff > /dev/null || (echo "git-cliff not installed — see https://git-cliff.org/docs/installation" && exit 1)
 	git-cliff --unreleased --strip all
 
-release: ## Bump version, update changelog + release notes, commit and tag  [VERSION=vX.Y.Z overrides auto-bump]
+release: ## Bump version, update changelog, commit and tag  [VERSION=vX.Y.Z overrides auto-bump; release-notes/vX.Y.Z.md is optional]
 	@which git-cliff > /dev/null || (echo "git-cliff not installed — see https://git-cliff.org/docs/installation" && exit 1)
 	$(eval NEXT := $(if $(VERSION),$(VERSION),$(shell git cliff --bumped-version 2>/dev/null)))
 	@if [ -z "$(NEXT)" ]; then \
@@ -124,18 +124,16 @@ release: ## Bump version, update changelog + release notes, commit and tag  [VER
 	    echo "  ERROR: '$(NEXT)' must match vX.Y.Z (e.g. VERSION=v1.2.0)"; \
 	    exit 1; \
 	fi
-	@if [ ! -f "release-notes/$(NEXT).md" ]; then \
-	    echo ""; \
-	    echo "  ERROR: release-notes/$(NEXT).md doesn't exist yet."; \
-	    echo "  CHANGELOG.md is the commit list — this is the human narrative of"; \
-	    echo "  what $(NEXT) is and why it matters. Write it first, then re-run:"; \
-	    echo "    cp release-notes/template.md release-notes/$(NEXT).md"; \
-	    echo ""; \
-	    exit 1; \
-	fi
 	@echo ""
 	@echo "  Current : $(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)"
 	@echo "  Next    : $(NEXT)$(if $(VERSION), [manual override],)"
+	@if [ -f "release-notes/$(NEXT).md" ]; then \
+	    echo "  Notes   : release-notes/$(NEXT).md (hand-written — committed with the release)"; \
+	else \
+	    echo "  Notes   : none (optional) — CI builds the release body from release-notes/template.md"; \
+	    echo "            plus the generated changelog. For a hand-written narrative, before confirming:"; \
+	    echo "              cp release-notes/template.md release-notes/$(NEXT).md"; \
+	fi
 	@echo ""
 	@echo "  Before confirming, go update whatever's drifted — these all get"
 	@echo "  staged and committed together with CHANGELOG.md below, so this is"
@@ -146,7 +144,8 @@ release: ## Bump version, update changelog + release notes, commit and tag  [VER
 	@echo ""
 	@read -p "  Tag as $(NEXT) and push? [y/N] " c && [ "$$c" = "y" ]
 	git cliff --tag $(NEXT) -o CHANGELOG.md
-	git add CHANGELOG.md release-notes/$(NEXT).md ROADMAP.md README.md docs/
+	git add CHANGELOG.md ROADMAP.md README.md docs/
+	@if [ -f "release-notes/$(NEXT).md" ]; then git add "release-notes/$(NEXT).md"; fi
 	@if git diff --cached --quiet; then \
 	    echo "→ Nothing to commit for $(NEXT) — CHANGELOG.md, release notes, and docs already up to date"; \
 	else \
@@ -156,6 +155,9 @@ release: ## Bump version, update changelog + release notes, commit and tag  [VER
 	fi
 	git tag -a $(NEXT) -m "Release $(NEXT)"
 	@echo ""
-	@echo "  Created tag $(NEXT). Push with:"
-	@echo "    git push && git push --tags"
+	@echo "  Created tag $(NEXT). Push the branch and this one tag to each remote that should release it:"
+	@echo "    git push <remote> && git push <remote> $(NEXT)"
+	@echo "  Push the tag by name, not --tags: a remote that lacks the older tags would receive them"
+	@echo "  all at once, and GitHub creates no push event for more than three tags — so the release"
+	@echo "  workflow would silently never start."
 	@echo ""
